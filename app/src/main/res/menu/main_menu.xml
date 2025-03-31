@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <item
+        android:id="@+id/action_tor_status"
+        android:title="@string/tor_status"
+        android:icon="@drawable/ic_encrypted"
+        app:showAsAction="ifRoom" />
+    <item
+        android:id="@+id/action_settings"
+        android:icon="@android:drawable/ic_menu_preferences"
+        android:title="@string/settings"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/action_tor_connect"
+        android:icon="@android:drawable/ic_menu_share"
+        android:title="@string/connect_to_tor"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/action_tor_disconnect"
+        android:icon="@android:drawable/ic_menu_close_clear_cancel"
+        android:title="@string/disconnect_from_tor"
+        app:showAsAction="never" />
+</menu> 

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/action_block"
+        android:title="@string/block" />
+    <item
+        android:id="@+id/action_unblock"
+        android:title="@string/unblock" />
+    <item
+        android:id="@+id/action_verify"
+        android:title="@string/verify" />
+    <item
+        android:id="@+id/action_encryption_info"
+        android:title="@string/encryption_info" />
+    <item
+        android:id="@+id/action_delete"
+        android:title="@string/delete" />
+</menu> 

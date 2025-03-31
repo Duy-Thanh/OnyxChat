@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+    <color name="colorPrimary">#4CAF50</color>
+    <color name="colorPrimaryDark">#388E3C</color>
+    <color name="colorAccent">#FF9800</color>
+    
+    <!-- Message colors -->
+    <color name="sent_message_background">#E3F2FD</color>
+    <color name="received_message_background">#F1F1F1</color>
+    <color name="message_text">#212121</color>
+    <color name="message_time">#757575</color>
+    <color name="message_sent_background">#E3F2FD</color>
+    <color name="message_received_background">#F1F1F1</color>
+    <color name="message_sent_text">#212121</color>
+    <color name="message_received_text">#212121</color>
+    <color name="message_time_text">#757575</color>
+    
+    <!-- Conversation colors -->
+    <color name="conversation_title">#212121</color>
+    <color name="conversation_subtitle">#757575</color>
+    <color name="conversation_time">#9E9E9E</color>
+    <color name="contact_name_text">#212121</color>
+    <color name="conversation_preview_text">#757575</color>
+    <color name="pinned_conversation_background">#F5F5F5</color>
+    <color name="unread_count_background">#FF5722</color>
+    <color name="unread_count_text">#FFFFFF</color>
+</resources>
