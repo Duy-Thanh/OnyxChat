@@ -3,6 +3,7 @@ package com.nekkochan.onyxchat.data;
 import androidx.annotation.NonNull;
 import androidx.room.Entity;
 import androidx.room.ForeignKey;
+import androidx.room.Ignore;
 import androidx.room.Index;
 import androidx.room.PrimaryKey;
 
@@ -54,6 +55,7 @@ public class Contact {
     public Contact() {
     }
 
+    @Ignore
     public Contact(@NonNull String ownerAddress, @NonNull String contactAddress, String nickName) {
         this.ownerAddress = ownerAddress;
         this.contactAddress = contactAddress;

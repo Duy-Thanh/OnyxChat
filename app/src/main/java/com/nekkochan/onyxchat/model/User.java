@@ -3,6 +3,7 @@ package com.nekkochan.onyxchat.model;
 import androidx.annotation.NonNull;
 import androidx.room.Entity;
 import androidx.room.PrimaryKey;
+import androidx.room.Ignore;
 
 /**
  * Entity representing the user of the OnyxChat application.
@@ -38,6 +39,7 @@ public class User {
      * @param publicKey The user's public key
      * @param keyAlgorithm The cryptographic algorithm used for keys
      */
+    @Ignore
     public User(@NonNull String id, String displayName, String onionAddress, 
                 String privateKey, String publicKey, String keyAlgorithm) {
         this.id = id;

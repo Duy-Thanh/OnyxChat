@@ -2,6 +2,7 @@ package com.nekkochan.onyxchat.data;
 
 import android.app.Application;
 import android.os.AsyncTask;
+import android.content.Context;
 
 import androidx.lifecycle.LiveData;
 
@@ -22,8 +23,11 @@ public class Repository {
     /**
      * Constructor to initialize the repository with DAOs
      */
-    public Repository(Application application) {
-        AppDatabase db = AppDatabase.getInstance(application);
+    public Repository(Context context) {
+        // Initialize SQLCipher before database access
+        SafeHelperFactory.initSQLCipher(context.getApplicationContext());
+        
+        AppDatabase db = AppDatabase.getInstance(context);
         userDao = db.userDao();
         messageDao = db.messageDao();
         contactDao = db.contactDao();
@@ -108,6 +112,10 @@ public class Repository {
     public void setContactBlocked(String ownerAddress, String contactAddress, boolean blocked) {
         executorService.execute(() -> contactDao.setContactBlocked(ownerAddress, contactAddress, blocked));
     }
+    
+    public void setContactVerified(String ownerAddress, String contactAddress, boolean verified) {
+        executorService.execute(() -> contactDao.setContactVerified(ownerAddress, contactAddress, verified));
+    }
 
     public void updateContactInteractionTime(String ownerAddress, String contactAddress) {
         executorService.execute(() -> 
@@ -130,7 +138,16 @@ public class Repository {
     public Message sendMessage(String senderAddress, String recipientAddress, 
                               String encryptedContent, long expirationTime) {
         String messageId = generateUniqueId();
-        Message message = new Message(messageId, senderAddress, recipientAddress, encryptedContent);
+        String conversationId = senderAddress + "_" + recipientAddress;
+        Message message = new Message(
+            messageId, 
+            encryptedContent,
+            senderAddress, 
+            recipientAddress,
+            conversationId,
+            true,    // sent by self
+            true     // is encrypted
+        );
         
         if (expirationTime > 0) {
             message.setExpirationTime(expirationTime);

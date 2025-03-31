@@ -12,6 +12,7 @@ import androidx.lifecycle.Transformations;
 import com.nekkochan.onyxchat.crypto.PQCProvider;
 import com.nekkochan.onyxchat.data.Contact;
 import com.nekkochan.onyxchat.data.Repository;
+import com.nekkochan.onyxchat.data.SafeHelperFactory;
 import com.nekkochan.onyxchat.data.User;
 
 import java.security.KeyPair;
@@ -40,6 +41,10 @@ public class MainViewModel extends AndroidViewModel {
 
     public MainViewModel(@NonNull Application application) {
         super(application);
+        
+        // Initialize SQLCipher before creating repository
+        SafeHelperFactory.initSQLCipher(application.getApplicationContext());
+        
         repository = new Repository(application);
         
         // Initialize current user
@@ -68,6 +73,11 @@ public class MainViewModel extends AndroidViewModel {
         try {
             // Generate new post-quantum key pair
             KeyPair keyPair = PQCProvider.generateKyberKeyPair();
+            if (keyPair == null) {
+                errorMessage.setValue("Failed to generate key pair");
+                return;
+            }
+            
             String encodedPublicKey = PQCProvider.encodePublicKey(keyPair.getPublic());
             String encodedPrivateKey = PQCProvider.encodePrivateKey(keyPair.getPrivate());
             
@@ -107,6 +117,12 @@ public class MainViewModel extends AndroidViewModel {
             
             // Generate new post-quantum key pair
             KeyPair keyPair = PQCProvider.generateKyberKeyPair();
+            if (keyPair == null) {
+                errorMessage.setValue("Failed to generate key pair");
+                isLoading.setValue(false);
+                return;
+            }
+            
             String encodedPublicKey = PQCProvider.encodePublicKey(keyPair.getPublic());
             
             // Update user

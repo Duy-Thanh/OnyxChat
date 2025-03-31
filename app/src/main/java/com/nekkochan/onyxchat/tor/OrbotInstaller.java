@@ -35,8 +35,8 @@ public class OrbotInstaller {
     }
 
     /**
-     * Prompt the user to install Orbot via Google Play Store or F-Droid
-     * @param activity Activity to launch installation from
+     * Prompt the user to install Orbot
+     * @param activity Activity making the request
      * @param preferFDroid Whether to prefer F-Droid over Google Play
      */
     public static void promptToInstallOrbot(@NonNull Activity activity, boolean preferFDroid) {
@@ -54,19 +54,22 @@ public class OrbotInstaller {
                 }
             }
             
-            // Use NetCipher's built-in prompt
-            OrbotHelper.get(activity).promptToInstall(activity);
-        } catch (Exception e) {
-            Log.e(TAG, "Error prompting to install Orbot", e);
+            // NetCipher 2.1.0 doesn't have promptToInstall
+            // OrbotHelper.get(activity).promptToInstall(activity);
             
-            // Fallback to direct download
+            // Use Google Play instead
             try {
+                Intent intent = new Intent(Intent.ACTION_VIEW);
+                intent.setData(Uri.parse("market://details?id=org.torproject.android"));
+                activity.startActivity(intent);
+            } catch (Exception e) {
+                // Fallback to direct download
                 Intent intent = new Intent(Intent.ACTION_VIEW);
                 intent.setData(Uri.parse("https://guardianproject.info/apps/org.torproject.android/"));
                 activity.startActivity(intent);
-            } catch (Exception e2) {
-                Log.e(TAG, "Error launching direct download", e2);
             }
+        } catch (Exception e) {
+            Log.e(TAG, "Error prompting to install Orbot", e);
         }
     }
 
@@ -76,9 +79,14 @@ public class OrbotInstaller {
      * @param appId App identifier to request Tor for (package name)
      */
     public static void requestOrbotStart(@NonNull Activity activity, String appId) {
-        OrbotHelper.get(activity)
-                .statusTimeout(60)
-                .setExitNodes("*,*,*,*")
-                .requestStart(activity, appId);
+        // NetCipher 2.1.0 doesn't support these methods
+        // OrbotHelper.get(activity)
+        //         .statusTimeout(60)
+        //         .setExitNodes("*,*,*,*")
+        //         .requestStart(activity, appId);
+        
+        // Use basic intent instead
+        Intent intent = OrbotHelper.getOrbotStartIntent(activity);
+        activity.startActivity(intent);
     }
 } 

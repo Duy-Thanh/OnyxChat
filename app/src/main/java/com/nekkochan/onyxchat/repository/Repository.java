@@ -13,6 +13,7 @@ import com.nekkochan.onyxchat.model.Conversation;
 import com.nekkochan.onyxchat.model.Message;
 import com.nekkochan.onyxchat.model.User;
 
+import java.security.KeyPair;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
@@ -29,15 +30,13 @@ public class Repository {
     private final AppDatabase database;
     private final ExecutorService executor;
     private final MutableLiveData<String> errorMessage = new MutableLiveData<>();
-    private final PQCProvider pqcProvider;
-
+    
     /**
      * Private constructor for the singleton pattern
      */
     private Repository(Context context) {
         database = AppDatabase.getInstance(context);
         executor = Executors.newFixedThreadPool(4);
-        pqcProvider = PQCProvider.getInstance();
     }
 
     /**
@@ -124,16 +123,24 @@ public class Repository {
      */
     public User createUser(String displayName, String onionAddress) {
         try {
-            PQCProvider.KeyPair keyPair = pqcProvider.generateKeyPair();
+            // Generate new key pair using Java security
+            KeyPair keyPair = PQCProvider.generateKyberKeyPair();
+            if (keyPair == null) {
+                setErrorMessage("Failed to generate key pair");
+                return null;
+            }
+            
+            String publicKey = PQCProvider.encodePublicKey(keyPair.getPublic());
+            String privateKey = PQCProvider.encodePrivateKey(keyPair.getPrivate());
             
             String userId = UUID.randomUUID().toString();
             User user = new User(
                 userId,
                 displayName,
                 onionAddress,
-                keyPair.getPrivateKey(),
-                keyPair.getPublicKey(),
-                keyPair.getAlgorithm()
+                privateKey,
+                publicKey,
+                "KYBER"
             );
             
             saveUser(user);
@@ -152,11 +159,18 @@ public class Repository {
      */
     public void regenerateUserKeyPair(User user) {
         try {
-            PQCProvider.KeyPair keyPair = pqcProvider.generateKeyPair();
+            KeyPair keyPair = PQCProvider.generateKyberKeyPair();
+            if (keyPair == null) {
+                setErrorMessage("Failed to generate key pair");
+                return;
+            }
             
-            user.setPrivateKey(keyPair.getPrivateKey());
-            user.setPublicKey(keyPair.getPublicKey());
-            user.setKeyAlgorithm(keyPair.getAlgorithm());
+            String publicKey = PQCProvider.encodePublicKey(keyPair.getPublic());
+            String privateKey = PQCProvider.encodePrivateKey(keyPair.getPrivate());
+            
+            user.setPrivateKey(privateKey);
+            user.setPublicKey(publicKey);
+            user.setKeyAlgorithm("KYBER");
             
             saveUser(user);
         } catch (Exception e) {
@@ -336,7 +350,8 @@ public class Repository {
      */
     public Message sendMessage(String content, String senderAddress, String receiverAddress, boolean isEncrypted) {
         String messageId = UUID.randomUUID().toString();
-        Message message = new Message(messageId, content, senderAddress, receiverAddress, true, isEncrypted);
+        String conversationId = senderAddress + "_" + receiverAddress; // Generate a conversation ID
+        Message message = new Message(messageId, content, senderAddress, receiverAddress, conversationId, true, isEncrypted);
         
         executor.execute(() -> {
             try {
@@ -402,25 +417,6 @@ public class Repository {
             } catch (Exception e) {
                 Log.e(TAG, "Error deleting message", e);
                 setErrorMessage("Failed to delete message: " + e.getMessage());
-            }
-        });
-    }
-
-    /**
-     * Clean up self-destructing messages
-     */
-    public void cleanupSelfDestructingMessages() {
-        executor.execute(() -> {
-            try {
-                List<Message> messages = database.messageDao().getAllMessages();
-                for (Message message : messages) {
-                    if (message.shouldSelfDestruct()) {
-                        database.messageDao().deleteMessage(message);
-                    }
-                }
-            } catch (Exception e) {
-                Log.e(TAG, "Error cleaning up self-destructing messages", e);
-                setErrorMessage("Failed to clean up self-destructing messages: " + e.getMessage());
             }
         });
     }

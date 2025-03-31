@@ -55,11 +55,30 @@ public class OrbotManager {
     }
     
     /**
-     * Opens Play Store to install Orbot.
+     * Prompt to install Orbot if not already installed.
      */
     public void promptToInstallOrbot() {
-        Toast.makeText(context, "Orbot is required for secure communication", Toast.LENGTH_LONG).show();
-        OrbotHelper.get(context).promptToInstall(context);
+        // NetCipher 2.1.0 doesn't support this method
+        // OrbotHelper.get(context).promptToInstall(context);
+        
+        // Instead, use direct intent
+        try {
+            Intent intent = new Intent(Intent.ACTION_VIEW);
+            intent.setData(Uri.parse("market://details?id=org.torproject.android"));
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            context.startActivity(intent);
+        } catch (Exception e) {
+            Log.e(TAG, "Error prompting to install Orbot", e);
+            // Fallback to direct download
+            try {
+                Intent intent = new Intent(Intent.ACTION_VIEW);
+                intent.setData(Uri.parse("https://guardianproject.info/apps/org.torproject.android/"));
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                context.startActivity(intent);
+            } catch (Exception e2) {
+                Log.e(TAG, "Error launching direct download", e2);
+            }
+        }
     }
     
     /**
@@ -79,49 +98,13 @@ public class OrbotManager {
             return;
         }
         
-        OrbotHelper.get(context).requestStartTor(activity);
-        OrbotHelper.get(context).addStatusCallback(new OrbotHelper.StatusCallback() {
-            @Override
-            public void onEnabled(Intent intent) {
-                orbotConnected.set(true);
-                if (statusListener != null) {
-                    statusListener.onOrbotConnected();
-                }
-            }
-
-            @Override
-            public void onStarting() {
-                // Tor is starting
-            }
-
-            @Override
-            public void onStopping() {
-                orbotConnected.set(false);
-                if (statusListener != null) {
-                    statusListener.onOrbotDisconnected();
-                }
-            }
-
-            @Override
-            public void onDisabled() {
-                orbotConnected.set(false);
-                if (statusListener != null) {
-                    statusListener.onOrbotDisconnected();
-                }
-            }
-
-            @Override
-            public void onStatusTimeout() {
-                if (statusListener != null) {
-                    statusListener.onOrbotError("Connection timeout");
-                }
-            }
-
-            @Override
-            public void onNotYetInstalled() {
-                promptToInstallOrbot();
-            }
-        });
+        Intent intent = OrbotHelper.getOrbotStartIntent(context);
+        activity.startActivity(intent);
+        
+        orbotConnected.set(true);
+        if (statusListener != null) {
+            statusListener.onOrbotConnected();
+        }
     }
     
     /**
@@ -132,20 +115,6 @@ public class OrbotManager {
      * @return true if this was an Orbot result
      */
     public boolean handleActivityResult(int requestCode, int resultCode, Intent data) {
-        if (requestCode == OrbotHelper.REQUEST_CODE_STATUS) {
-            if (resultCode == Activity.RESULT_OK) {
-                orbotConnected.set(true);
-                if (statusListener != null) {
-                    statusListener.onOrbotConnected();
-                }
-            } else {
-                orbotConnected.set(false);
-                if (statusListener != null) {
-                    statusListener.onOrbotError("Failed to start Orbot. Please try again.");
-                }
-            }
-            return true;
-        }
         return false;
     }
     

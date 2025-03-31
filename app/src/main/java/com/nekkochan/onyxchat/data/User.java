@@ -2,6 +2,7 @@ package com.nekkochan.onyxchat.data;
 
 import androidx.annotation.NonNull;
 import androidx.room.Entity;
+import androidx.room.Ignore;
 import androidx.room.PrimaryKey;
 
 /**
@@ -24,6 +25,7 @@ public class User {
     public User() {
     }
 
+    @Ignore
     public User(@NonNull String onionAddress, String displayName, String publicKey) {
         this.onionAddress = onionAddress;
         this.displayName = displayName;

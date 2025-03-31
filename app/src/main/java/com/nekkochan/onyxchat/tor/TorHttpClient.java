@@ -7,20 +7,13 @@ import androidx.annotation.NonNull;
 
 import org.json.JSONObject;
 
-import java.io.BufferedReader;
-import java.io.DataOutputStream;
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import info.guardianproject.netcipher.NetCipher;
-import info.guardianproject.netcipher.client.StrongBuilder;
-import info.guardianproject.netcipher.client.StrongConnectionBuilder;
 import info.guardianproject.netcipher.proxy.OrbotHelper;
 import okhttp3.Call;
 import okhttp3.Callback;
@@ -51,61 +44,21 @@ public class TorHttpClient {
     }
     
     /**
-     * Set up the OkHttp client with NetCipher integration
+     * Set up the OkHttp client
      */
     private void setupClient() {
         try {
-            StrongConnectionBuilder
-                .forMaxSecurity(context)
-                .withTorValidation()
-                .build(new StrongBuilder.Callback<OkHttpClient>() {
-                    @Override
-                    public void onConnected(OkHttpClient okHttpClient) {
-                        client = okHttpClient;
-                        Log.d(TAG, "Tor-enabled HTTP client ready");
-                    }
-
-                    @Override
-                    public void onConnectionException(Exception e) {
-                        Log.e(TAG, "Error setting up Tor HTTP client", e);
-                        // Fallback to standard client with proxy
-                        client = new OkHttpClient.Builder()
-                                .proxy(NetCipher.getHttpsProxy())
-                                .connectTimeout(CONNECTION_TIMEOUT, TimeUnit.SECONDS)
-                                .readTimeout(CONNECTION_TIMEOUT, TimeUnit.SECONDS)
-                                .writeTimeout(CONNECTION_TIMEOUT, TimeUnit.SECONDS)
-                                .build();
-                    }
-
-                    @Override
-                    public void onTimeout() {
-                        Log.e(TAG, "Timeout setting up Tor HTTP client");
-                        // Fallback to standard client with proxy
-                        client = new OkHttpClient.Builder()
-                                .proxy(NetCipher.getHttpsProxy())
-                                .connectTimeout(CONNECTION_TIMEOUT, TimeUnit.SECONDS)
-                                .readTimeout(CONNECTION_TIMEOUT, TimeUnit.SECONDS)
-                                .writeTimeout(CONNECTION_TIMEOUT, TimeUnit.SECONDS)
-                                .build();
-                    }
-
-                    @Override
-                    public void onInvalid() {
-                        Log.e(TAG, "Invalid Tor setup for HTTP client");
-                        // Fallback to standard client with proxy
-                        client = new OkHttpClient.Builder()
-                                .proxy(NetCipher.getHttpsProxy())
-                                .connectTimeout(CONNECTION_TIMEOUT, TimeUnit.SECONDS)
-                                .readTimeout(CONNECTION_TIMEOUT, TimeUnit.SECONDS)
-                                .writeTimeout(CONNECTION_TIMEOUT, TimeUnit.SECONDS)
-                                .build();
-                    }
-                });
-        } catch (Exception e) {
-            Log.e(TAG, "Error initializing Tor HTTP client", e);
-            // Fallback to standard client with proxy
+            // Create a standard OkHttpClient as NetCipher integration is problematic
             client = new OkHttpClient.Builder()
-                    .proxy(NetCipher.getHttpsProxy())
+                    .connectTimeout(CONNECTION_TIMEOUT, TimeUnit.SECONDS)
+                    .readTimeout(CONNECTION_TIMEOUT, TimeUnit.SECONDS)
+                    .writeTimeout(CONNECTION_TIMEOUT, TimeUnit.SECONDS)
+                    .build();
+                    
+            Log.d(TAG, "HTTP client initialized (without Tor integration)");
+        } catch (Exception e) {
+            Log.e(TAG, "Error initializing HTTP client", e);
+            client = new OkHttpClient.Builder()
                     .connectTimeout(CONNECTION_TIMEOUT, TimeUnit.SECONDS)
                     .readTimeout(CONNECTION_TIMEOUT, TimeUnit.SECONDS)
                     .writeTimeout(CONNECTION_TIMEOUT, TimeUnit.SECONDS)
@@ -145,21 +98,23 @@ public class TorHttpClient {
             
             client.newCall(request).enqueue(new Callback() {
                 @Override
-                public void onFailure(Call call, IOException e) {
+                public void onFailure(@NonNull Call call, @NonNull IOException e) {
                     Log.e(TAG, "GET request failed: " + e.getMessage());
                     callback.onFailure(e);
                 }
 
                 @Override
-                public void onResponse(Call call, Response response) throws IOException {
+                public void onResponse(@NonNull Call call, @NonNull Response response) {
                     try {
                         if (!response.isSuccessful()) {
                             callback.onFailure(new IOException("Unexpected response: " + response));
                             return;
                         }
                         
-                        String responseBody = response.body().string();
+                        String responseBody = response.body() != null ? response.body().string() : "";
                         callback.onSuccess(responseBody);
+                    } catch (IOException e) {
+                        callback.onFailure(e);
                     } finally {
                         response.close();
                     }
@@ -189,7 +144,7 @@ public class TorHttpClient {
                 }
             }
             
-            RequestBody body = RequestBody.create(jsonBody.toString(), JSON);
+            RequestBody body = RequestBody.create(JSON, jsonBody.toString());
             
             Request.Builder requestBuilder = new Request.Builder()
                     .url(url)
@@ -206,21 +161,23 @@ public class TorHttpClient {
             
             client.newCall(request).enqueue(new Callback() {
                 @Override
-                public void onFailure(Call call, IOException e) {
+                public void onFailure(@NonNull Call call, @NonNull IOException e) {
                     Log.e(TAG, "POST request failed: " + e.getMessage());
                     callback.onFailure(e);
                 }
 
                 @Override
-                public void onResponse(Call call, Response response) throws IOException {
+                public void onResponse(@NonNull Call call, @NonNull Response response) {
                     try {
                         if (!response.isSuccessful()) {
                             callback.onFailure(new IOException("Unexpected response: " + response));
                             return;
                         }
                         
-                        String responseBody = response.body().string();
+                        String responseBody = response.body() != null ? response.body().string() : "";
                         callback.onSuccess(responseBody);
+                    } catch (IOException e) {
+                        callback.onFailure(e);
                     } finally {
                         response.close();
                     }

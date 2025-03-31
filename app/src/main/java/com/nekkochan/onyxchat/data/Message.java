@@ -3,6 +3,7 @@ package com.nekkochan.onyxchat.data;
 import androidx.annotation.NonNull;
 import androidx.room.Entity;
 import androidx.room.ForeignKey;
+import androidx.room.Ignore;
 import androidx.room.Index;
 import androidx.room.PrimaryKey;
 
@@ -45,11 +46,18 @@ public class Message {
     private boolean isSent; // Message delivery status
     
     private String replyToMessageId; // ID of message being replied to (if any)
+    
+    private String conversationId; // ID of the conversation this message belongs to
+    
+    private boolean isSelf; // Whether this message was sent by the user
+    
+    private boolean isEncrypted; // Whether this message is encrypted
 
     // Default constructor required by Room
     public Message() {
     }
 
+    @Ignore
     public Message(@NonNull String id, @NonNull String senderId, @NonNull String recipientId, 
                    @NonNull String encryptedContent) {
         this.id = id;
@@ -58,6 +66,25 @@ public class Message {
         this.encryptedContent = encryptedContent;
         this.timestamp = System.currentTimeMillis();
         this.isRead = false;
+        this.isDeleted = false;
+        this.isSent = false;
+    }
+    
+    /**
+     * Constructor used in Repository.sendMessage
+     */
+    @Ignore
+    public Message(@NonNull String id, @NonNull String content, @NonNull String senderAddress, 
+                  @NonNull String receiverAddress, String conversationId, boolean isSelf, boolean isEncrypted) {
+        this.id = id;
+        this.encryptedContent = content;
+        this.senderId = senderAddress;
+        this.recipientId = receiverAddress;
+        this.conversationId = conversationId;
+        this.isSelf = isSelf;
+        this.isEncrypted = isEncrypted;
+        this.timestamp = System.currentTimeMillis();
+        this.isRead = isSelf; // Messages sent by self are automatically marked as read
         this.isDeleted = false;
         this.isSent = false;
     }
@@ -160,5 +187,29 @@ public class Message {
 
     public void setReplyToMessageId(String replyToMessageId) {
         this.replyToMessageId = replyToMessageId;
+    }
+    
+    public String getConversationId() {
+        return conversationId;
+    }
+
+    public void setConversationId(String conversationId) {
+        this.conversationId = conversationId;
+    }
+
+    public boolean isSelf() {
+        return isSelf;
+    }
+
+    public void setSelf(boolean self) {
+        isSelf = self;
+    }
+
+    public boolean isEncrypted() {
+        return isEncrypted;
+    }
+
+    public void setEncrypted(boolean encrypted) {
+        isEncrypted = encrypted;
     }
 } 

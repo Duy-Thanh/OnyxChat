@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 1,
-    "identityHash": "165c6c2bddde23a57002d365d0455bb0",
+    "identityHash": "94cd9ad5924ea909907a0e3b6e7b10c9",
     "entities": [
       {
         "tableName": "users",
@@ -56,7 +56,7 @@
       },
       {
         "tableName": "messages",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `senderId` TEXT NOT NULL, `recipientId` TEXT NOT NULL, `encryptedContent` TEXT NOT NULL, `mediaUrl` TEXT, `mediaType` INTEGER NOT NULL, `timestamp` INTEGER NOT NULL, `expirationTime` INTEGER NOT NULL, `isRead` INTEGER NOT NULL, `isDeleted` INTEGER NOT NULL, `isSent` INTEGER NOT NULL, `replyToMessageId` TEXT, PRIMARY KEY(`id`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `senderId` TEXT NOT NULL, `recipientId` TEXT NOT NULL, `encryptedContent` TEXT NOT NULL, `mediaUrl` TEXT, `mediaType` INTEGER NOT NULL, `timestamp` INTEGER NOT NULL, `expirationTime` INTEGER NOT NULL, `isRead` INTEGER NOT NULL, `isDeleted` INTEGER NOT NULL, `isSent` INTEGER NOT NULL, `replyToMessageId` TEXT, `conversationId` TEXT, `isSelf` INTEGER NOT NULL, `isEncrypted` INTEGER NOT NULL, PRIMARY KEY(`id`))",
         "fields": [
           {
             "fieldPath": "id",
@@ -129,6 +129,24 @@
             "columnName": "replyToMessageId",
             "affinity": "TEXT",
             "notNull": false
+          },
+          {
+            "fieldPath": "conversationId",
+            "columnName": "conversationId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "isSelf",
+            "columnName": "isSelf",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isEncrypted",
+            "columnName": "isEncrypted",
+            "affinity": "INTEGER",
+            "notNull": true
           }
         ],
         "primaryKey": {
@@ -276,7 +294,7 @@
     "views": [],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '165c6c2bddde23a57002d365d0455bb0')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '94cd9ad5924ea909907a0e3b6e7b10c9')"
     ]
   }
 }

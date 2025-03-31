@@ -3,6 +3,7 @@ package com.nekkochan.onyxchat.model;
 import androidx.annotation.NonNull;
 import androidx.room.Entity;
 import androidx.room.PrimaryKey;
+import androidx.room.Ignore;
 
 import java.util.Objects;
 
@@ -35,6 +36,7 @@ public class Contact {
      * @param nickname The contact's display name
      * @param publicKey The contact's public key for encryption
      */
+    @Ignore
     public Contact(@NonNull String onionAddress, String nickname, String publicKey) {
         this.onionAddress = onionAddress;
         this.nickname = nickname;

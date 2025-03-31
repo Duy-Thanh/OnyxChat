@@ -52,6 +52,7 @@ public class Conversation {
      * @param contactAddress The contact's onion address
      * @param isEncrypted Whether this conversation is encrypted
      */
+    @Ignore
     public Conversation(@NonNull String id, String contactAddress, boolean isEncrypted) {
         this.id = id;
         this.contactAddress = contactAddress;

@@ -33,6 +33,10 @@ android {
         sourceCompatibility JavaVersion.VERSION_11
         targetCompatibility JavaVersion.VERSION_11
     }
+    
+    configurations {
+        all*.exclude group: 'info.guardianproject.netcipher', module: 'netcipher-webkit'
+    }
 }
 
 dependencies {
@@ -59,14 +63,8 @@ dependencies {
     // Preferences
     implementation "androidx.preference:preference:1.2.1"
     
-    // Guardian Project's NetCipher for Tor integration
+    // Guardian Project's NetCipher for Tor integration - using only the main library
     implementation 'info.guardianproject.netcipher:netcipher:2.1.0'
-    implementation ('info.guardianproject.netcipher:netcipher-webkit:2.1.0') {
-        exclude group: 'info.guardianproject.netcipher', module: 'netcipher'
-    }
-    implementation ('info.guardianproject.netcipher:netcipher-okhttp3:2.1.0') {
-        exclude group: 'info.guardianproject.netcipher', module: 'netcipher'
-    }
     
     // Use a compatible version of OkHttp that works with NetCipher
     implementation 'com.squareup.okhttp3:okhttp:3.14.9'

@@ -58,13 +58,11 @@ public class TorNetworkManager {
                 StringBuilder response = new StringBuilder();
                 
                 try {
-                    StrongConnectionBuilder builder = NetCipher.getHttpsURLConnection()
-                            .connectTo(urlString)
-                            .withTorValidation()
-                            .withTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS);
-                    
-                    connection = builder.build();
+                    URL url = new URL(urlString);
+                    connection = (HttpURLConnection) url.openConnection();
                     connection.setRequestMethod("GET");
+                    connection.setConnectTimeout(TIMEOUT_SECONDS * 1000);
+                    connection.setReadTimeout(TIMEOUT_SECONDS * 1000);
                     
                     int responseCode = connection.getResponseCode();
                     if (responseCode != HttpURLConnection.HTTP_OK) {
@@ -114,15 +112,13 @@ public class TorNetworkManager {
                 StringBuilder response = new StringBuilder();
                 
                 try {
-                    StrongConnectionBuilder builder = NetCipher.getHttpsURLConnection()
-                            .connectTo(urlString)
-                            .withTorValidation()
-                            .withTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS);
-                    
-                    connection = builder.build();
+                    URL url = new URL(urlString);
+                    connection = (HttpURLConnection) url.openConnection();
                     connection.setRequestMethod("POST");
                     connection.setRequestProperty("Content-Type", "application/json");
                     connection.setDoOutput(true);
+                    connection.setConnectTimeout(TIMEOUT_SECONDS * 1000);
+                    connection.setReadTimeout(TIMEOUT_SECONDS * 1000);
                     
                     OutputStream os = connection.getOutputStream();
                     os.write(postData.getBytes());

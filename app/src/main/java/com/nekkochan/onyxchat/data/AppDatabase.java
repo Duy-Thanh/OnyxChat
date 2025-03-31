@@ -25,12 +25,18 @@ public abstract class AppDatabase extends RoomDatabase {
         if (INSTANCE == null) {
             synchronized (AppDatabase.class) {
                 if (INSTANCE == null) {
+                    // Get Application context to avoid leaks
+                    Context appContext = context.getApplicationContext();
+                    
+                    // Initialize SQLCipher first with context
+                    SafeHelperFactory.initSQLCipher(appContext);
+                    
                     INSTANCE = Room.databaseBuilder(
-                            context.getApplicationContext(),
+                            appContext,
                             AppDatabase.class,
                             "securecomm_db")
-                            // Encrypt the database using SQLCipher
-                            .openHelperFactory(new SafeHelperFactory("YOUR_ENCRYPTION_KEY".toCharArray()))
+                            // Encrypt the database using SQLCipher with context
+                            .openHelperFactory(new SafeHelperFactory("YOUR_ENCRYPTION_KEY".toCharArray(), appContext))
                             .fallbackToDestructiveMigration() // For simplicity in development
                             .build();
                 }

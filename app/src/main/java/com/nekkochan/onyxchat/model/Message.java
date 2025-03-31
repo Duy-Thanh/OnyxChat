@@ -5,6 +5,7 @@ import androidx.room.Entity;
 import androidx.room.ForeignKey;
 import androidx.room.Index;
 import androidx.room.PrimaryKey;
+import androidx.room.Ignore;
 
 /**
  * Entity representing a message in the OnyxChat application.
@@ -13,7 +14,8 @@ import androidx.room.PrimaryKey;
     tableName = "messages",
     indices = {
         @Index("senderAddress"),
-        @Index("receiverAddress")
+        @Index("receiverAddress"),
+        @Index("conversationId")
     },
     foreignKeys = {
         @ForeignKey(
@@ -38,6 +40,7 @@ public class Message {
     private String content;
     private String senderAddress;
     private String receiverAddress;
+    private String conversationId;
     private long timestamp;
     private boolean isRead;
     private boolean isDelivered;
@@ -60,15 +63,18 @@ public class Message {
      * @param content The message content
      * @param senderAddress The sender's onion address
      * @param receiverAddress The receiver's onion address
+     * @param conversationId The conversation ID
      * @param isSelf Whether this message was sent by the user
      * @param isEncrypted Whether this message is encrypted
      */
+    @Ignore
     public Message(@NonNull String id, String content, String senderAddress, String receiverAddress, 
-                   boolean isSelf, boolean isEncrypted) {
+                   String conversationId, boolean isSelf, boolean isEncrypted) {
         this.id = id;
         this.content = content;
         this.senderAddress = senderAddress;
         this.receiverAddress = receiverAddress;
+        this.conversationId = conversationId;
         this.timestamp = System.currentTimeMillis();
         this.isRead = isSelf; // Messages sent by self are automatically marked as read
         this.isDelivered = false;
@@ -109,6 +115,14 @@ public class Message {
 
     public void setReceiverAddress(String receiverAddress) {
         this.receiverAddress = receiverAddress;
+    }
+
+    public String getConversationId() {
+        return conversationId;
+    }
+
+    public void setConversationId(String conversationId) {
+        this.conversationId = conversationId;
     }
 
     public long getTimestamp() {
