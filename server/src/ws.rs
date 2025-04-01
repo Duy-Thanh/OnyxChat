@@ -204,96 +204,128 @@ async fn process_socket(
     connection_id: String,
     ws_manager: Arc<WebSocketManager>,
 ) {
-    use tokio::select;
-    
-    // Send a welcome message
-    let welcome_msg = format!("{{\"type\":\"welcome\",\"message\":\"Welcome, User {}!\"}}", user_id);
-    let _ = ws_sender.send(Message::Text(welcome_msg)).await;
-    
+    // Welcome message
+    let welcome_msg = format!("Welcome, {}! You are now connected.", user_id);
+    if let Err(e) = ws_sender.send(Message::Text(welcome_msg)).await {
+        println!("Error sending welcome message: {}", e);
+        return;
+    }
+
+    // Use select to handle messages from both sources
     loop {
-        select! {
-            // Handle outgoing messages
-            Some(msg) = receiver.recv() => {
-                if ws_sender.send(msg).await.is_err() {
-                    break;
+        tokio::select! {
+            // Handle outgoing messages from other sources
+            msg = receiver.recv() => {
+                match msg {
+                    Some(message) => {
+                        if let Err(e) = ws_sender.send(message).await {
+                            println!("Error forwarding message: {}", e);
+                            break;
+                        }
+                    }
+                    None => break, // Channel closed
                 }
             }
             
-            // Handle incoming messages
-            Some(result) = ws_receiver.next() => {
+            // Handle incoming messages from WebSocket
+            result = ws_receiver.next() => {
                 match result {
-                    Ok(msg) => {
+                    Some(Ok(msg)) => {
                         match msg {
                             Message::Text(text) => {
-                                // Parse the message and handle it
-                                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
-                                    if let Some(msg_type) = json.get("type").and_then(|v| v.as_str()) {
-                                        match msg_type {
-                                            "ping" => {
-                                                let _ = ws_sender.send(Message::Text(String::from("{\"type\":\"pong\"}"))).await;
-                                            }
-                                            "message" => {
-                                                // Handle a chat message
-                                                if let (Some(recipient_id), Some(content)) = (
-                                                    json.get("recipient_id").and_then(|v| v.as_str()),
-                                                    json.get("content").and_then(|v| v.as_str()),
-                                                ) {
-                                                    let message_json = format!(
-                                                        "{{\"type\":\"message\",\"sender_id\":\"{}\",\"content\":\"{}\"}}",
-                                                        user_id, content
-                                                    );
-                                                    ws_manager.broadcast_to_user(recipient_id, message_json);
-                                                }
-                                            }
-                                            "typing" => {
-                                                // Handle typing indicator
-                                                if let Some(recipient_id) = json.get("recipient_id").and_then(|v| v.as_str()) {
-                                                    let typing_json = format!(
-                                                        "{{\"type\":\"typing\",\"user_id\":\"{}\"}}",
-                                                        user_id
-                                                    );
-                                                    ws_manager.broadcast_to_user(recipient_id, typing_json);
-                                                }
-                                            }
-                                            _ => {
-                                                // Unknown message type, echo it back
-                                                let _ = ws_sender.send(Message::Text(text)).await;
-                                            }
+                                println!("Received message from {}: {}", user_id, text);
+                                
+                                // Check if this is a direct message to another user
+                                if let Some(direct_msg) = parse_direct_message(&text) {
+                                    let (recipient, content) = direct_msg;
+                                    
+                                    // Forward the message to the recipient
+                                    let dm_json = format!(
+                                        "{{\"type\":\"direct_message\",\"from\":\"{}\",\"content\":\"{}\"}}",
+                                        user_id, content
+                                    );
+                                    
+                                    let recipients = ws_manager.broadcast_to_user(&recipient, dm_json.clone());
+                                    
+                                    if recipients > 0 {
+                                        // Send confirmation back to sender
+                                        let confirm_msg = format!("Message sent to {}", recipient);
+                                        if let Err(e) = ws_sender.send(Message::Text(confirm_msg)).await {
+                                            println!("Error sending confirmation: {}", e);
+                                            break;
+                                        }
+                                    } else {
+                                        // Recipient not online
+                                        let error_msg = format!("User {} is not online", recipient);
+                                        if let Err(e) = ws_sender.send(Message::Text(error_msg)).await {
+                                            println!("Error sending error message: {}", e);
+                                            break;
                                         }
                                     }
                                 } else {
-                                    // If not valid JSON, echo it back
-                                    let _ = ws_sender.send(Message::Text(text)).await;
+                                    // Regular echo for non-direct messages
+                                    let response = format!("Echo: {}", text);
+                                    if let Err(e) = ws_sender.send(Message::Text(response)).await {
+                                        println!("Error sending response: {}", e);
+                                        break;
+                                    }
                                 }
                             }
                             Message::Binary(data) => {
-                                // Echo back binary data
-                                let _ = ws_sender.send(Message::Binary(data)).await;
+                                println!("Received binary data from {}", user_id);
+                                // Echo back the binary data
+                                if let Err(e) = ws_sender.send(Message::Binary(data)).await {
+                                    println!("Error sending binary response: {}", e);
+                                    break;
+                                }
                             }
                             Message::Ping(data) => {
                                 // Respond to ping with pong
-                                let _ = ws_sender.send(Message::Pong(data)).await;
+                                if let Err(e) = ws_sender.send(Message::Pong(data)).await {
+                                    println!("Error sending pong: {}", e);
+                                    break;
+                                }
                             }
                             Message::Pong(_) => {
-                                // Ignore pong responses
+                                // Ignore pong messages
                             }
                             Message::Close(_) => {
-                                // Close the connection
+                                println!("Received close frame from {}", user_id);
                                 break;
                             }
                         }
                     }
-                    Err(_) => {
-                        // Connection error, break the loop
+                    Some(Err(e)) => {
+                        println!("WebSocket error: {}", e);
                         break;
                     }
+                    None => break, // WebSocket closed
                 }
             }
-            
-            // No more messages or socket closed
-            else => break,
         }
     }
+
+    // Connection closed, clean up
+    ws_manager.remove_connection(&user_id, &connection_id);
+    println!("WebSocket connection closed for user {}", user_id);
+}
+
+// Parse direct message format: @username:message
+fn parse_direct_message(text: &str) -> Option<(String, String)> {
+    if text.starts_with('@') {
+        if let Some(colon_pos) = text.find(':') {
+            if colon_pos > 1 {
+                let recipient = text[1..colon_pos].trim().to_string();
+                let content = text[colon_pos + 1..].trim().to_string();
+                
+                if !recipient.is_empty() && !content.is_empty() {
+                    return Some((recipient, content));
+                }
+            }
+        }
+    }
+    
+    None
 }
 
 // Simple WebSocket echo handler that doesn't require authentication
