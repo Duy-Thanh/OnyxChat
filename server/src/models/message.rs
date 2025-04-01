@@ -184,4 +184,48 @@ impl Message {
             read_at: self.read_at,
         }
     }
+
+    // Mark a message as read
+    pub async fn mark_as_read(db: &Pool<Postgres>, message_id: &str) -> Result<Message, sqlx::Error> {
+        let now = Utc::now();
+        
+        // Update message in database
+        let message = sqlx::query_as!(
+            Message,
+            r#"
+            UPDATE messages
+            SET read_at = $1
+            WHERE id = $2 AND is_deleted = false
+            RETURNING id, sender_id, recipient_id, encrypted_content, iv, sent_at, received_at, read_at, is_deleted
+            "#,
+            now,
+            message_id
+        )
+        .fetch_one(db)
+        .await?;
+        
+        Ok(message)
+    }
+    
+    // Mark a message as received
+    pub async fn mark_as_received(db: &Pool<Postgres>, message_id: &str) -> Result<Message, sqlx::Error> {
+        let now = Utc::now();
+        
+        // Update message in database
+        let message = sqlx::query_as!(
+            Message,
+            r#"
+            UPDATE messages
+            SET received_at = $1
+            WHERE id = $2 AND is_deleted = false
+            RETURNING id, sender_id, recipient_id, encrypted_content, iv, sent_at, received_at, read_at, is_deleted
+            "#,
+            now,
+            message_id
+        )
+        .fetch_one(db)
+        .await?;
+        
+        Ok(message)
+    }
 }

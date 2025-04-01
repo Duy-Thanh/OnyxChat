@@ -18,6 +18,7 @@ use crate::{
     auth::CurrentUser,
     error::{AppError, Result},
     AppState,
+    Message as DbMessage,
 };
 
 // Maximum number of messages to keep in history
@@ -51,6 +52,7 @@ type ActiveConnections = Arc<Mutex<HashMap<String, broadcast::Sender<String>>>>;
 type MessageHistory = Arc<RwLock<HashMap<String, Vec<String>>>>;
 
 // WebSocket manager
+#[derive(Clone)]
 pub struct WebSocketManager {
     clients: ConnectedClients,
     connections: ActiveConnections,
@@ -158,17 +160,28 @@ impl WebSocketManager {
             None => Vec::new(),
         }
     }
-}
 
-// Create a new WebSocket manager
-pub fn create_ws_manager() -> WebSocketManager {
-    WebSocketManager::new()
+    // Broadcast user status to all connected users who have this user in their contacts
+    // In a real app, we'd have a contacts table to determine who should receive status updates
+    pub fn broadcast_status(&self, user_id: &str, status: UserStatus) {
+        let status_msg = WebSocketMessage::Status {
+            user_id: user_id.to_string(),
+            status,
+        };
+        
+        if let Ok(json) = serde_json::to_string(&status_msg) {
+            // For simplicity, we're just broadcasting to the user themselves in this example
+            // In a real app, you'd broadcast to all users who have this user in their contacts
+            self.broadcast_to_user(user_id, json);
+        }
+    }
 }
 
 // Routes setup
 pub fn ws_routes() -> Router<AppState> {
     Router::new()
         .route("/chat/:user_id", get(ws_handler))
+        .route("/echo", get(ws_echo_handler))
 }
 
 // WebSocket handler
@@ -197,107 +210,205 @@ async fn ws_handler(
 
 // Handle WebSocket connection
 async fn handle_socket(socket: WebSocket, user_id: String, state: AppState) {
+    // Parse the user ID - Clone it to use in multiple tasks
+    let uid = user_id.clone();
+
+    // Generate a unique connection ID
+    let connection_id = Uuid::new_v4().to_string();
+    let connection_id_clone = connection_id.clone();
+
+    // Split the socket
     let (mut sender, mut receiver) = socket.split();
 
-    // Create a channel for this connection
+    // Create a broadcast channel for this connection
     let (tx, _rx) = broadcast::channel::<String>(100);
-    let connection_id = Uuid::new_v4().to_string();
     
-    // Add the connection to the WebSocket manager
-    // TODO: Use a real WebSocket manager in AppState
+    // Add connection to the manager
+    state.ws_manager.add_connection(&uid, &connection_id, tx.clone());
     
-    // Send any pending messages from history
-    // TODO: Send message history
+    // Broadcast user status to all connections
+    state.ws_manager.broadcast_status(&uid, UserStatus::Online);
 
-    // Send an initial status message
-    let status_msg = WebSocketMessage::Status {
-        user_id: user_id.clone(),
-        status: UserStatus::Online,
-    };
-    
-    if let Ok(json) = serde_json::to_string(&status_msg) {
-        if let Err(e) = sender.send(Message::Text(json)).await {
-            error!("Error sending initial status: {}", e);
-            return;
+    // Send message history
+    let message_history = state.ws_manager.get_history(&uid);
+    for message in message_history {
+        if let Err(e) = sender.send(Message::Text(message)).await {
+            error!("Error sending message history: {}", e);
         }
     }
 
-    // Process incoming messages
-    while let Some(result) = receiver.next().await {
-        match result {
-            Ok(message) => {
-                match message {
-                    Message::Text(text) => {
-                        // Parse the message
-                        match serde_json::from_str::<WebSocketMessage>(&text) {
-                            Ok(ws_message) => {
-                                // Process the message
-                                match ws_message {
-                                    WebSocketMessage::Text { content, .. } => {
-                                        // Store the message in the database
-                                        // TODO: Store message in database
+    // Clone references to use in the tasks
+    let ws_manager = Arc::clone(&state.ws_manager);
+    let uid_clone = uid.clone();
+    let conn_id = connection_id.clone();
 
-                                        // Broadcast to the recipient
-                                        // TODO: Broadcast to recipient
-                                    }
-                                    WebSocketMessage::Typing { .. } => {
-                                        // Broadcast typing status
-                                        // TODO: Broadcast typing status
-                                    }
-                                    WebSocketMessage::Read { message_ids, .. } => {
-                                        // Mark messages as read
-                                        // TODO: Mark messages as read
-                                    }
-                                    WebSocketMessage::Delivered { message_ids, .. } => {
-                                        // Mark messages as delivered
-                                        // TODO: Mark messages as delivered
-                                    }
-                                    WebSocketMessage::Status { .. } => {
-                                        // Update user status
-                                        // TODO: Update user status
+    // Spawn a task to receive messages from the client
+    let mut recv_task = tokio::spawn(async move {
+        while let Some(result) = receiver.next().await {
+            match result {
+                Ok(msg) => {
+                    match msg {
+                        Message::Text(text) => {
+                            // Parse the message
+                            if let Ok(ws_message) = serde_json::from_str::<WebSocketMessage>(&text) {
+                                match ws_message {
+                                    WebSocketMessage::Text { content, sender_id } => {
+                                        // Handle text message
+                                        info!("Received text message from {}: {}", sender_id, content);
+                                        
+                                        // Create a message format that can be broadcasted
+                                        let message_json = serde_json::json!({
+                                            "type": "text",
+                                            "content": content,
+                                            "sender_id": sender_id,
+                                            "timestamp": chrono::Utc::now().to_rfc3339()
+                                        });
+                                        
+                                        if let Ok(json) = serde_json::to_string(&message_json) {
+                                            // Broadcast to recipient - this has to be fixed for your specific logic
+                                            let recipient_id = uid_clone.clone(); // Example: broadcast to self for now
+                                            ws_manager.broadcast_to_user(&recipient_id, json);
+                                        }
+                                    },
+                                    WebSocketMessage::Typing { is_typing, user_id: ref typing_user_id } => {
+                                        // Note the 'ref' keyword to prevent moving the String
+                                        info!("User {} typing status: {}", typing_user_id, is_typing);
+                                        
+                                        // Create typing message that can be broadcasted
+                                        let typing_message = serde_json::json!({
+                                            "type": "typing",
+                                            "is_typing": is_typing,
+                                            "user_id": typing_user_id
+                                        });
+                                        
+                                        if let Ok(json) = serde_json::to_string(&typing_message) {
+                                            // Broadcast typing status
+                                            ws_manager.broadcast_to_user(typing_user_id, json);
+                                        }
+                                    },
+                                    WebSocketMessage::Read { message_ids, user_id: ref reader_id } => {
+                                        // Note the 'ref' keyword to prevent moving the String
+                                        info!("User {} read messages: {:?}", reader_id, message_ids);
+                                        
+                                        // You'd typically update your database here to mark messages as read
+                                        // ...
+                                        
+                                        // And notify the sender
+                                        let read_message = serde_json::json!({
+                                            "type": "read",
+                                            "message_ids": message_ids,
+                                            "user_id": reader_id
+                                        });
+                                        
+                                        if let Ok(json) = serde_json::to_string(&read_message) {
+                                            // This would actually go to the message sender, but for simplicity:
+                                            ws_manager.broadcast_to_user(reader_id, json);
+                                        }
+                                    },
+                                    WebSocketMessage::Delivered { message_ids, user_id: ref recipient_id } => {
+                                        // Note the 'ref' keyword to prevent moving the String
+                                        info!("User {} received messages: {:?}", recipient_id, message_ids);
+                                        
+                                        // You'd typically update your database here to mark messages as delivered
+                                        // ...
+                                        
+                                        // And notify the sender
+                                        let delivered_message = serde_json::json!({
+                                            "type": "delivered",
+                                            "message_ids": message_ids,
+                                            "user_id": recipient_id
+                                        });
+                                        
+                                        if let Ok(json) = serde_json::to_string(&delivered_message) {
+                                            // This would actually go to the message sender, but for simplicity:
+                                            ws_manager.broadcast_to_user(recipient_id, json);
+                                        }
+                                    },
+                                    WebSocketMessage::Status { user_id: ref status_user_id, status } => {
+                                        // Note the 'ref' keyword to prevent moving the String
+                                        info!("User {} status updated: {:?}", status_user_id, status);
+                                        
+                                        // Broadcast status update
+                                        ws_manager.broadcast_status(status_user_id, status);
                                     }
                                 }
+                            } else {
+                                error!("Failed to parse message: {}", text);
                             }
-                            Err(e) => {
-                                error!("Failed to parse WebSocket message: {}", e);
+                        },
+                        Message::Binary(_) => {
+                            // Handle binary message if needed
+                        },
+                        Message::Ping(ping) => {
+                            if let Err(e) = sender.send(Message::Pong(ping)).await {
+                                error!("Error sending pong: {}", e);
                             }
-                        }
+                        },
+                        Message::Pong(_) => {},
+                        Message::Close(_) => break,
                     }
-                    Message::Binary(_) => {
-                        // Handle binary messages (like file transfers)
-                    }
-                    Message::Ping(_) => {
-                        // Respond to ping
-                        if let Err(e) = sender.send(Message::Pong(Vec::new())).await {
-                            error!("Failed to send pong: {}", e);
-                            break;
-                        }
-                    }
-                    Message::Pong(_) => {
-                        // Handle pong response
-                    }
-                    Message::Close(_) => {
+                },
+                Err(e) => {
+                    error!("Error receiving message: {}", e);
+                    break;
+                }
+            }
+        }
+        
+        // Return connection ID to be used for cleanup
+        conn_id
+    });
+
+    // Wait for receive task to complete
+    match recv_task.await {
+        Ok(connection_id) => {
+            // Use the cloned state.ws_manager to avoid the move issue
+            let uid = uid.clone(); // Use the cloned uid to avoid the move issue
+            ws_manager.remove_connection(&uid, &connection_id);
+            ws_manager.broadcast_status(&uid, UserStatus::Offline);
+            info!("WebSocket connection closed for user {}", uid);
+        },
+        Err(e) => {
+            error!("Error in WebSocket task: {}", e);
+        }
+    }
+}
+
+// Simple WebSocket echo handler that doesn't require authentication
+async fn ws_echo_handler(
+    ws: WebSocketUpgrade,
+    State(_state): State<AppState>,
+) -> impl IntoResponse {
+    ws.on_upgrade(handle_echo_socket)
+}
+
+// Handle echo WebSocket
+async fn handle_echo_socket(socket: WebSocket) {
+    let (mut sender, mut receiver) = socket.split();
+
+    // Echo all messages back to the client
+    tokio::spawn(async move {
+        while let Some(Ok(message)) = receiver.next().await {
+            match message {
+                Message::Text(text) => {
+                    info!("Echo received: {}", text);
+                    if sender.send(Message::Text(format!("Echo: {}", text))).await.is_err() {
                         break;
                     }
                 }
-            }
-            Err(e) => {
-                error!("Error receiving message: {}", e);
-                break;
+                Message::Binary(data) => {
+                    if sender.send(Message::Binary(data)).await.is_err() {
+                        break;
+                    }
+                }
+                Message::Ping(ping) => {
+                    if sender.send(Message::Pong(ping)).await.is_err() {
+                        break;
+                    }
+                }
+                Message::Pong(_) => {}
+                Message::Close(_) => break,
             }
         }
-    }
-
-    // Remove connection when done
-    // TODO: Remove connection from WebSocket manager
-    
-    // Send offline status
-    let offline_status = WebSocketMessage::Status {
-        user_id: user_id.clone(),
-        status: UserStatus::Offline,
-    };
-    
-    // TODO: Broadcast offline status
-    
-    info!("WebSocket connection closed for user {}", user_id);
+    });
 } 

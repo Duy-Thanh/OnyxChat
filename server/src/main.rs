@@ -1,30 +1,29 @@
-use axum::{
-    routing::{get, post},
-    http::StatusCode,
-    Json,
-    Router,
-    extract::{State, Path},
-};
-use serde::{Deserialize, Serialize};
-use std::{
-    net::SocketAddr,
-    collections::HashMap,
-    sync::{Arc, RwLock},
-};
-use tower_http::cors::CorsLayer;
-use tracing::info;
-use uuid::Uuid;
+use std::sync::Arc;
+use std::net::SocketAddr;
 
-// Import modules
-mod auth;
-mod error;
-mod crypto;
+use axum::{
+    Router,
+    routing::{get, post},
+    http::{StatusCode, header},
+    extract::State,
+    response::IntoResponse,
+    Json,
+};
+use log::{info, error};
+use dotenv::dotenv;
+use env_logger;
+use tower_http::cors::{Any, CorsLayer};
+
+mod routes;
+mod models;
+mod handlers;
+mod middleware;
 mod ws;
 
-use auth::{AuthError, AuthResponse, AuthService, CurrentUser, LoginRequest};
-use error::{AppError, Result};
-use crypto::{UserKey, OneTimePrekey, crypto_routes};
-use ws::{create_ws_manager, WebSocketManager, ws_routes};
+use crate::models::AppState;
+use crate::middleware::auth::auth;
+use crate::routes::{users, auth as auth_routes, messages};
+use crate::ws::WebSocketManager;
 
 // User model
 #[derive(Debug, Clone, Serialize)]
@@ -45,6 +44,8 @@ struct Message {
     recipient_id: String,
     content: String,
     sent_at: String,
+    received_at: Option<String>,
+    read_at: Option<String>,
 }
 
 // Request model for user registration
@@ -78,69 +79,68 @@ struct MessageResponse {
     recipient_id: String,
     content: String,
     sent_at: String,
-}
-
-// Application state
-#[derive(Clone)]
-struct AppState {
-    users: Arc<RwLock<HashMap<String, User>>>,
-    messages: Arc<RwLock<HashMap<String, Message>>>,
-    user_keys: Arc<RwLock<HashMap<String, UserKey>>>,
-    prekeys: Arc<RwLock<HashMap<String, OneTimePrekey>>>,
-    ws_manager: Arc<WebSocketManager>,
+    received_at: Option<String>,
+    read_at: Option<String>,
 }
 
 #[tokio::main]
 async fn main() {
-    // Initialize tracing
-    tracing_subscriber::fmt::init();
-    info!("Starting OnyxChat server");
-
+    // Initialize environment
+    dotenv().ok();
+    env_logger::init();
+    
     // Create WebSocket manager
-    let ws_manager = Arc::new(create_ws_manager());
+    let ws_manager = Arc::new(WebSocketManager::new());
+    
+    // Create application state
+    let app_state = AppState::new(None, ws_manager);
+    
+    // CORS configuration
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods(Any)
+        .allow_headers(Any);
 
-    // Create app state
-    let app_state = AppState {
-        users: Arc::new(RwLock::new(HashMap::new())),
-        messages: Arc::new(RwLock::new(HashMap::new())),
-        user_keys: Arc::new(RwLock::new(HashMap::new())),
-        prekeys: Arc::new(RwLock::new(HashMap::new())),
-        ws_manager: ws_manager.clone(),
-    };
-
-    // Build our application with routes
+    // Create router
     let app = Router::new()
-        .route("/", get(hello_world))
-        .route("/health", get(health_check))
-        // Auth routes
-        .route("/api/users", post(register_user))
-        .route("/api/users/:id", get(get_user_by_id))
-        .route("/api/auth/login", post(login))
-        // Message routes
-        .route("/api/messages", post(send_message))
-        .route("/api/messages/:user_id", get(get_messages_for_user))
-        // E2EE crypto routes
-        .nest("/api/crypto", crypto_routes())
-        // WebSocket routes
-        .nest("/api/ws", ws_routes())
-        .layer(CorsLayer::permissive())
+        // Health check endpoint
+        .route("/api/health", get(health_check))
+        
+        // Merge user routes
+        .merge(users::user_routes())
+        
+        // Merge auth routes
+        .merge(auth_routes::auth_routes())
+        
+        // Merge message routes
+        .merge(messages::message_routes())
+        
+        // Merge WebSocket routes
+        .merge(ws::ws_routes())
+        
+        // Apply middleware
+        .layer(cors)
+        
+        // Add app state
         .with_state(app_state);
 
-    // Run the server
+    // Start server
     let addr = SocketAddr::from(([0, 0, 0, 0], 8080));
-    info!("Server listening on {}", addr);
+    info!("Starting server on {}", addr);
+    
     axum::Server::bind(&addr)
         .serve(app.into_make_service())
         .await
         .unwrap();
 }
 
-async fn hello_world() -> &'static str {
-    "Hello, World from OnyxChat!"
+// Health check endpoint
+async fn health_check() -> impl IntoResponse {
+    (StatusCode::OK, "OK")
 }
 
-async fn health_check() -> &'static str {
-    "OK"
+async fn hello_world() -> &'static str {
+    "Hello, World from OnyxChat!"
 }
 
 async fn register_user(
@@ -277,12 +277,21 @@ async fn send_message(
         recipient_id: payload.recipient_id.clone(),
         content: payload.content.clone(),
         sent_at,
+        received_at: None,
+        read_at: None,
     };
 
     // Store the message
     {
         let mut messages = state.messages.write().unwrap();
         messages.insert(message_id.clone(), message.clone());
+    }
+
+    // Broadcast the message to the recipient via WebSocket if they're online
+    if state.ws_manager.is_user_online(&payload.recipient_id) {
+        let message_json = serde_json::to_string(&message).unwrap_or_default();
+        state.ws_manager.broadcast_to_user(&payload.recipient_id, message_json);
+        info!("Message broadcasted to user {}", payload.recipient_id);
     }
 
     info!("Message sent: {}", message_id);
@@ -296,6 +305,8 @@ async fn send_message(
             recipient_id: message.recipient_id,
             content: message.content,
             sent_at: message.sent_at,
+            received_at: message.received_at,
+            read_at: message.read_at,
         }),
     ))
 }
@@ -327,4 +338,93 @@ async fn get_messages_for_user(
         .collect();
 
     Ok(Json(user_messages))
+}
+
+async fn mark_message_as_received(
+    State(state): State<AppState>,
+    current_user: CurrentUser,
+    Path(message_id): Path<String>,
+) -> Result<Json<MessageResponse>> {
+    // Get the message
+    let mut messages = state.messages.write().unwrap();
+    let message = messages.get_mut(&message_id).ok_or_else(|| {
+        AppError::NotFound(format!("Message with ID {} not found", message_id))
+    })?;
+    
+    // Check if the current user is the recipient of the message
+    if message.recipient_id != current_user.user_id {
+        return Err(AppError::Forbidden("You can only mark messages sent to you as received".to_string()));
+    }
+    
+    // Update the message
+    message.received_at = Some(chrono::Utc::now().to_rfc3339());
+    
+    // Broadcast status update to sender if online
+    if state.ws_manager.is_user_online(&message.sender_id) {
+        let status_update = format!(
+            "{{\"type\":\"message_received\",\"message_id\":\"{}\",\"user_id\":\"{}\"}}",
+            message_id, current_user.user_id
+        );
+        state.ws_manager.broadcast_to_user(&message.sender_id, status_update);
+    }
+    
+    info!("Message {} marked as received", message_id);
+    
+    // Return the updated message
+    Ok(Json(MessageResponse {
+        id: message.id.clone(),
+        sender_id: message.sender_id.clone(),
+        recipient_id: message.recipient_id.clone(),
+        content: message.content.clone(),
+        sent_at: message.sent_at.clone(),
+        received_at: message.received_at.clone(),
+        read_at: message.read_at.clone(),
+    }))
+}
+
+async fn mark_message_as_read(
+    State(state): State<AppState>,
+    current_user: CurrentUser,
+    Path(message_id): Path<String>,
+) -> Result<Json<MessageResponse>> {
+    // Get the message
+    let mut messages = state.messages.write().unwrap();
+    let message = messages.get_mut(&message_id).ok_or_else(|| {
+        AppError::NotFound(format!("Message with ID {} not found", message_id))
+    })?;
+    
+    // Check if the current user is the recipient of the message
+    if message.recipient_id != current_user.user_id {
+        return Err(AppError::Forbidden("You can only mark messages sent to you as read".to_string()));
+    }
+    
+    // Update the message
+    message.read_at = Some(chrono::Utc::now().to_rfc3339());
+    
+    // Make sure received_at is set if not already
+    if message.received_at.is_none() {
+        message.received_at = message.read_at.clone();
+    }
+    
+    // Broadcast status update to sender if online
+    if state.ws_manager.is_user_online(&message.sender_id) {
+        let status_update = format!(
+            "{{\"type\":\"message_read\",\"message_id\":\"{}\",\"user_id\":\"{}\"}}",
+            message_id, current_user.user_id
+        );
+        state.ws_manager.broadcast_to_user(&message.sender_id, status_update);
+    }
+    
+    info!("Message {} marked as read", message_id);
+    
+    // Return the updated message
+    Ok(Json(MessageResponse {
+        id: message.id.clone(),
+        sender_id: message.sender_id.clone(),
+        recipient_id: message.recipient_id.clone(),
+        content: message.content.clone(),
+        sent_at: message.sent_at.clone(),
+        received_at: message.received_at.clone(),
+        read_at: message.read_at.clone(),
+    }))
 }

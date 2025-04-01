@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OnyxChat WebSocket Test Client</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+        .chat-container {
+            display: flex;
+            flex: 1;
+            margin-bottom: 20px;
+        }
+        .user-list {
+            width: 200px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            margin-right: 20px;
+            padding: 10px;
+            overflow-y: auto;
+        }
+        .message-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        .message-list {
+            flex: 1;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            padding: 10px;
+            overflow-y: auto;
+            margin-bottom: 10px;
+        }
+        .message {
+            margin: 10px 0;
+            padding: 8px 12px;
+            border-radius: 16px;
+            max-width: 70%;
+            word-wrap: break-word;
+        }
+        .sent {
+            background-color: #dcf8c6;
+            align-self: flex-end;
+            margin-left: auto;
+        }
+        .received {
+            background-color: #f1f0f0;
+            align-self: flex-start;
+        }
+        .input-container {
+            display: flex;
+        }
+        .input-container input {
+            flex: 1;
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
+        .input-container button {
+            margin-left: 10px;
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .input-container button:hover {
+            background-color: #45a049;
+        }
+        .user {
+            padding: 8px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        .user:hover {
+            background-color: #f1f0f0;
+        }
+        .user.selected {
+            background-color: #e0e0e0;
+            font-weight: bold;
+        }
+        .status {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        .status.online {
+            background-color: #4CAF50;
+        }
+        .status.offline {
+            background-color: #ccc;
+        }
+        .login-container {
+            max-width: 400px;
+            margin: 100px auto;
+            padding: 20px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
+        .form-group button {
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .typing-indicator {
+            font-style: italic;
+            color: #666;
+            margin-bottom: 10px;
+        }
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="login-view" class="login-container">
+        <h2>OnyxChat Login</h2>
+        <div class="form-group">
+            <label for="username">Username</label>
+            <input type="text" id="username" placeholder="Username">
+        </div>
+        <div class="form-group">
+            <label for="password">Password</label>
+            <input type="password" id="password" placeholder="Password">
+        </div>
+        <div class="form-group">
+            <button id="login-btn">Login</button>
+            <button id="register-btn">Register</button>
+        </div>
+        <div id="login-error" style="color: red; margin-top: 10px;"></div>
+    </div>
+
+    <div id="chat-view" class="container hidden">
+        <h1>OnyxChat WebSocket Test</h1>
+        <div class="chat-container">
+            <div class="user-list" id="user-list">
+                <h3>Users</h3>
+                <!-- Users will be added here -->
+            </div>
+            <div class="message-container">
+                <div class="message-list" id="message-list">
+                    <!-- Messages will be added here -->
+                </div>
+                <div class="typing-indicator" id="typing-indicator"></div>
+                <div class="input-container">
+                    <input type="text" id="message-input" placeholder="Type a message...">
+                    <button id="send-btn">Send</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Server URL
+        const SERVER_URL = 'http://localhost:8080';
+        const WS_URL = 'ws://localhost:8080';
+
+        // DOM elements
+        const loginView = document.getElementById('login-view');
+        const chatView = document.getElementById('chat-view');
+        const loginBtn = document.getElementById('login-btn');
+        const registerBtn = document.getElementById('register-btn');
+        const usernameInput = document.getElementById('username');
+        const passwordInput = document.getElementById('password');
+        const loginError = document.getElementById('login-error');
+        const userList = document.getElementById('user-list');
+        const messageList = document.getElementById('message-list');
+        const messageInput = document.getElementById('message-input');
+        const sendBtn = document.getElementById('send-btn');
+        const typingIndicator = document.getElementById('typing-indicator');
+
+        // App state
+        let currentUser = null;
+        let authToken = null;
+        let selectedUser = null;
+        let webSocket = null;
+        let users = {};
+        let typingTimeout = null;
+
+        // Helper function for making API requests
+        async function apiRequest(endpoint, method = 'GET', data = null, token = null) {
+            const headers = {
+                'Content-Type': 'application/json',
+            };
+
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+
+            const options = {
+                method,
+                headers,
+                body: data ? JSON.stringify(data) : null,
+            };
+
+            try {
+                const response = await fetch(`${SERVER_URL}${endpoint}`, options);
+                const responseData = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(responseData.error || 'API request failed');
+                }
+
+                return responseData;
+            } catch (error) {
+                console.error('API request failed:', error);
+                throw error;
+            }
+        }
+
+        // Login function
+        async function login(username, password) {
+            try {
+                const response = await apiRequest('/api/auth/login', 'POST', { username, password });
+                authToken = response.access_token;
+                
+                // Get user information
+                const users = await apiRequest('/api/users', 'GET', null, authToken);
+                currentUser = users.find(user => user.username === username) || { id: 'unknown', username };
+                
+                return true;
+            } catch (error) {
+                loginError.textContent = error.message;
+                return false;
+            }
+        }
+
+        // Register function
+        async function register(username, password) {
+            try {
+                await apiRequest('/api/users', 'POST', { 
+                    username, 
+                    email: `${username}@example.com`, // Dummy email
+                    password 
+                });
+                return true;
+            } catch (error) {
+                loginError.textContent = error.message;
+                return false;
+            }
+        }
+
+        // Connect to WebSocket
+        function connectWebSocket(userId, token) {
+            webSocket = new WebSocket(`${WS_URL}/api/ws/chat/${userId}`);
+            
+            webSocket.onopen = () => {
+                console.log('WebSocket connection established');
+                
+                // Set user as online
+                updateUserStatus(userId, 'online');
+            };
+            
+            webSocket.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                console.log('Received message:', data);
+                
+                // Handle different message types
+                if (data.type === 'text') {
+                    addMessageToChat(data.sender_id, data.content, data.sender_id !== currentUser.id);
+                } else if (data.type === 'typing') {
+                    if (data.is_typing) {
+                        typingIndicator.textContent = `${users[data.user_id]?.username || 'Someone'} is typing...`;
+                    } else {
+                        typingIndicator.textContent = '';
+                    }
+                } else if (data.type === 'status') {
+                    updateUserStatus(data.user_id, data.status);
+                }
+            };
+            
+            webSocket.onerror = (error) => {
+                console.error('WebSocket error:', error);
+            };
+            
+            webSocket.onclose = () => {
+                console.log('WebSocket connection closed');
+                // Set user as offline
+                updateUserStatus(userId, 'offline');
+            };
+        }
+
+        // Send a message
+        function sendMessage(recipientId, content) {
+            if (!webSocket || webSocket.readyState !== WebSocket.OPEN) {
+                console.error('WebSocket not connected');
+                return;
+            }
+            
+            const message = {
+                type: 'text',
+                data: {
+                    content,
+                    sender_id: currentUser.id,
+                    recipient_id: recipientId
+                }
+            };
+            
+            webSocket.send(JSON.stringify(message));
+            addMessageToChat(currentUser.id, content, false);
+        }
+
+        // Send typing status
+        function sendTypingStatus(recipientId, isTyping) {
+            if (!webSocket || webSocket.readyState !== WebSocket.OPEN) {
+                console.error('WebSocket not connected');
+                return;
+            }
+            
+            const message = {
+                type: 'typing',
+                data: {
+                    is_typing: isTyping,
+                    user_id: currentUser.id
+                }
+            };
+            
+            webSocket.send(JSON.stringify(message));
+        }
+
+        // Add a message to the chat
+        function addMessageToChat(senderId, content, isReceived) {
+            const messageElement = document.createElement('div');
+            messageElement.classList.add('message');
+            messageElement.classList.add(isReceived ? 'received' : 'sent');
+            
+            const senderName = users[senderId]?.username || 'Unknown';
+            messageElement.textContent = `${isReceived ? senderName + ': ' : ''}${content}`;
+            
+            messageList.appendChild(messageElement);
+            messageList.scrollTop = messageList.scrollHeight;
+        }
+
+        // Update user status
+        function updateUserStatus(userId, status) {
+            const userElement = document.getElementById(`user-${userId}`);
+            if (userElement) {
+                const statusElement = userElement.querySelector('.status');
+                statusElement.className = `status ${status}`;
+                
+                // Update users object
+                if (users[userId]) {
+                    users[userId].status = status;
+                }
+            }
+        }
+
+        // Select a user
+        function selectUser(userId) {
+            // Remove selection from current user
+            if (selectedUser) {
+                const prevUserElement = document.getElementById(`user-${selectedUser}`);
+                if (prevUserElement) {
+                    prevUserElement.classList.remove('selected');
+                }
+            }
+            
+            // Add selection to new user
+            const userElement = document.getElementById(`user-${userId}`);
+            if (userElement) {
+                userElement.classList.add('selected');
+            }
+            
+            selectedUser = userId;
+            
+            // Clear message list and load messages for selected user
+            messageList.innerHTML = '';
+        }
+
+        // Add a user to the list
+        function addUserToList(user) {
+            users[user.id] = {
+                ...user,
+                status: 'offline'
+            };
+            
+            const userElement = document.createElement('div');
+            userElement.classList.add('user');
+            userElement.id = `user-${user.id}`;
+            
+            const statusElement = document.createElement('span');
+            statusElement.classList.add('status', 'offline');
+            
+            userElement.appendChild(statusElement);
+            userElement.appendChild(document.createTextNode(user.username));
+            
+            userElement.addEventListener('click', () => {
+                selectUser(user.id);
+            });
+            
+            userList.appendChild(userElement);
+        }
+
+        // Event listeners
+        loginBtn.addEventListener('click', async () => {
+            const username = usernameInput.value;
+            const password = passwordInput.value;
+            
+            if (!username || !password) {
+                loginError.textContent = 'Username and password are required';
+                return;
+            }
+            
+            const success = await login(username, password);
+            if (success) {
+                loginView.classList.add('hidden');
+                chatView.classList.remove('hidden');
+                
+                // Connect to WebSocket
+                connectWebSocket(currentUser.id, authToken);
+                
+                // Add current user to the list
+                addUserToList(currentUser);
+                
+                // Select current user by default
+                selectUser(currentUser.id);
+            }
+        });
+
+        registerBtn.addEventListener('click', async () => {
+            const username = usernameInput.value;
+            const password = passwordInput.value;
+            
+            if (!username || !password) {
+                loginError.textContent = 'Username and password are required';
+                return;
+            }
+            
+            const success = await register(username, password);
+            if (success) {
+                loginError.textContent = 'Registration successful! You can now login.';
+            }
+        });
+
+        sendBtn.addEventListener('click', () => {
+            const content = messageInput.value;
+            
+            if (!content || !selectedUser) {
+                return;
+            }
+            
+            sendMessage(selectedUser, content);
+            messageInput.value = '';
+        });
+
+        messageInput.addEventListener('keypress', (event) => {
+            if (event.key === 'Enter') {
+                sendBtn.click();
+            }
+            
+            // Send typing status
+            if (selectedUser) {
+                if (typingTimeout) {
+                    clearTimeout(typingTimeout);
+                } else {
+                    sendTypingStatus(selectedUser, true);
+                }
+                
+                typingTimeout = setTimeout(() => {
+                    sendTypingStatus(selectedUser, false);
+                    typingTimeout = null;
+                }, 2000);
+            }
+        });
+
+        // Initialize the app
+        window.addEventListener('load', () => {
+            loginView.classList.remove('hidden');
+            chatView.classList.add('hidden');
+        });
+    </script>
+</body>
+</html> 
