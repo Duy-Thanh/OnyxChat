@@ -205,10 +205,37 @@
         .hidden {
             display: none;
         }
+
+        #connection-status {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        #connection-status.connected {
+            background-color: #4caf50;
+            color: white;
+        }
+
+        #connection-status.disconnected {
+            background-color: #f44336;
+            color: white;
+        }
+
+        #connection-status.connecting {
+            background-color: #ff9800;
+            color: white;
+        }
     </style>
 </head>
 
 <body>
+    <div id="connection-status" class="disconnected">Disconnected</div>
+
     <!-- Login Screen -->
     <div id="login-screen" class="login-container">
         <h2>OnyxChat Login</h2>
@@ -273,6 +300,7 @@
         const typingIndicator = document.getElementById('typing-indicator');
         const messageInput = document.getElementById('message-input');
         const sendBtn = document.getElementById('send-btn');
+        const connectionStatus = document.getElementById('connection-status');
 
         // App State
         const appState = {
@@ -328,7 +356,10 @@
             });
             
             // Select the Echo Server by default in the demo
-            selectContact('echo-server');
+            if (!appState.currentUser) {
+                // For demo, allow direct access without login
+                simulateLogin('Guest_' + Math.floor(Math.random() * 1000));
+            }
         }
 
         // Authentication Functions
@@ -413,6 +444,9 @@
             
             // Connect to WebSocket
             connectToWebSocket();
+            
+            // Select the Echo Server by default in the demo
+            selectContact('echo-server');
         }
 
         function selectContact(contactId) {
@@ -480,8 +514,16 @@
             return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         }
 
+        function updateConnectionStatus(status) {
+            connectionStatus.className = status;
+            connectionStatus.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+        }
+
         // WebSocket Functions
         function connectToWebSocket() {
+            // Update connection status
+            updateConnectionStatus('connecting');
+            
             // In a real app, use secure WebSocket (wss://) for production
             const wsUrl = `ws://localhost:8080/ws`;
             
@@ -502,9 +544,21 @@
 
         function handleWebSocketOpen() {
             console.log('WebSocket connection established');
+            updateConnectionStatus('connected');
             
-            // In a real app, you might want to send an authentication message
-            // or retrieve the user's message history
+            // Send a welcome message to yourself in the UI
+            const message = {
+                id: generateId(),
+                content: 'Connected to server',
+                timestamp: Date.now(),
+                isFromMe: false,
+                status: 'system'
+            };
+            
+            if (appState.selectedContact === 'echo-server') {
+                appState.contacts['echo-server'].messages.push(message);
+                addMessageToUI(message);
+            }
         }
 
         function handleWebSocketMessage(event) {
@@ -535,10 +589,12 @@
 
         function handleWebSocketError(error) {
             console.error('WebSocket error:', error);
+            updateConnectionStatus('disconnected');
         }
 
         function handleWebSocketClose() {
             console.log('WebSocket connection closed');
+            updateConnectionStatus('disconnected');
             
             // Attempt to reconnect after a delay
             setTimeout(connectToWebSocket, 5000);
@@ -581,6 +637,22 @@
                 appState.wsConnection.send(content);
             } else {
                 console.error('WebSocket not connected');
+                // Add error message to UI
+                const message = {
+                    id: generateId(),
+                    content: 'Failed to send message: WebSocket not connected',
+                    timestamp: Date.now(),
+                    isFromMe: false,
+                    status: 'error'
+                };
+                
+                if (appState.selectedContact === 'echo-server') {
+                    appState.contacts['echo-server'].messages.push(message);
+                    addMessageToUI(message);
+                }
+                
+                // Try to reconnect
+                connectToWebSocket();
             }
         }
 
