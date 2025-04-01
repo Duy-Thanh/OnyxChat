@@ -42,7 +42,9 @@ impl Message {
     pub async fn create(
         pool: &Pool<Postgres>,
         sender_id: Uuid,
-        req: &SendMessageRequest,
+        recipient_id: Uuid,
+        encrypted_content: &str,
+        iv: &str,
     ) -> Result<Self> {
         sqlx::query_as!(
             Message,
@@ -52,9 +54,9 @@ impl Message {
             RETURNING *
             "#,
             sender_id,
-            req.recipient_id,
-            req.encrypted_content,
-            req.iv
+            recipient_id,
+            encrypted_content,
+            iv
         )
         .fetch_one(pool)
         .await
@@ -122,55 +124,52 @@ impl Message {
         Ok(messages)
     }
 
-    pub async fn mark_as_received(pool: &Pool<Postgres>, id: Uuid, user_id: Uuid) -> Result<Self> {
+    pub async fn mark_as_received(pool: &Pool<Postgres>, id: Uuid) -> Result<Self> {
         sqlx::query_as!(
             Message,
             r#"
             UPDATE messages
             SET received_at = NOW()
-            WHERE id = $1 AND recipient_id = $2 AND received_at IS NULL
+            WHERE id = $1 AND received_at IS NULL
             RETURNING *
             "#,
-            id,
-            user_id
+            id
         )
         .fetch_optional(pool)
         .await?
         .ok_or_else(|| AppError::not_found(format!("Message with ID {} not found or already marked as received", id)))
     }
 
-    pub async fn mark_as_read(pool: &Pool<Postgres>, id: Uuid, user_id: Uuid) -> Result<Self> {
+    pub async fn mark_as_read(pool: &Pool<Postgres>, id: Uuid) -> Result<Self> {
         sqlx::query_as!(
             Message,
             r#"
             UPDATE messages
             SET read_at = NOW()
-            WHERE id = $1 AND recipient_id = $2 AND read_at IS NULL
+            WHERE id = $1 AND read_at IS NULL
             RETURNING *
             "#,
-            id,
-            user_id
+            id
         )
         .fetch_optional(pool)
         .await?
         .ok_or_else(|| AppError::not_found(format!("Message with ID {} not found or already marked as read", id)))
     }
 
-    pub async fn mark_as_deleted(pool: &Pool<Postgres>, id: Uuid, user_id: Uuid) -> Result<Self> {
+    pub async fn mark_as_deleted(pool: &Pool<Postgres>, id: Uuid) -> Result<Self> {
         sqlx::query_as!(
             Message,
             r#"
             UPDATE messages
             SET is_deleted = true
-            WHERE id = $1 AND (sender_id = $2 OR recipient_id = $2)
+            WHERE id = $1
             RETURNING *
             "#,
-            id,
-            user_id
+            id
         )
         .fetch_optional(pool)
         .await?
-        .ok_or_else(|| AppError::not_found(format!("Message with ID {} not found or not accessible", id)))
+        .ok_or_else(|| AppError::not_found(format!("Message with ID {} not found", id)))
     }
 
     pub fn to_response(&self) -> MessageResponse {
@@ -185,4 +184,4 @@ impl Message {
             read_at: self.read_at,
         }
     }
-} 
+}
