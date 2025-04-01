@@ -6,7 +6,6 @@ use axum::{
 };
 use futures::{sink::SinkExt, stream::StreamExt};
 use std::net::SocketAddr;
-use tokio::net::TcpListener;
 
 #[tokio::main]
 async fn main() {
@@ -22,11 +21,11 @@ async fn main() {
     let addr = SocketAddr::from(([0, 0, 0, 0], 8080));
     tracing::info!("Echo server listening on {}", addr);
     
-    // Create a TCP listener
-    let listener = TcpListener::bind(addr).await.unwrap();
-    
-    // Start serving connections
-    axum::serve(listener, app).await.unwrap();
+    // Start the server with hyper
+    axum::Server::bind(&addr)
+        .serve(app.into_make_service())
+        .await
+        .unwrap();
 }
 
 /// Handler for WebSocket connections
