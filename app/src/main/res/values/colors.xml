@@ -26,41 +26,46 @@
     <color name="primary_dark_theme">#B388FF</color>
     <color name="primary_dark_dark_theme">#805ACB</color>
     <color name="accent_dark_theme">#03DAC6</color>
-    <color name="background_dark_theme">#121212</color>
-    <color name="surface_dark_theme">#1E1E1E</color>
+    <color name="background_dark">#121212</color>
+    <color name="surface_dark">#1E1E1E</color>
     <color name="on_primary_dark_theme">#000000</color>
-    <color name="on_background_dark_theme">#FFFFFF</color>
-    <color name="on_surface_dark_theme">#FFFFFF</color>
+    <color name="on_background_dark">#FFFFFF</color>
+    <color name="on_surface_dark">#FFFFFF</color>
+    <color name="card_background_dark">#252525</color>
+    <color name="text_primary_dark">#FFFFFF</color>
+    <color name="text_secondary_dark">#B3FFFFFF</color> <!-- 70% white -->
+    <color name="text_hint_dark">#80FFFFFF</color> <!-- 50% white -->
+    <color name="divider_dark">#1FFFFFFF</color> <!-- 12% white -->
     
     <!-- Legacy color mappings -->
     <color name="colorPrimary">@color/primary</color>
     <color name="colorPrimaryDark">@color/primary_dark</color>
     <color name="colorAccent">@color/accent</color>
     <color name="colorSecondary">@color/accent</color>
-    <color name="background_primary">@color/background</color>
-    <color name="background_secondary">@color/surface</color>
-    <color name="text_primary">@color/on_background</color>
-    <color name="text_secondary">@color/on_surface</color>
-    <color name="text_hint">#757575</color>
+    <color name="background_primary">@color/background_dark</color>
+    <color name="background_secondary">@color/surface_dark</color>
+    <color name="text_primary">@color/text_primary_dark</color>
+    <color name="text_secondary">@color/text_secondary_dark</color>
+    <color name="text_hint">@color/text_hint_dark</color>
     <color name="text_link">@color/primary</color>
     <color name="bottom_nav_icon_color">@color/primary</color>
     <color name="bottom_nav_text_color">@color/primary</color>
-    <color name="card_background">@color/surface</color>
-    <color name="message_time_text">#757575</color>
-    <color name="pinned_conversation_background">#F5F5F5</color>
+    <color name="card_background">@color/card_background_dark</color>
+    <color name="message_time_text">@color/text_secondary_dark</color>
+    <color name="pinned_conversation_background">#252525</color>
     <color name="incoming_message_bg">@color/received_message_background</color>
     <color name="outgoing_message_bg">@color/sent_message_background</color>
     <color name="unread_count_text">@color/white</color>
-    <color name="message_sent_background">#E3F2FD</color>
-    <color name="message_received_background">#F3E5F5</color>
-    <color name="message_sent_text">#212121</color>
-    <color name="message_received_text">#212121</color>
+    <color name="message_sent_background">#2A3451</color>
+    <color name="message_received_background">#2E2A3A</color>
+    <color name="message_sent_text">@color/white</color>
+    <color name="message_received_text">@color/white</color>
     
     <!-- Message colors -->
-    <color name="sent_message_background">#E3F2FD</color>
-    <color name="sent_message_text">#212121</color>
-    <color name="received_message_background">#F3E5F5</color>
-    <color name="received_message_text">#212121</color>
+    <color name="sent_message_background">#2A3451</color>
+    <color name="sent_message_text">@color/white</color>
+    <color name="received_message_background">#2E2A3A</color>
+    <color name="received_message_text">@color/white</color>
     
     <!-- Status colors -->
     <color name="status_online">#4CAF50</color>
@@ -69,16 +74,16 @@
     <color name="status_error">#F44336</color>
     
     <!-- Warning colors -->
-    <color name="warning_background">#FFF3E0</color>
-    <color name="warning_text">#E65100</color>
+    <color name="warning_background">#3D2E00</color>
+    <color name="warning_text">#FFB74D</color>
     
     <!-- Connection status colors -->
     <color name="connected">#4CAF50</color>
     <color name="disconnected">#757575</color>
     
     <!-- UI elements -->
-    <color name="divider">#DADADA</color>
-    <color name="icon_tint">#757575</color>
-    <color name="ripple">#33000000</color>
-    <color name="scrim">#52000000</color>
+    <color name="divider">@color/divider_dark</color>
+    <color name="icon_tint">@color/text_secondary_dark</color>
+    <color name="ripple">#33FFFFFF</color>
+    <color name="scrim">#B3000000</color>
 </resources>

@@ -53,7 +53,7 @@ public class ContactsFragment extends Fragment implements ContactAdapter.OnConta
         
         // Initialize views
         recyclerView = view.findViewById(R.id.contactsRecyclerView);
-        emptyView = view.findViewById(R.id.emptyView);
+        emptyView = view.findViewById(R.id.emptyContactsText);
         
         // Setup recycler view
         recyclerView.setLayoutManager(new LinearLayoutManager(getContext()));

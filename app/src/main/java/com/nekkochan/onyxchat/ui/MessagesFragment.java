@@ -34,7 +34,7 @@ public class MessagesFragment extends Fragment {
     @Nullable
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
-        return inflater.inflate(R.layout.fragment_contacts, container, false);
+        return inflater.inflate(R.layout.fragment_messages, container, false);
     }
     
     @Override
@@ -42,11 +42,8 @@ public class MessagesFragment extends Fragment {
         super.onViewCreated(view, savedInstanceState);
         
         // Initialize views
-        recyclerView = view.findViewById(R.id.contactsRecyclerView);
-        emptyView = view.findViewById(R.id.emptyView);
-        
-        // Set empty view text
-        emptyView.setText("No conversations yet");
+        recyclerView = view.findViewById(R.id.messagesRecyclerView);
+        emptyView = view.findViewById(R.id.emptyMessagesText);
         
         // Setup recycler view
         recyclerView.setLayoutManager(new LinearLayoutManager(getContext()));

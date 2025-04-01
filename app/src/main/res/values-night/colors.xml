@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Dark theme colors -->
+    <color name="background_dark">#121212</color>
+    <color name="surface_dark">#1E1E1E</color>
+    <color name="on_background_dark">#FFFFFF</color>
+    <color name="on_surface_dark">#FFFFFF</color>
+    <color name="card_background_dark">#252525</color>
+    <color name="text_primary_dark">#FFFFFF</color>
+    <color name="text_secondary_dark">#B3FFFFFF</color> <!-- 70% white -->
+    <color name="text_hint_dark">#80FFFFFF</color> <!-- 50% white -->
+    <color name="divider_dark">#1FFFFFFF</color> <!-- 12% white -->
+    
+    <!-- Remap base colors for night mode -->
+    <color name="background">@color/background_dark</color>
+    <color name="surface">@color/surface_dark</color>
+    <color name="on_background">@color/on_background_dark</color>
+    <color name="on_surface">@color/on_surface_dark</color>
+    <color name="background_primary">@color/background_dark</color>
+    <color name="background_secondary">@color/surface_dark</color>
+    <color name="text_primary">@color/text_primary_dark</color>
+    <color name="text_secondary">@color/text_secondary_dark</color>
+    <color name="text_hint">@color/text_hint_dark</color>
+    <color name="card_background">@color/card_background_dark</color>
+    
+    <!-- Message colors -->
+    <color name="sent_message_background">#2A3451</color>
+    <color name="sent_message_text">#FFFFFF</color>
+    <color name="received_message_background">#2E2A3A</color>
+    <color name="received_message_text">#FFFFFF</color>
+    
+    <!-- Warning colors -->
+    <color name="warning_background">#3D2E00</color>
+    <color name="warning_text">#FFB74D</color>
+    
+    <!-- UI elements -->
+    <color name="divider">@color/divider_dark</color>
+    <color name="icon_tint">@color/text_secondary_dark</color>
+    <color name="ripple">#33FFFFFF</color>
+    <color name="scrim">#B3000000</color>
+</resources> 

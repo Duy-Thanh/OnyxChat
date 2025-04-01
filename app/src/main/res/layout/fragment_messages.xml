@@ -8,10 +8,10 @@
     android:padding="16dp">
 
     <TextView
-        android:id="@+id/emptyContactsText"
+        android:id="@+id/emptyMessagesText"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="@string/no_contacts_yet"
+        android:text="@string/no_messages_yet"
         android:textSize="18sp"
         android:textColor="@color/text_primary_dark"
         app:layout_constraintBottom_toBottomOf="parent"
@@ -20,7 +20,7 @@
         app:layout_constraintTop_toTopOf="parent" />
 
     <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/contactsRecyclerView"
+        android:id="@+id/messagesRecyclerView"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:visibility="gone"
