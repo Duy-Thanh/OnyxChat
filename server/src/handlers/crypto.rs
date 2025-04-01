@@ -4,15 +4,24 @@ use axum::{
     response::IntoResponse,
 };
 use uuid::Uuid;
+use serde::Deserialize;
 
 use crate::{
     error::Result,
     middleware::auth::CurrentUser,
     models::{
-        crypto::{OneTimePreKey, PreKeyBundle, UploadPreKeyBundleRequest, UserKey},
+        crypto::{CryptoStore, OneTimePreKey, PreKeyBundle, UploadPreKeyBundleRequest, UserKey},
         AppState,
     },
 };
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateCryptoStoreRequest {
+    pub identity_key: Option<String>,
+    pub signed_prekey: Option<String>,
+    pub signed_prekey_signature: Option<String>,
+    pub one_time_prekeys: Option<Vec<crate::models::crypto::OneTimePreKeyRequest>>,
+}
 
 pub async fn upload_prekey_bundle(
     State(state): State<AppState>,
@@ -20,11 +29,11 @@ pub async fn upload_prekey_bundle(
     Json(req): Json<UploadPreKeyBundleRequest>,
 ) -> Result<impl IntoResponse> {
     // Create or update user key
-    let _user_key = UserKey::create_or_update(&state.db, current_user.user_id, &req).await?;
+    let _user_key = UserKey::create_or_update(&state.db, current_user.id.parse()?, &req).await?;
 
     // Upload one-time prekeys
     let _prekeys =
-        OneTimePreKey::create_batch(&state.db, current_user.user_id, &req.one_time_prekeys).await?;
+        OneTimePreKey::create_batch(&state.db, current_user.id.parse()?, &req.one_time_prekeys).await?;
 
     Ok(StatusCode::CREATED)
 }
@@ -55,4 +64,22 @@ pub async fn get_prekey_bundle(
     };
 
     Ok(Json(prekey_bundle))
+}
+
+pub async fn update_crypto_store(
+    State(state): State<AppState>,
+    current_user: CurrentUser,
+    Json(req): Json<UpdateCryptoStoreRequest>,
+) -> Result<impl IntoResponse> {
+    // Update the crypto store
+    CryptoStore::update(&state.db, current_user.id.parse()?, &req).await?;
+
+    // Update one-time prekeys if provided
+    if let Some(prekeys) = &req.one_time_prekeys {
+        if !prekeys.is_empty() {
+            OneTimePreKey::create_batch_from_option(&state.db, current_user.id.parse()?, &req.one_time_prekeys).await?;
+        }
+    }
+
+    Ok(StatusCode::NO_CONTENT)
 }

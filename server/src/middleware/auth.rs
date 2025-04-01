@@ -5,12 +5,9 @@ use axum::{
     extract::{FromRef, FromRequestParts, State},
     http::{request::Parts, StatusCode},
     response::{IntoResponse, Response},
-};
-use axum_extra::{
     headers::{authorization::Bearer, Authorization},
     TypedHeader,
 };
-use uuid::Uuid;
 use jsonwebtoken::{decode, DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
 
@@ -19,6 +16,29 @@ use crate::{
     models::{auth::AuthService, AppState},
     config::AppConfig,
 };
+
+// Auth specific errors that can be used by other modules
+#[derive(Debug)]
+pub enum AuthError {
+    InvalidToken,
+    ExpiredToken,
+    InvalidPassword,
+}
+
+// Implementation for displaying auth errors
+impl std::fmt::Display for AuthError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let message = match self {
+            AuthError::InvalidToken => "Invalid token",
+            AuthError::ExpiredToken => "Token has expired",
+            AuthError::InvalidPassword => "Invalid password",
+        };
+        write!(f, "{}", message)
+    }
+}
+
+// Implement std::error::Error for AuthError
+impl std::error::Error for AuthError {}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {

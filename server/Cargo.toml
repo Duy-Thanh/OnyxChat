@@ -28,6 +28,9 @@ tokio = { version = "1.33.0", features = ["full"] }
 # Database
 sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "json"] }
 
+# Configuration
+dotenv = "0.15.0"
+
 # Serialization
 serde = { version = "1.0.192", features = ["derive"] }
 serde_json = "1.0.108"
@@ -53,3 +56,7 @@ futures = "0.3.28"
 
 # Validation
 validator = { version = "0.16", features = ["derive"] }
+
+[features]
+default = []
+mock = []

@@ -38,7 +38,8 @@ pub struct LoginRequest {
 
 #[derive(Debug, Serialize)]
 pub struct AuthResponse {
-    pub access_token: String,
+    pub token: String,
+    pub refresh_token: String,
     pub token_type: String,
     pub expires_in: u64,
 }
@@ -126,74 +127,117 @@ impl AuthService {
 
     // Store refresh token in database
     pub async fn create_refresh_token(pool: &Pool<Postgres>, user_id: Uuid) -> Result<String> {
-        let token = uuid::Uuid::new_v4().to_string();
-        let expires_at = Utc::now() + Duration::days(7); // 1 week
-        
-        sqlx::query!(
-            r#"
-            INSERT INTO refresh_tokens (user_id, token, expires_at)
-            VALUES ($1, $2, $3)
-            "#,
-            user_id,
-            token,
-            expires_at
-        )
-        .execute(pool)
-        .await
-        .map_err(|e| AppError::internal(format!("Failed to create refresh token: {}", e)))?;
-        
-        Ok(token)
+        #[cfg(feature = "mock")]
+        {
+            let token = uuid::Uuid::new_v4().to_string();
+            return Ok(token);
+        }
+
+        #[cfg(not(feature = "mock"))]
+        {
+            let token = uuid::Uuid::new_v4().to_string();
+            let expires_at = Utc::now() + Duration::days(7); // 1 week
+            
+            sqlx::query!(
+                r#"
+                INSERT INTO refresh_tokens (user_id, token, expires_at)
+                VALUES ($1, $2, $3)
+                "#,
+                user_id,
+                token,
+                expires_at
+            )
+            .execute(pool)
+            .await
+            .map_err(|e| AppError::internal(format!("Failed to create refresh token: {}", e)))?;
+            
+            Ok(token)
+        }
     }
 
     // Validate refresh token
     pub async fn validate_refresh_token(pool: &Pool<Postgres>, token: &str) -> Result<RefreshToken> {
-        let refresh_token = sqlx::query_as!(
-            RefreshToken,
-            r#"
-            SELECT * FROM refresh_tokens
-            WHERE token = $1 AND revoked = false AND expires_at > NOW()
-            "#,
-            token
-        )
-        .fetch_optional(pool)
-        .await
-        .map_err(|e| AppError::internal(format!("Failed to validate refresh token: {}", e)))?
-        .ok_or_else(|| AppError::auth("Invalid or expired refresh token"))?;
-        
-        Ok(refresh_token)
+        #[cfg(feature = "mock")]
+        {
+            let refresh_token = RefreshToken {
+                id: Uuid::new_v4(),
+                user_id: Uuid::new_v4(),
+                token: token.to_string(),
+                expires_at: Utc::now() + Duration::days(7),
+                created_at: Utc::now(),
+                revoked: false,
+                revoked_at: None,
+            };
+            
+            return Ok(refresh_token);
+        }
+
+        #[cfg(not(feature = "mock"))]
+        {
+            let refresh_token = sqlx::query_as!(
+                RefreshToken,
+                r#"
+                SELECT * FROM refresh_tokens
+                WHERE token = $1 AND revoked = false AND expires_at > NOW()
+                "#,
+                token
+            )
+            .fetch_optional(pool)
+            .await
+            .map_err(|e| AppError::internal(format!("Failed to validate refresh token: {}", e)))?
+            .ok_or_else(|| AppError::auth("Invalid or expired refresh token"))?;
+            
+            Ok(refresh_token)
+        }
     }
 
     // Revoke refresh token
     pub async fn revoke_refresh_token(pool: &Pool<Postgres>, token: &str) -> Result<()> {
-        sqlx::query!(
-            r#"
-            UPDATE refresh_tokens
-            SET revoked = true, revoked_at = NOW()
-            WHERE token = $1
-            "#,
-            token
-        )
-        .execute(pool)
-        .await
-        .map_err(|e| AppError::internal(format!("Failed to revoke refresh token: {}", e)))?;
-        
-        Ok(())
+        #[cfg(feature = "mock")]
+        {
+            return Ok(());
+        }
+
+        #[cfg(not(feature = "mock"))]
+        {
+            sqlx::query!(
+                r#"
+                UPDATE refresh_tokens
+                SET revoked = true, revoked_at = NOW()
+                WHERE token = $1
+                "#,
+                token
+            )
+            .execute(pool)
+            .await
+            .map_err(|e| AppError::internal(format!("Failed to revoke refresh token: {}", e)))?;
+            
+            Ok(())
+        }
     }
 
     // Revoke all refresh tokens for a user
     pub async fn revoke_all_user_tokens(pool: &Pool<Postgres>, user_id: Uuid) -> Result<()> {
-        sqlx::query!(
-            r#"
-            UPDATE refresh_tokens
-            SET revoked = true, revoked_at = NOW()
-            WHERE user_id = $1 AND revoked = false
-            "#,
-            user_id
-        )
-        .execute(pool)
-        .await
-        .map_err(|e| AppError::internal(format!("Failed to revoke user tokens: {}", e)))?;
-        
-        Ok(())
+        #[cfg(feature = "mock")]
+        {
+            return Ok(());
+        }
+
+        #[cfg(not(feature = "mock"))]
+        {
+            sqlx::query!(
+                r#"
+                UPDATE refresh_tokens
+                SET revoked = true, revoked_at = NOW()
+                WHERE user_id = $1 AND revoked = false
+                "#,
+                user_id
+            )
+            .execute(pool)
+            .await
+            .map_err(|e| AppError::internal(format!("Failed to revoke user tokens: {}", e)))?;
+            
+            Ok(())
+        }
     }
 } 

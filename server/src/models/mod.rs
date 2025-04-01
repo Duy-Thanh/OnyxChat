@@ -1,12 +1,17 @@
-pub mod auth;
 pub mod user;
 pub mod message;
+pub mod auth;
 pub mod crypto;
 
-pub use auth::*;
 pub use user::*;
 pub use message::*;
+pub use auth::*;
 pub use crypto::*;
+
+// Re-export common structs
+pub use user::User;
+pub use message::Message;
+pub use auth::{AuthService, LoginRequest, AuthResponse};
 
 use sqlx::{Pool, Postgres};
 use std::sync::Arc;

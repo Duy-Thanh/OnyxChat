@@ -2,11 +2,10 @@ use axum::{
     extract::{Json, State},
     http::StatusCode,
     response::IntoResponse,
-};
-use axum_extra::{
     headers::{authorization::Bearer, Authorization},
     TypedHeader,
 };
+use validator::Validate;
 
 use crate::{
     error::{AppError, Result},
@@ -31,15 +30,15 @@ pub async fn register(
     let user = User::create(&state.db, &req, &password_hash).await?;
 
     // Generate JWT token
-    let token = AuthService::generate_token(&state.config, &user.id.to_string(), &user.username)?;
+    let token = AuthService::create_token(&user.id.to_string(), &user.username)?;
 
     // Create refresh token
-    let refresh_token = AuthService::create_refresh_token(&state.db, user.id).await?;
+    let refresh_token = AuthService::create_refresh_token(&state.db, uuid::Uuid::parse_str(&user.id)?).await?;
 
     let auth_response = AuthResponse {
         token,
         refresh_token,
-        expires_in: state.config.jwt_expiration,
+        expires_in: state.config.jwt_expiration as u64,
         token_type: "Bearer".to_string(),
     };
 
@@ -62,18 +61,18 @@ pub async fn login(
     }
 
     // Update last active
-    User::update_last_active(&state.db, user.id).await?;
+    User::update_last_active(&state.db, user.id.clone()).await?;
 
     // Generate JWT token
-    let token = AuthService::generate_token(&state.config, &user.id.to_string(), &user.username)?;
+    let token = AuthService::create_token(&user.id.to_string(), &user.username)?;
 
     // Create refresh token
-    let refresh_token = AuthService::create_refresh_token(&state.db, user.id).await?;
+    let refresh_token = AuthService::create_refresh_token(&state.db, uuid::Uuid::parse_str(&user.id)?).await?;
 
     let auth_response = AuthResponse {
         token,
         refresh_token,
-        expires_in: state.config.jwt_expiration,
+        expires_in: state.config.jwt_expiration as u64,
         token_type: "Bearer".to_string(),
     };
 
@@ -91,10 +90,10 @@ pub async fn refresh_token(
     let user = User::find_by_id(&state.db, token_data.user_id).await?;
 
     // Generate new JWT token
-    let token = AuthService::generate_token(&state.config, &user.id.to_string(), &user.username)?;
+    let token = AuthService::create_token(&user.id.to_string(), &user.username)?;
 
     // Create new refresh token
-    let refresh_token = AuthService::create_refresh_token(&state.db, user.id).await?;
+    let refresh_token = AuthService::create_refresh_token(&state.db, uuid::Uuid::parse_str(&user.id)?).await?;
 
     // Revoke old refresh token
     AuthService::revoke_refresh_token(&state.db, &req.refresh_token).await?;
@@ -102,7 +101,7 @@ pub async fn refresh_token(
     let auth_response = AuthResponse {
         token,
         refresh_token,
-        expires_in: state.config.jwt_expiration,
+        expires_in: state.config.jwt_expiration as u64,
         token_type: "Bearer".to_string(),
     };
 

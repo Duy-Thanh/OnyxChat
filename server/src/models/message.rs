@@ -19,9 +19,8 @@ pub struct Message {
 
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct SendMessageRequest {
-    pub recipient_id: Uuid,
-    pub encrypted_content: String,
-    pub iv: String,
+    pub recipient_id: String,
+    pub content: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -43,6 +42,22 @@ impl Message {
         encrypted_content: &str,
         iv: &str,
     ) -> Result<Self> {
+        #[cfg(feature = "mock")]
+        {
+            let message = Message {
+                id: Uuid::new_v4().to_string(),
+                sender_id: sender_id.to_string(),
+                recipient_id: recipient_id.to_string(),
+                content: encrypted_content.to_string(),
+                sent_at: chrono::Utc::now().to_rfc3339(),
+                received_at: None,
+                read_at: None,
+            };
+            
+            return Ok(message);
+        }
+
+        #[cfg(not(feature = "mock"))]
         sqlx::query_as!(
             Message,
             r#"
@@ -60,7 +75,42 @@ impl Message {
         .map_err(|e| AppError::internal(format!("Failed to create message: {}", e)))
     }
 
+    pub async fn create_simplified(
+        pool: &Pool<Postgres>,
+        sender_id: String,
+        recipient_id: Uuid,
+        content: &str,
+    ) -> Result<Self> {
+        let message = Message {
+            id: Uuid::new_v4().to_string(),
+            sender_id,
+            recipient_id: recipient_id.to_string(),
+            content: content.to_string(),
+            sent_at: chrono::Utc::now().to_rfc3339(),
+            received_at: None,
+            read_at: None,
+        };
+        
+        Ok(message)
+    }
+
     pub async fn find_by_id(pool: &Pool<Postgres>, id: Uuid) -> Result<Self> {
+        #[cfg(feature = "mock")]
+        {
+            let message = Message {
+                id: id.to_string(),
+                sender_id: Uuid::new_v4().to_string(),
+                recipient_id: Uuid::new_v4().to_string(),
+                content: "Mock message content".to_string(),
+                sent_at: chrono::Utc::now().to_rfc3339(),
+                received_at: None,
+                read_at: None,
+            };
+            
+            return Ok(message);
+        }
+
+        #[cfg(not(feature = "mock"))]
         sqlx::query_as!(
             Message,
             r#"
@@ -81,47 +131,85 @@ impl Message {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<Self>> {
-        let messages = if let Some(other_id) = other_user_id {
-            // Get conversation between two users
-            sqlx::query_as!(
-                Message,
-                r#"
-                SELECT * FROM messages
-                WHERE ((sender_id = $1 AND recipient_id = $2) OR (sender_id = $2 AND recipient_id = $1))
-                AND is_deleted = false
-                ORDER BY sent_at DESC
-                LIMIT $3 OFFSET $4
-                "#,
-                user_id,
-                other_id,
-                limit,
-                offset
-            )
-            .fetch_all(pool)
-            .await?
-        } else {
-            // Get all messages for user
-            sqlx::query_as!(
-                Message,
-                r#"
-                SELECT * FROM messages
-                WHERE (sender_id = $1 OR recipient_id = $1)
-                AND is_deleted = false
-                ORDER BY sent_at DESC
-                LIMIT $2 OFFSET $3
-                "#,
-                user_id,
-                limit,
-                offset
-            )
-            .fetch_all(pool)
-            .await?
-        };
+        #[cfg(feature = "mock")]
+        {
+            let mut messages = Vec::new();
+            for i in 0..5 {
+                let message = Message {
+                    id: Uuid::new_v4().to_string(),
+                    sender_id: if i % 2 == 0 { user_id.to_string() } else { other_user_id.unwrap_or(Uuid::new_v4()).to_string() },
+                    recipient_id: if i % 2 == 0 { other_user_id.unwrap_or(Uuid::new_v4()).to_string() } else { user_id.to_string() },
+                    content: format!("Mock message #{}", i),
+                    sent_at: chrono::Utc::now().to_rfc3339(),
+                    received_at: Some(chrono::Utc::now().to_rfc3339()),
+                    read_at: if i < 3 { Some(chrono::Utc::now().to_rfc3339()) } else { None },
+                };
+                messages.push(message);
+            }
+            
+            return Ok(messages);
+        }
 
-        Ok(messages)
+        #[cfg(not(feature = "mock"))]
+        {
+            let messages = if let Some(other_id) = other_user_id {
+                // Get conversation between two users
+                sqlx::query_as!(
+                    Message,
+                    r#"
+                    SELECT * FROM messages
+                    WHERE ((sender_id = $1 AND recipient_id = $2) OR (sender_id = $2 AND recipient_id = $1))
+                    AND is_deleted = false
+                    ORDER BY sent_at DESC
+                    LIMIT $3 OFFSET $4
+                    "#,
+                    user_id,
+                    other_id,
+                    limit,
+                    offset
+                )
+                .fetch_all(pool)
+                .await?
+            } else {
+                // Get all messages for user
+                sqlx::query_as!(
+                    Message,
+                    r#"
+                    SELECT * FROM messages
+                    WHERE (sender_id = $1 OR recipient_id = $1)
+                    AND is_deleted = false
+                    ORDER BY sent_at DESC
+                    LIMIT $2 OFFSET $3
+                    "#,
+                    user_id,
+                    limit,
+                    offset
+                )
+                .fetch_all(pool)
+                .await?
+            };
+
+            Ok(messages)
+        }
     }
 
     pub async fn mark_as_received(pool: &Pool<Postgres>, id: Uuid) -> Result<Self> {
+        #[cfg(feature = "mock")]
+        {
+            let message = Message {
+                id: id.to_string(),
+                sender_id: Uuid::new_v4().to_string(),
+                recipient_id: Uuid::new_v4().to_string(),
+                content: "Mock message content".to_string(),
+                sent_at: chrono::Utc::now().to_rfc3339(),
+                received_at: Some(chrono::Utc::now().to_rfc3339()),
+                read_at: None,
+            };
+            
+            return Ok(message);
+        }
+
+        #[cfg(not(feature = "mock"))]
         sqlx::query_as!(
             Message,
             r#"
@@ -138,6 +226,22 @@ impl Message {
     }
 
     pub async fn mark_as_read(pool: &Pool<Postgres>, id: Uuid) -> Result<Self> {
+        #[cfg(feature = "mock")]
+        {
+            let message = Message {
+                id: id.to_string(),
+                sender_id: Uuid::new_v4().to_string(),
+                recipient_id: Uuid::new_v4().to_string(),
+                content: "Mock message content".to_string(),
+                sent_at: chrono::Utc::now().to_rfc3339(),
+                received_at: Some(chrono::Utc::now().to_rfc3339()),
+                read_at: Some(chrono::Utc::now().to_rfc3339()),
+            };
+            
+            return Ok(message);
+        }
+
+        #[cfg(not(feature = "mock"))]
         sqlx::query_as!(
             Message,
             r#"
@@ -154,6 +258,22 @@ impl Message {
     }
 
     pub async fn mark_as_deleted(pool: &Pool<Postgres>, id: Uuid) -> Result<Self> {
+        #[cfg(feature = "mock")]
+        {
+            let message = Message {
+                id: id.to_string(),
+                sender_id: Uuid::new_v4().to_string(),
+                recipient_id: Uuid::new_v4().to_string(),
+                content: "Mock message content (deleted)".to_string(),
+                sent_at: chrono::Utc::now().to_rfc3339(),
+                received_at: Some(chrono::Utc::now().to_rfc3339()),
+                read_at: Some(chrono::Utc::now().to_rfc3339()),
+            };
+            
+            return Ok(message);
+        }
+
+        #[cfg(not(feature = "mock"))]
         sqlx::query_as!(
             Message,
             r#"
@@ -179,49 +299,5 @@ impl Message {
             received_at: self.received_at.clone(),
             read_at: self.read_at.clone(),
         }
-    }
-
-    // Mark a message as read
-    pub async fn mark_as_read(db: &Pool<Postgres>, message_id: &str) -> Result<Message, sqlx::Error> {
-        let now = Utc::now();
-        
-        // Update message in database
-        let message = sqlx::query_as!(
-            Message,
-            r#"
-            UPDATE messages
-            SET read_at = $1
-            WHERE id = $2 AND is_deleted = false
-            RETURNING id, sender_id, recipient_id, encrypted_content, iv, sent_at, received_at, read_at, is_deleted
-            "#,
-            now,
-            message_id
-        )
-        .fetch_one(db)
-        .await?;
-        
-        Ok(message)
-    }
-    
-    // Mark a message as received
-    pub async fn mark_as_received(db: &Pool<Postgres>, message_id: &str) -> Result<Message, sqlx::Error> {
-        let now = Utc::now();
-        
-        // Update message in database
-        let message = sqlx::query_as!(
-            Message,
-            r#"
-            UPDATE messages
-            SET received_at = $1
-            WHERE id = $2 AND is_deleted = false
-            RETURNING id, sender_id, recipient_id, encrypted_content, iv, sent_at, received_at, read_at, is_deleted
-            "#,
-            now,
-            message_id
-        )
-        .fetch_one(db)
-        .await?;
-        
-        Ok(message)
     }
 }

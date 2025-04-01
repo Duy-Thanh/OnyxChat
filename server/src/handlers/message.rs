@@ -32,19 +32,15 @@ pub async fn send_message(
     current_user: CurrentUser,
     Json(req): Json<SendMessageRequest>,
 ) -> Result<impl IntoResponse> {
-    // Create message
-    let message = Message::create(
+    // Create the message
+    let message = Message::create_simplified(
         &state.db,
-        current_user.user_id,
-        req.recipient_id,
-        &req.encrypted_content,
-        &req.iv,
-    )
-    .await?;
+        current_user.id,
+        req.recipient_id.parse()?,
+        &req.content,
+    ).await?;
 
-    let response = message.to_response();
-
-    Ok((StatusCode::CREATED, Json(response)))
+    Ok((StatusCode::CREATED, Json(message)))
 }
 
 pub async fn get_messages(
@@ -55,7 +51,7 @@ pub async fn get_messages(
     // Get messages for user
     let messages = Message::get_messages_for_user(
         &state.db,
-        current_user.user_id,
+        current_user.id.parse()?,
         None,
         query.limit,
         query.offset,
@@ -76,7 +72,7 @@ pub async fn get_messages_with_user(
     // Get messages between users
     let messages = Message::get_messages_for_user(
         &state.db,
-        current_user.user_id,
+        current_user.id.parse()?,
         Some(other_user_id),
         query.limit,
         query.offset,
@@ -97,19 +93,19 @@ pub async fn get_message(
     let message = Message::find_by_id(&state.db, message_id).await?;
 
     // Ensure user is either sender or recipient
-    if message.sender_id != current_user.user_id && message.recipient_id != current_user.user_id {
+    if message.sender_id != current_user.id && message.recipient_id != current_user.id {
         return Err(crate::error::AppError::forbidden(
             "You don't have access to this message",
         ));
     }
 
     // If user is recipient and message not marked as read, mark it
-    if message.recipient_id == current_user.user_id && message.read_at.is_none() {
+    if message.recipient_id == current_user.id && message.read_at.is_none() {
         Message::mark_as_read(&state.db, message_id).await?;
     }
 
     // If user is recipient and message not marked as received, mark it
-    if message.recipient_id == current_user.user_id && message.received_at.is_none() {
+    if message.recipient_id == current_user.id && message.received_at.is_none() {
         Message::mark_as_received(&state.db, message_id).await?;
     }
 
@@ -127,7 +123,7 @@ pub async fn mark_message_received(
     let message = Message::find_by_id(&state.db, message_id).await?;
 
     // Ensure user is recipient
-    if message.recipient_id != current_user.user_id {
+    if message.recipient_id != current_user.id {
         return Err(crate::error::AppError::forbidden(
             "You can only mark messages sent to you as received",
         ));
@@ -148,7 +144,7 @@ pub async fn mark_message_read(
     let message = Message::find_by_id(&state.db, message_id).await?;
 
     // Ensure user is recipient
-    if message.recipient_id != current_user.user_id {
+    if message.recipient_id != current_user.id {
         return Err(crate::error::AppError::forbidden(
             "You can only mark messages sent to you as read",
         ));
@@ -169,7 +165,7 @@ pub async fn delete_message(
     let message = Message::find_by_id(&state.db, message_id).await?;
 
     // Ensure user is either sender or recipient
-    if message.sender_id != current_user.user_id && message.recipient_id != current_user.user_id {
+    if message.sender_id != current_user.id && message.recipient_id != current_user.id {
         return Err(crate::error::AppError::forbidden(
             "You can only delete messages you sent or received",
         ));

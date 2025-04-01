@@ -15,12 +15,13 @@ use tracing::{error, info};
 use uuid::Uuid;
 use tokio::{sync::mpsc, task::JoinHandle};
 use tokio::net::TcpStream;
+use futures::stream::{SplitSink, SplitStream};
 
 use crate::{
-    auth::CurrentUser,
     error::{AppError, Result},
     AppState,
     Message as DbMessage,
+    middleware::auth::CurrentUser,
 };
 
 // Maximum number of messages to keep in history

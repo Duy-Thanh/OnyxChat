@@ -6,8 +6,6 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::{fmt, result};
 
-use crate::auth::AuthError;
-
 // Error type for the application
 #[derive(Debug)]
 pub enum AppError {
@@ -17,19 +15,11 @@ pub enum AppError {
     Forbidden(String),
     Conflict(String),
     Internal(String),
-    Auth(AuthError),
+    Auth(crate::middleware::auth::AuthError),
 }
 
 // Custom result type
 pub type Result<T, E = AppError> = result::Result<T, E>;
-
-// Auth specific errors
-#[derive(Debug)]
-pub enum AuthError {
-    InvalidToken,
-    ExpiredToken,
-    InvalidPassword,
-}
 
 // JSON error response
 #[derive(Debug, Serialize, Deserialize)]
@@ -54,18 +44,6 @@ impl fmt::Display for AppError {
     }
 }
 
-// Implementation for displaying auth errors
-impl fmt::Display for AuthError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let message = match self {
-            AuthError::InvalidToken => "Invalid token",
-            AuthError::ExpiredToken => "Token has expired",
-            AuthError::InvalidPassword => "Invalid password",
-        };
-        write!(f, "{}", message)
-    }
-}
-
 // Implementation for converting errors to HTTP responses
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
@@ -76,13 +54,13 @@ impl IntoResponse for AppError {
             AppError::Forbidden(msg) => (StatusCode::FORBIDDEN, msg.clone()),
             AppError::Conflict(msg) => (StatusCode::CONFLICT, msg.clone()),
             AppError::Internal(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg.clone()),
-            AppError::Auth(AuthError::InvalidToken) => {
+            AppError::Auth(crate::middleware::auth::AuthError::InvalidToken) => {
                 (StatusCode::UNAUTHORIZED, "Invalid token".to_string())
             }
-            AppError::Auth(AuthError::ExpiredToken) => {
+            AppError::Auth(crate::middleware::auth::AuthError::ExpiredToken) => {
                 (StatusCode::UNAUTHORIZED, "Token has expired".to_string())
             }
-            AppError::Auth(AuthError::InvalidPassword) => {
+            AppError::Auth(crate::middleware::auth::AuthError::InvalidPassword) => {
                 (StatusCode::UNAUTHORIZED, "Invalid password".to_string())
             }
         };
@@ -121,10 +99,17 @@ impl AppError {
     pub fn internal(message: impl Into<String>) -> Self {
         AppError::Internal(message.into())
     }
+    
+    pub fn auth(message: impl Into<String>) -> Self {
+        AppError::Unauthorized(message.into())
+    }
+    
+    pub fn not_implemented(message: impl Into<String>) -> Self {
+        AppError::Internal(message.into())
+    }
 }
 
 impl std::error::Error for AppError {}
-impl std::error::Error for AuthError {}
 
 // Implement conversions from other error types
 impl From<sqlx::Error> for AppError {
@@ -146,9 +131,9 @@ impl From<jsonwebtoken::errors::Error> for AppError {
     fn from(err: jsonwebtoken::errors::Error) -> Self {
         match err.kind() {
             jsonwebtoken::errors::ErrorKind::ExpiredSignature => {
-                AppError::Auth(AuthError::ExpiredToken)
+                AppError::Auth(crate::middleware::auth::AuthError::ExpiredToken)
             }
-            jsonwebtoken::errors::ErrorKind::InvalidToken => AppError::Auth(AuthError::InvalidToken),
+            jsonwebtoken::errors::ErrorKind::InvalidToken => AppError::Auth(crate::middleware::auth::AuthError::InvalidToken),
             _ => AppError::unauthorized(format!("JWT error: {}", err)),
         }
     }
@@ -169,5 +154,11 @@ impl From<std::io::Error> for AppError {
 impl From<validator::ValidationErrors> for AppError {
     fn from(errors: validator::ValidationErrors) -> Self {
         AppError::bad_request(format!("Validation error: {}", errors))
+    }
+}
+
+impl From<uuid::Error> for AppError {
+    fn from(err: uuid::Error) -> Self {
+        AppError::bad_request(format!("Invalid UUID: {}", err))
     }
 } 
