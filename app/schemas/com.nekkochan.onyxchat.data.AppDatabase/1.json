@@ -2,15 +2,15 @@
   "formatVersion": 1,
   "database": {
     "version": 1,
-    "identityHash": "94cd9ad5924ea909907a0e3b6e7b10c9",
+    "identityHash": "84198959fc6019b87c30acb5c41eaf28",
     "entities": [
       {
         "tableName": "users",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`onionAddress` TEXT NOT NULL, `displayName` TEXT, `profilePicture` TEXT, `publicKey` TEXT, `lastSeen` INTEGER NOT NULL, `isCurrentUser` INTEGER NOT NULL, PRIMARY KEY(`onionAddress`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`address` TEXT NOT NULL, `displayName` TEXT, `profilePicture` TEXT, `publicKey` TEXT, `lastSeen` INTEGER NOT NULL, `isCurrentUser` INTEGER NOT NULL, PRIMARY KEY(`address`))",
         "fields": [
           {
-            "fieldPath": "onionAddress",
-            "columnName": "onionAddress",
+            "fieldPath": "address",
+            "columnName": "address",
             "affinity": "TEXT",
             "notNull": true
           },
@@ -48,7 +48,7 @@
         "primaryKey": {
           "autoGenerate": false,
           "columnNames": [
-            "onionAddress"
+            "address"
           ]
         },
         "indices": [],
@@ -188,7 +188,7 @@
       },
       {
         "tableName": "contacts",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `ownerAddress` TEXT NOT NULL, `contactAddress` TEXT NOT NULL, `nickName` TEXT, `isBlocked` INTEGER NOT NULL, `isVerified` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `lastInteractionTime` INTEGER NOT NULL, FOREIGN KEY(`contactAddress`) REFERENCES `users`(`onionAddress`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`ownerAddress`) REFERENCES `users`(`onionAddress`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `ownerAddress` TEXT NOT NULL, `contactAddress` TEXT NOT NULL, `nickName` TEXT, `isBlocked` INTEGER NOT NULL, `isVerified` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `lastInteractionTime` INTEGER NOT NULL, FOREIGN KEY(`contactAddress`) REFERENCES `users`(`address`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`ownerAddress`) REFERENCES `users`(`address`) ON UPDATE NO ACTION ON DELETE CASCADE )",
         "fields": [
           {
             "fieldPath": "id",
@@ -274,7 +274,7 @@
               "contactAddress"
             ],
             "referencedColumns": [
-              "onionAddress"
+              "address"
             ]
           },
           {
@@ -285,7 +285,7 @@
               "ownerAddress"
             ],
             "referencedColumns": [
-              "onionAddress"
+              "address"
             ]
           }
         ]
@@ -294,7 +294,7 @@
     "views": [],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '94cd9ad5924ea909907a0e3b6e7b10c9')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '84198959fc6019b87c30acb5c41eaf28')"
     ]
   }
 }

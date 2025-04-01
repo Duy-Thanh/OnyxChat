@@ -7,7 +7,6 @@ import androidx.annotation.NonNull;
 import androidx.lifecycle.AndroidViewModel;
 import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
-import androidx.lifecycle.Transformations;
 
 import com.nekkochan.onyxchat.crypto.PQCProvider;
 import com.nekkochan.onyxchat.data.Contact;
@@ -16,7 +15,6 @@ import com.nekkochan.onyxchat.data.SafeHelperFactory;
 import com.nekkochan.onyxchat.data.User;
 
 import java.security.KeyPair;
-import java.security.PublicKey;
 import java.util.List;
 
 /**
@@ -27,9 +25,9 @@ public class MainViewModel extends AndroidViewModel {
     private static final String TAG = "MainViewModel";
     private final Repository repository;
     
-    // Tor connection state
-    private final MutableLiveData<Boolean> isTorConnected = new MutableLiveData<>(false);
-    private final MutableLiveData<String> onionAddress = new MutableLiveData<>();
+    // Network connection state
+    private final MutableLiveData<Boolean> isConnected = new MutableLiveData<>(false);
+    private final MutableLiveData<String> userAddress = new MutableLiveData<>();
     
     // Current UI state
     private final MutableLiveData<Boolean> isLoading = new MutableLiveData<>(false);
@@ -58,7 +56,7 @@ public class MainViewModel extends AndroidViewModel {
         repository.getCurrentUser().observeForever(user -> {
             if (user != null) {
                 currentUser = user;
-                onionAddress.setValue(user.getOnionAddress());
+                userAddress.setValue(user.getAddress());
             } else {
                 // No user exists yet, we'll need to create one
                 createNewUser();
@@ -81,10 +79,9 @@ public class MainViewModel extends AndroidViewModel {
             String encodedPublicKey = PQCProvider.encodePublicKey(keyPair.getPublic());
             String encodedPrivateKey = PQCProvider.encodePrivateKey(keyPair.getPrivate());
             
-            // Create new user with default name and onion address
-            // Note: In a real app, we would generate actual onion addresses
+            // Create new user with default name and address
             User newUser = new User(
-                    "securecommuser" + System.currentTimeMillis() + ".onion",
+                    "user" + System.currentTimeMillis() + "@onyxchat.com",
                     "Me",
                     encodedPublicKey
             );
@@ -94,9 +91,9 @@ public class MainViewModel extends AndroidViewModel {
             repository.insertUser(newUser);
             
             currentUser = newUser;
-            onionAddress.setValue(newUser.getOnionAddress());
+            userAddress.setValue(newUser.getAddress());
             
-            Log.d(TAG, "Created new user with onion address: " + newUser.getOnionAddress());
+            Log.d(TAG, "Created new user with address: " + newUser.getAddress());
         } catch (Exception e) {
             Log.e(TAG, "Error creating user: " + e.getMessage(), e);
             errorMessage.setValue("Failed to create user: " + e.getMessage());
@@ -147,7 +144,7 @@ public class MainViewModel extends AndroidViewModel {
         }
         
         if (activeContacts == null) {
-            activeContacts = repository.getActiveContacts(currentUser.getOnionAddress());
+            activeContacts = repository.getActiveContacts(currentUser.getAddress());
         }
         
         return activeContacts;
@@ -155,7 +152,7 @@ public class MainViewModel extends AndroidViewModel {
     
     /**
      * Add a new contact
-     * @param contactAddress The onion address of the contact
+     * @param contactAddress The address of the contact
      * @param nickname Optional nickname for the contact
      */
     public void addContact(String contactAddress, String nickname) {
@@ -167,7 +164,7 @@ public class MainViewModel extends AndroidViewModel {
         try {
             // Create new contact
             Contact contact = new Contact(
-                    currentUser.getOnionAddress(),
+                    currentUser.getAddress(),
                     contactAddress,
                     nickname
             );
@@ -208,35 +205,35 @@ public class MainViewModel extends AndroidViewModel {
     }
 
     /**
-     * Get the current Tor connection state
+     * Get the current network connection state
      * @return LiveData boolean of connection state
      */
-    public LiveData<Boolean> isTorConnected() {
-        return isTorConnected;
+    public LiveData<Boolean> isConnected() {
+        return isConnected;
     }
 
     /**
-     * Set the Tor connection state
-     * @param connected Whether Tor is connected
+     * Set the network connection state
+     * @param connected Whether network is connected
      */
-    public void setTorConnected(boolean connected) {
-        isTorConnected.setValue(connected);
+    public void setConnected(boolean connected) {
+        isConnected.setValue(connected);
     }
 
     /**
-     * Get the current onion address
-     * @return LiveData String of onion address
+     * Get the current user address
+     * @return LiveData String of user address
      */
-    public LiveData<String> getOnionAddress() {
-        return onionAddress;
+    public LiveData<String> getUserAddress() {
+        return userAddress;
     }
 
     /**
-     * Set the onion address
-     * @param address The onion address
+     * Set the user address
+     * @param address The user address
      */
-    public void setOnionAddress(String address) {
-        onionAddress.setValue(address);
+    public void setUserAddress(String address) {
+        userAddress.setValue(address);
     }
 
     /**
@@ -249,7 +246,7 @@ public class MainViewModel extends AndroidViewModel {
 
     /**
      * Set the loading state
-     * @param loading Whether UI is in loading state
+     * @param loading Whether the app is loading
      */
     public void setLoading(boolean loading) {
         isLoading.setValue(loading);
@@ -280,7 +277,7 @@ public class MainViewModel extends AndroidViewModel {
 
     /**
      * Get the repository instance
-     * @return Repository
+     * @return The repository
      */
     public Repository getRepository() {
         return repository;

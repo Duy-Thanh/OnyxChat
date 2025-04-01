@@ -2,14 +2,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Internet permissions required for Tor and networking -->
+    <!-- Internet permissions required for networking -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
         android:allowBackup="true"
@@ -21,36 +16,29 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.OnyxChat"
         tools:targetApi="31">
+        
+        <!-- Welcome Activity as launcher -->
         <activity
-            android:name=".MainActivity"
-            android:exported="true">
+            android:name=".ui.WelcomeActivity"
+            android:exported="true"
+            android:theme="@style/Theme.OnyxChat.NoActionBar">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-
-        <!-- Messenger service for handling Tor communication -->
-        <service
-            android:name=".tor.MessengerService"
-            android:enabled="true"
+        
+        <!-- Main Activity -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="false" />
+        
+        <!-- Settings Activity -->
+        <activity
+            android:name=".ui.SettingsActivity"
             android:exported="false"
-            android:foregroundServiceType="specialUse">
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Secure messaging over Tor network" />
-        </service>
-
-        <!-- Broadcast receiver for boot completion -->
-        <receiver
-            android:name=".tor.BootReceiver"
-            android:enabled="true"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-            </intent-filter>
-        </receiver>
+            android:parentActivityName=".MainActivity" />
+        
     </application>
 
 </manifest>

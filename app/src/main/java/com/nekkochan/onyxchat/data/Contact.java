@@ -14,13 +14,13 @@ import androidx.room.PrimaryKey;
         foreignKeys = {
                 @ForeignKey(
                         entity = User.class,
-                        parentColumns = "onionAddress",
+                        parentColumns = "address",
                         childColumns = "contactAddress",
                         onDelete = ForeignKey.CASCADE
                 ),
                 @ForeignKey(
                         entity = User.class,
-                        parentColumns = "onionAddress",
+                        parentColumns = "address",
                         childColumns = "ownerAddress",
                         onDelete = ForeignKey.CASCADE
                 )
@@ -36,10 +36,10 @@ public class Contact {
     private long id;
     
     @NonNull
-    private String ownerAddress; // The onion address of the user who owns this contact
+    private String ownerAddress; // The address of the user who owns this contact
     
     @NonNull
-    private String contactAddress; // The onion address of the contact
+    private String contactAddress; // The address of the contact
     
     private String nickName; // Optional nickname for the contact
     

@@ -6,14 +6,14 @@ import androidx.room.Ignore;
 import androidx.room.PrimaryKey;
 
 /**
- * Entity representing a user in the SecureComm app
+ * Entity representing a user in the OnyxChat app
  */
 @Entity(tableName = "users")
 public class User {
     
     @PrimaryKey
     @NonNull
-    private String onionAddress; // Tor onion address used as unique identifier
+    private String address; // User address used as unique identifier
     
     private String displayName;
     private String profilePicture; // Path to profile image or base64 encoded image
@@ -26,20 +26,20 @@ public class User {
     }
 
     @Ignore
-    public User(@NonNull String onionAddress, String displayName, String publicKey) {
-        this.onionAddress = onionAddress;
+    public User(@NonNull String address, String displayName, String publicKey) {
+        this.address = address;
         this.displayName = displayName;
         this.publicKey = publicKey;
         this.lastSeen = System.currentTimeMillis();
     }
 
     @NonNull
-    public String getOnionAddress() {
-        return onionAddress;
+    public String getAddress() {
+        return address;
     }
 
-    public void setOnionAddress(@NonNull String onionAddress) {
-        this.onionAddress = onionAddress;
+    public void setAddress(@NonNull String address) {
+        this.address = address;
     }
 
     public String getDisplayName() {
