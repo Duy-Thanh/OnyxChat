@@ -56,5 +56,38 @@ curl -s $SERVER_URL/api/messages/$USER_ID \
   -H "Authorization: Bearer $TOKEN"
 echo -e "\n"
 
+# Test E2EE functionality
+echo "8. Testing E2EE functionality:"
+
+# Register a user key
+echo "8.1. Registering a user key:"
+USER_KEY_RESPONSE=$(curl -s -X POST $SERVER_URL/api/crypto/keys \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"public_key": "test_public_key_value"}')
+
+echo $USER_KEY_RESPONSE
+echo -e "\n"
+
+# Get user keys
+echo "8.2. Getting user keys:"
+curl -s $SERVER_URL/api/crypto/keys/$USER_ID
+echo -e "\n"
+
+# Register a prekey
+echo "8.3. Registering a prekey:"
+PREKEY_RESPONSE=$(curl -s -X POST $SERVER_URL/api/crypto/prekeys \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"key_id": "prekey1", "public_key": "test_prekey_value"}')
+
+echo $PREKEY_RESPONSE
+echo -e "\n"
+
+# Get a prekey bundle
+echo "8.4. Getting a prekey bundle:"
+curl -s $SERVER_URL/api/crypto/prekeys/bundle/$USER_ID
+echo -e "\n"
+
 echo "---------------------------------"
 echo "End of test." 
