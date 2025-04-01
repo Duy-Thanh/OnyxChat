@@ -14,6 +14,10 @@ path = "src/main.rs"
 name = "echo-server"
 path = "src/bin/echo-server.rs"
 
+[[bin]]
+name = "ws-demo"
+path = "src/bin/ws-demo.rs"
+
 [dependencies]
 # Web framework
 axum = { version = "0.6.20", features = ["headers", "json", "ws"] }
