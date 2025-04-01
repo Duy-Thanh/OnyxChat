@@ -7,55 +7,10 @@ description = "Secure messaging server with end-to-end encryption"
 
 [dependencies]
 # Web framework
-axum = { version = "0.6.20", features = ["headers", "json", "multipart"] }
-axum-extra = { version = "0.7.7", features = ["typed-header"] }
-tower = { version = "0.4", features = ["limit", "util"] }
-tower-http = { version = "0.4", features = ["cors", "trace", "fs", "catch-panic", "timeout", "compression-full"] }
-hyper = { version = "0.14.27", features = ["full"] }
+axum = "0.6.20"
+tower-http = { version = "0.4.0", features = ["cors"] }
 tokio = { version = "1.33.0", features = ["full"] }
-
-# Database
-sqlx = { version = "0.7.2", features = ["runtime-tokio-rustls", "postgres", "uuid", "time", "json", "macros"] }
-
-# Encryption
-x25519-dalek = "2.0.0"
-ed25519-dalek = "2.0.0"
-chacha20poly1305 = "0.10.1"
-hkdf = "0.12.3"
-sha2 = "0.10.8"
-rand = "0.8.5"
-aes-gcm = "0.10.3"
-
-# Authentication
-jsonwebtoken = "9.1.0"
-argon2 = "0.5.2"
-password-hash = "0.5.0"
-
-# Serialization/Deserialization
-serde = { version = "1.0.192", features = ["derive"] }
-serde_json = "1.0.108"
-
-# Error handling
-thiserror = "1.0.50"
-anyhow = "1.0.75"
-color-eyre = "0.6.2"
-
-# Validation
-validator = { version = "0.16.1", features = ["derive"] }
 
 # Logging
 tracing = "0.1.40"
-tracing-subscriber = { version = "0.3.17", features = ["env-filter", "json"] }
-uuid = { version = "1.5.0", features = ["v4", "serde"] }
-
-# Configuration
-config = "0.13.3"
-dotenv = "0.15.0"
-dotenvy = "0.15.7"
-
-# Utilities
-chrono = { version = "0.4.31", features = ["serde"] }
-futures = "0.3.29"
-bytes = "1.5.0"
-base64 = "0.21.5"
-async-trait = "0.1.74" 
+tracing-subscriber = "0.3.17"
