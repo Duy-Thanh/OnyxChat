@@ -28,7 +28,8 @@ use crate::models::{
     UserCreatedResponse, MessageResponse, AuthService
 };
 use crate::middleware::auth::CurrentUser;
-use crate::error::{AppError, AuthError, Result};
+use crate::error::{AppError, Result};
+use crate::middleware::auth::AuthError;
 use crate::ws::WebSocketManager;
 
 // Application state
@@ -96,7 +97,7 @@ async fn main() -> Result<()> {
         .with_state(app_state);
 
     // Start server
-    let addr = SocketAddr::from(([0, 0, 0, 0], 8080));
+    let addr = SocketAddr::from(([0, 0, 0, 0], 8081));
     info!("Starting server on {}", addr);
     
     axum::Server::bind(&addr)
@@ -164,7 +165,7 @@ async fn login(
     let password_verified = AuthService::verify_password(&payload.password, "dummy_hash")?;
 
     if !password_verified {
-        return Err(AppError::Auth(AuthError::InvalidPassword));
+        return Err(AppError::Auth(crate::middleware::auth::AuthError::InvalidPassword));
     }
 
     // Generate JWT token
@@ -175,7 +176,8 @@ async fn login(
     Ok((
         StatusCode::OK,
         Json(AuthResponse {
-            access_token: token,
+            token,
+            refresh_token: "dummy_refresh_token".to_string(),
             token_type: "Bearer".to_string(),
             expires_in: 86400, // 24 hours in seconds
         }),
