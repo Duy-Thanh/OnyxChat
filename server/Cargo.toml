@@ -7,7 +7,7 @@ description = "Secure messaging server with end-to-end encryption"
 
 [dependencies]
 # Web framework
-axum = { version = "0.6.20", features = ["headers", "json"] }
+axum = { version = "0.6.20", features = ["headers", "json", "ws"] }
 tower-http = { version = "0.4.0", features = ["cors"] }
 tokio = { version = "1.33.0", features = ["full"] }
 
@@ -22,3 +22,12 @@ chrono = { version = "0.4.31", features = ["serde"] }
 # Logging
 tracing = "0.1.40"
 tracing-subscriber = "0.3.17"
+
+# Authentication & security
+jsonwebtoken = "8.3.0"
+argon2 = "0.5.2"
+rand = "0.8.5"
+once_cell = "1.18.0"
+
+# WebSockets
+futures = "0.3.28"
