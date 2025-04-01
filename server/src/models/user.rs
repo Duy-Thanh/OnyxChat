@@ -6,6 +6,16 @@ use validator::Validate;
 
 use crate::error::{AppError, Result};
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct User {
+    pub id: String,
+    pub username: String,
+    pub email: String,
+    #[serde(skip_serializing)]
+    pub password_hash: String,
+    pub created_at: String,
+}
+
 #[derive(Debug, Serialize, Deserialize, FromRow)]
 pub struct User {
     pub id: Uuid,
@@ -31,7 +41,7 @@ pub struct UserProfile {
     pub last_active_at: Option<DateTime<Utc>>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Validate)]
 pub struct CreateUserRequest {
     #[validate(length(min = 3, max = 50))]
     pub username: String,
@@ -39,23 +49,24 @@ pub struct CreateUserRequest {
     #[validate(email)]
     pub email: String,
     
-    #[validate(length(min = 8))]
+    #[validate(length(min = 8, max = 100))]
     pub password: String,
-    
-    pub display_name: Option<String>,
-    pub bio: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Validate)]
 pub struct UpdateUserRequest {
     #[validate(email)]
     pub email: Option<String>,
     
-    pub display_name: Option<String>,
-    pub bio: Option<String>,
-    
-    #[validate(length(min = 8))]
+    #[validate(length(min = 8, max = 100))]
     pub password: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct UserCreatedResponse {
+    pub id: String,
+    pub username: String,
+    pub email: String,
 }
 
 impl User {

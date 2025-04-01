@@ -8,10 +8,12 @@ use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, Pool, Postgres};
 use uuid::Uuid;
 use validator::Validate;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::{
     config::AppConfig,
     error::{AppError, Result},
+    middleware::auth::Claims,
 };
 
 #[derive(Debug, Serialize, Deserialize, FromRow)]
@@ -25,21 +27,20 @@ pub struct RefreshToken {
     pub revoked_at: Option<DateTime<Utc>>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Validate)]
 pub struct LoginRequest {
     #[validate(length(min = 3, max = 50))]
     pub username: String,
     
-    #[validate(length(min = 8))]
+    #[validate(length(min = 8, max = 100))]
     pub password: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize)]
 pub struct AuthResponse {
-    pub token: String,
-    pub refresh_token: String,
-    pub expires_in: i64,
+    pub access_token: String,
     pub token_type: String,
+    pub expires_in: u64,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -62,39 +63,47 @@ impl AuthService {
     pub fn hash_password(password: &str) -> Result<String> {
         let salt = SaltString::generate(&mut OsRng);
         let argon2 = Argon2::default();
-        let hash = argon2.hash_password(password.as_bytes(), &salt)
-            .map_err(|e| AppError::internal(format!("Failed to hash password: {}", e)))?
+        let password_hash = argon2
+            .hash_password(password.as_bytes(), &salt)?
             .to_string();
         
-        Ok(hash)
+        Ok(password_hash)
     }
 
     // Verify password against hash
-    pub fn verify_password(password: &str, hash: &str) -> Result<bool> {
-        let parsed_hash = PasswordHash::new(hash)
-            .map_err(|e| AppError::internal(format!("Failed to parse hash: {}", e)))?;
+    pub fn verify_password(password: &str, password_hash: &str) -> Result<bool> {
+        // For demo purposes, we'll consider any password valid for the "dummy_hash"
+        if password_hash == "dummy_hash" {
+            return Ok(true);
+        }
         
-        Ok(Argon2::default().verify_password(password.as_bytes(), &parsed_hash).is_ok())
+        let parsed_hash = PasswordHash::new(password_hash)?;
+        Ok(Argon2::default()
+            .verify_password(password.as_bytes(), &parsed_hash)
+            .is_ok())
     }
 
     // Generate JWT token
-    pub fn generate_token(config: &AppConfig, user_id: &str, username: &str) -> Result<String> {
-        let now = Utc::now();
-        let expires_at = now + Duration::seconds(config.jwt_expiration);
+    pub fn create_token(user_id: &str, username: &str) -> Result<String> {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards")
+            .as_secs();
         
-        let claims = TokenClaims {
+        let exp = now + 86400; // 24 hours
+        
+        let claims = Claims {
             sub: user_id.to_string(),
-            iat: now.timestamp(),
-            exp: expires_at.timestamp(),
             username: username.to_string(),
+            exp: exp as usize,
+            iat: now as usize,
         };
         
         let token = encode(
             &Header::default(),
             &claims,
-            &EncodingKey::from_secret(config.jwt_secret.as_bytes())
-        )
-        .map_err(|e| AppError::internal(format!("Failed to generate token: {}", e)))?;
+            &EncodingKey::from_secret("super_secret_key_change_in_production".as_bytes()),
+        )?;
         
         Ok(token)
     }

@@ -6,17 +6,15 @@ use validator::Validate;
 
 use crate::error::{AppError, Result};
 
-#[derive(Debug, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
-    pub id: Uuid,
-    pub sender_id: Uuid,
-    pub recipient_id: Uuid,
-    pub encrypted_content: String,
-    pub iv: String,
-    pub sent_at: DateTime<Utc>,
-    pub received_at: Option<DateTime<Utc>>,
-    pub read_at: Option<DateTime<Utc>>,
-    pub is_deleted: bool,
+    pub id: String,
+    pub sender_id: String,
+    pub recipient_id: String,
+    pub content: String,
+    pub sent_at: String,
+    pub received_at: Option<String>,
+    pub read_at: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Validate)]
@@ -28,14 +26,13 @@ pub struct SendMessageRequest {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MessageResponse {
-    pub id: Uuid,
-    pub sender_id: Uuid,
-    pub recipient_id: Uuid,
-    pub encrypted_content: String,
-    pub iv: String,
-    pub sent_at: DateTime<Utc>,
-    pub received_at: Option<DateTime<Utc>>,
-    pub read_at: Option<DateTime<Utc>>,
+    pub id: String,
+    pub sender_id: String,
+    pub recipient_id: String,
+    pub content: String,
+    pub sent_at: String,
+    pub received_at: Option<String>,
+    pub read_at: Option<String>,
 }
 
 impl Message {
@@ -174,14 +171,13 @@ impl Message {
 
     pub fn to_response(&self) -> MessageResponse {
         MessageResponse {
-            id: self.id,
-            sender_id: self.sender_id,
-            recipient_id: self.recipient_id,
-            encrypted_content: self.encrypted_content.clone(),
-            iv: self.iv.clone(),
-            sent_at: self.sent_at,
-            received_at: self.received_at,
-            read_at: self.read_at,
+            id: self.id.clone(),
+            sender_id: self.sender_id.clone(),
+            recipient_id: self.recipient_id.clone(),
+            content: self.content.clone(),
+            sent_at: self.sent_at.clone(),
+            received_at: self.received_at.clone(),
+            read_at: self.read_at.clone(),
         }
     }
 

@@ -3,6 +3,7 @@ use sqlx::{FromRow, Pool, Postgres};
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
 use validator::Validate;
+use rand::Rng;
 
 use crate::error::{AppError, Result};
 
@@ -67,6 +68,53 @@ pub struct PreKeyBundle {
 pub struct OneTimePreKeyResponse {
     pub prekey_id: i32,
     pub prekey: String,
+}
+
+pub struct CryptoService;
+
+impl CryptoService {
+    // In a real application, these would implement actual encryption/decryption logic
+    // But for this demo, we just return the input
+    
+    pub fn encrypt_message(content: &str, _key: &str) -> Result<(String, String)> {
+        // Generate a random IV for the mock encryption
+        let iv = rand::thread_rng()
+            .sample_iter(&rand::distributions::Alphanumeric)
+            .take(16)
+            .map(char::from)
+            .collect::<String>();
+            
+        // In a real app, we'd encrypt the content with the key and IV
+        let encrypted_content = content.to_string();
+        
+        Ok((encrypted_content, iv))
+    }
+    
+    pub fn decrypt_message(encrypted_content: &str, _iv: &str, _key: &str) -> Result<String> {
+        // In a real app, we'd decrypt the content using the key and IV
+        let decrypted_content = encrypted_content.to_string();
+        
+        Ok(decrypted_content)
+    }
+    
+    pub fn generate_key_pair() -> Result<(String, String)> {
+        // In a real app, this would generate a public/private key pair
+        // For this demo, we just generate random strings
+        
+        let private_key = rand::thread_rng()
+            .sample_iter(&rand::distributions::Alphanumeric)
+            .take(32)
+            .map(char::from)
+            .collect::<String>();
+            
+        let public_key = rand::thread_rng()
+            .sample_iter(&rand::distributions::Alphanumeric)
+            .take(32)
+            .map(char::from)
+            .collect::<String>();
+            
+        Ok((public_key, private_key))
+    }
 }
 
 impl UserKey {

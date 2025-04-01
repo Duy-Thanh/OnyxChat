@@ -4,56 +4,90 @@ use axum::{
     async_trait,
     extract::{FromRef, FromRequestParts, State},
     http::{request::Parts, StatusCode},
+    response::{IntoResponse, Response},
 };
 use axum_extra::{
     headers::{authorization::Bearer, Authorization},
     TypedHeader,
 };
 use uuid::Uuid;
+use jsonwebtoken::{decode, DecodingKey, Validation};
+use serde::{Deserialize, Serialize};
 
 use crate::{
     error::AppError,
     models::{auth::AuthService, AppState},
+    config::AppConfig,
 };
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Claims {
+    pub sub: String,       // Subject (user ID)
+    pub username: String,  // Username
+    pub exp: usize,        // Expiration time
+    pub iat: usize,        // Issued at
+}
 
 #[derive(Debug, Clone)]
 pub struct CurrentUser {
-    pub user_id: Uuid,
+    pub id: String,
     pub username: String,
 }
 
 #[async_trait]
 impl<S> FromRequestParts<S> for CurrentUser
 where
-    AppState: FromRef<S>,
     S: Send + Sync,
 {
-    type Rejection = AppError;
+    type Rejection = Response;
 
-    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
         // Extract the token from the Authorization header
-        let TypedHeader(Authorization(bearer)) =
-            TypedHeader::<Authorization<Bearer>>::from_request_parts(parts, state)
+        let TypedHeader(Authorization(bearer)) = 
+            TypedHeader::<Authorization<Bearer>>::from_request_parts(parts, _state)
                 .await
-                .map_err(|_| AppError::auth("Missing authorization header"))?;
+                .map_err(|_| {
+                    let json = serde_json::json!({
+                        "status": "error",
+                        "message": "Missing or invalid authorization header"
+                    });
+                    (StatusCode::UNAUTHORIZED, serde_json::to_string(&json).unwrap()).into_response()
+                })?;
 
-        // Extract the AppState
-        let app_state = AppState::from_ref(state);
+        // Decode and validate the token
+        let token_data = decode::<Claims>(
+            bearer.token(),
+            &DecodingKey::from_secret("super_secret_key_change_in_production".as_bytes()),
+            &Validation::default(),
+        )
+        .map_err(|_| {
+            let json = serde_json::json!({
+                "status": "error",
+                "message": "Invalid token"
+            });
+            (StatusCode::UNAUTHORIZED, serde_json::to_string(&json).unwrap()).into_response()
+        })?;
 
-        // Validate the token
-        let claims = AuthService::validate_token(&app_state.config, bearer.token())?;
+        // Extract user information
+        let user = CurrentUser {
+            id: token_data.claims.sub,
+            username: token_data.claims.username,
+        };
 
-        // Extract user_id from the "sub" field
-        let user_id = claims
-            .sub
-            .parse::<Uuid>()
-            .map_err(|_| AppError::auth("Invalid user ID in token"))?;
-
-        Ok(CurrentUser {
-            user_id,
-            username: claims.username,
-        })
+        Ok(user)
     }
+}
+
+// Convenience function to check if a token is valid
+pub fn validate_token(token: &str) -> Result<Claims, AppError> {
+    let token_data = decode::<Claims>(
+        token,
+        &DecodingKey::from_secret("super_secret_key_change_in_production".as_bytes()), 
+        &Validation::default(),
+    )
+    .map_err(|_| AppError::unauthorized("Invalid token"))?;
+
+    Ok(token_data.claims)
 }
 
 // Optional version that doesn't require authentication

@@ -13,6 +13,8 @@ use std::{
 use tokio::sync::broadcast;
 use tracing::{error, info};
 use uuid::Uuid;
+use tokio::{sync::mpsc, task::JoinHandle};
+use tokio::net::TcpStream;
 
 use crate::{
     auth::CurrentUser,
@@ -51,128 +53,91 @@ type ActiveConnections = Arc<Mutex<HashMap<String, broadcast::Sender<String>>>>;
 // Message history by user ID
 type MessageHistory = Arc<RwLock<HashMap<String, Vec<String>>>>;
 
-// WebSocket manager
-#[derive(Clone)]
+// WebSocket message manager to track active connections
 pub struct WebSocketManager {
-    clients: ConnectedClients,
-    connections: ActiveConnections,
-    history: MessageHistory,
+    connections: Arc<RwLock<HashMap<String, HashMap<String, mpsc::UnboundedSender<Message>>>>>,
 }
 
 impl WebSocketManager {
     pub fn new() -> Self {
         WebSocketManager {
-            clients: Arc::new(RwLock::new(HashMap::new())),
-            connections: Arc::new(Mutex::new(HashMap::new())),
-            history: Arc::new(RwLock::new(HashMap::new())),
+            connections: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
     // Add a connection for a user
-    pub fn add_connection(&self, user_id: &str, connection_id: &str, tx: broadcast::Sender<String>) {
-        // Add to active connections
-        {
-            let mut connections = self.connections.lock().unwrap();
-            connections.insert(connection_id.to_string(), tx.clone());
-        }
-
-        // Add to connected clients
-        {
-            let mut clients = self.clients.write().unwrap();
-            let user_connections = clients.entry(user_id.to_string()).or_insert_with(HashSet::new);
-            user_connections.insert(connection_id.to_string());
-        }
-
-        info!("User {} connected with connection {}", user_id, connection_id);
+    pub fn add_connection(&self, user_id: &str, conn_id: &str, sender: mpsc::UnboundedSender<Message>) {
+        let mut write_guard = self.connections.write().unwrap();
+        let user_connections = write_guard
+            .entry(user_id.to_string())
+            .or_insert_with(HashMap::new);
+        user_connections.insert(conn_id.to_string(), sender);
     }
 
     // Remove a connection
-    pub fn remove_connection(&self, user_id: &str, connection_id: &str) {
-        // Remove from active connections
-        {
-            let mut connections = self.connections.lock().unwrap();
-            connections.remove(connection_id);
-        }
-
-        // Remove from connected clients
-        {
-            let mut clients = self.clients.write().unwrap();
-            if let Some(user_connections) = clients.get_mut(user_id) {
-                user_connections.remove(connection_id);
-                if user_connections.is_empty() {
-                    clients.remove(user_id);
-                }
-            }
-        }
-
-        info!("User {} disconnected with connection {}", user_id, connection_id);
-    }
-
-    // Broadcast a message to all connections of a user
-    pub fn broadcast_to_user(&self, user_id: &str, message: String) {
-        // Get all connection IDs for the user
-        let connection_ids = {
-            let clients = self.clients.read().unwrap();
-            match clients.get(user_id) {
-                Some(connections) => connections.clone(),
-                None => return,
-            }
-        };
-
-        // Add to message history
-        self.add_to_history(user_id, message.clone());
-
-        // Send to all connections
-        let connections = self.connections.lock().unwrap();
-        for connection_id in connection_ids {
-            if let Some(tx) = connections.get(&connection_id) {
-                if let Err(err) = tx.send(message.clone()) {
-                    error!("Failed to send message to {}: {}", connection_id, err);
-                }
+    pub fn remove_connection(&self, user_id: &str, conn_id: &str) {
+        let mut write_guard = self.connections.write().unwrap();
+        if let Some(user_connections) = write_guard.get_mut(user_id) {
+            user_connections.remove(conn_id);
+            if user_connections.is_empty() {
+                write_guard.remove(user_id);
             }
         }
     }
 
-    // Check if user is online
+    // Check if a user is online
     pub fn is_user_online(&self, user_id: &str) -> bool {
-        let clients = self.clients.read().unwrap();
-        clients.contains_key(user_id)
+        let read_guard = self.connections.read().unwrap();
+        read_guard.contains_key(user_id)
     }
 
-    // Add message to history
-    fn add_to_history(&self, user_id: &str, message: String) {
-        let mut history = self.history.write().unwrap();
-        let user_history = history.entry(user_id.to_string()).or_insert_with(Vec::new);
+    // Send a message to a specific user
+    pub fn broadcast_to_user(&self, user_id: &str, message: String) -> usize {
+        let read_guard = self.connections.read().unwrap();
         
-        user_history.push(message);
-        
-        // Trim history if too long
-        if user_history.len() > MAX_MESSAGES_HISTORY {
-            *user_history = user_history.split_off(user_history.len() - MAX_MESSAGES_HISTORY);
+        let mut sent_count = 0;
+        if let Some(user_connections) = read_guard.get(user_id) {
+            for sender in user_connections.values() {
+                if sender.send(Message::Text(message.clone())).is_ok() {
+                    sent_count += 1;
+                }
+            }
         }
-    }
-
-    // Get message history for a user
-    pub fn get_history(&self, user_id: &str) -> Vec<String> {
-        let history = self.history.read().unwrap();
-        match history.get(user_id) {
-            Some(messages) => messages.clone(),
-            None => Vec::new(),
-        }
-    }
-
-    // Broadcast user status to all connected users who have this user in their contacts
-    // In a real app, we'd have a contacts table to determine who should receive status updates
-    pub fn broadcast_status(&self, user_id: &str, status: UserStatus) {
-        let status_msg = WebSocketMessage::Status {
-            user_id: user_id.to_string(),
-            status,
-        };
         
-        if let Ok(json) = serde_json::to_string(&status_msg) {
-            // For simplicity, we're just broadcasting to the user themselves in this example
-            // In a real app, you'd broadcast to all users who have this user in their contacts
-            self.broadcast_to_user(user_id, json);
+        sent_count
+    }
+
+    // Broadcast a message to all connected users
+    pub fn broadcast_all(&self, message: String) -> usize {
+        let read_guard = self.connections.read().unwrap();
+        
+        let mut sent_count = 0;
+        for user_connections in read_guard.values() {
+            for sender in user_connections.values() {
+                if sender.send(Message::Text(message.clone())).is_ok() {
+                    sent_count += 1;
+                }
+            }
+        }
+        
+        sent_count
+    }
+
+    // Broadcast user status to all other connections
+    pub fn broadcast_user_status(&self, user_id: &str, status: &str) {
+        let status_message = format!(
+            "{{\"type\":\"user_status\",\"user_id\":\"{}\",\"status\":\"{}\"}}",
+            user_id, status
+        );
+        
+        let read_guard = self.connections.read().unwrap();
+        
+        for (other_id, user_connections) in read_guard.iter() {
+            if other_id != user_id {
+                for sender in user_connections.values() {
+                    let _ = sender.send(Message::Text(status_message.clone()));
+                }
+            }
         }
     }
 }
@@ -185,191 +150,147 @@ pub fn ws_routes() -> Router<AppState> {
 }
 
 // WebSocket handler
-async fn ws_handler(
+pub async fn ws_handler(
     ws: WebSocketUpgrade,
     Path(user_id): Path<String>,
-    current_user: CurrentUser,
     State(state): State<AppState>,
-) -> Result<impl IntoResponse> {
-    // Ensure the user is connecting to their own WebSocket
-    if current_user.user_id != user_id {
-        return Err(AppError::Forbidden("You can only connect to your own WebSocket".to_string()));
-    }
-
-    // Check if user exists
-    {
-        let users = state.users.read().unwrap();
-        if !users.contains_key(&user_id) {
-            return Err(AppError::NotFound(format!("User with ID {} not found", user_id)));
-        }
-    }
-
-    // Upgrade the WebSocket connection
-    Ok(ws.on_upgrade(move |socket| handle_socket(socket, user_id, state)))
+) -> impl IntoResponse {
+    ws.on_upgrade(move |socket| handle_socket(socket, user_id, state))
 }
 
-// Handle WebSocket connection
+// Handle the WebSocket connection
 async fn handle_socket(socket: WebSocket, user_id: String, state: AppState) {
-    // Parse the user ID - Clone it to use in multiple tasks
-    let uid = user_id.clone();
-
+    let (sender, receiver) = mpsc::unbounded_channel();
+    
     // Generate a unique connection ID
-    let connection_id = Uuid::new_v4().to_string();
+    let connection_id = uuid::Uuid::new_v4().to_string();
+    
+    // Clone user_id for logging
+    let user_id_clone = user_id.clone();
     let connection_id_clone = connection_id.clone();
-
+    
+    // Register the connection
+    state.ws_manager.add_connection(&user_id, &connection_id, sender);
+    
+    // Log connection
+    println!("User {} connected with connection ID {}", user_id, connection_id);
+    
+    // Broadcast that the user is online
+    state.ws_manager.broadcast_user_status(&user_id, "online");
+    
     // Split the socket
-    let (mut sender, mut receiver) = socket.split();
-
-    // Create a broadcast channel for this connection
-    let (tx, _rx) = broadcast::channel::<String>(100);
+    let (ws_sender, ws_receiver) = socket.split();
     
-    // Add connection to the manager
-    state.ws_manager.add_connection(&uid, &connection_id, tx.clone());
+    // Process the socket
+    process_socket(ws_sender, ws_receiver, receiver, user_id.clone(), connection_id.clone(), state.ws_manager.clone()).await;
     
-    // Broadcast user status to all connections
-    state.ws_manager.broadcast_status(&uid, UserStatus::Online);
+    // Clean up when connection ends
+    state.ws_manager.remove_connection(&user_id, &connection_id);
+    
+    // Broadcast that the user is offline
+    state.ws_manager.broadcast_user_status(&user_id, "offline");
+    
+    // Log disconnection
+    println!("User {} disconnected with connection ID {}", user_id_clone, connection_id_clone);
+}
 
-    // Send message history
-    let message_history = state.ws_manager.get_history(&uid);
-    for message in message_history {
-        if let Err(e) = sender.send(Message::Text(message)).await {
-            error!("Error sending message history: {}", e);
-        }
-    }
-
-    // Clone references to use in the tasks
-    let ws_manager = Arc::clone(&state.ws_manager);
-    let uid_clone = uid.clone();
-    let conn_id = connection_id.clone();
-
-    // Spawn a task to receive messages from the client
-    let mut recv_task = tokio::spawn(async move {
-        while let Some(result) = receiver.next().await {
-            match result {
-                Ok(msg) => {
-                    match msg {
-                        Message::Text(text) => {
-                            // Parse the message
-                            if let Ok(ws_message) = serde_json::from_str::<WebSocketMessage>(&text) {
-                                match ws_message {
-                                    WebSocketMessage::Text { content, sender_id } => {
-                                        // Handle text message
-                                        info!("Received text message from {}: {}", sender_id, content);
-                                        
-                                        // Create a message format that can be broadcasted
-                                        let message_json = serde_json::json!({
-                                            "type": "text",
-                                            "content": content,
-                                            "sender_id": sender_id,
-                                            "timestamp": chrono::Utc::now().to_rfc3339()
-                                        });
-                                        
-                                        if let Ok(json) = serde_json::to_string(&message_json) {
-                                            // Broadcast to recipient - this has to be fixed for your specific logic
-                                            let recipient_id = uid_clone.clone(); // Example: broadcast to self for now
-                                            ws_manager.broadcast_to_user(&recipient_id, json);
-                                        }
-                                    },
-                                    WebSocketMessage::Typing { is_typing, user_id: ref typing_user_id } => {
-                                        // Note the 'ref' keyword to prevent moving the String
-                                        info!("User {} typing status: {}", typing_user_id, is_typing);
-                                        
-                                        // Create typing message that can be broadcasted
-                                        let typing_message = serde_json::json!({
-                                            "type": "typing",
-                                            "is_typing": is_typing,
-                                            "user_id": typing_user_id
-                                        });
-                                        
-                                        if let Ok(json) = serde_json::to_string(&typing_message) {
-                                            // Broadcast typing status
-                                            ws_manager.broadcast_to_user(typing_user_id, json);
-                                        }
-                                    },
-                                    WebSocketMessage::Read { message_ids, user_id: ref reader_id } => {
-                                        // Note the 'ref' keyword to prevent moving the String
-                                        info!("User {} read messages: {:?}", reader_id, message_ids);
-                                        
-                                        // You'd typically update your database here to mark messages as read
-                                        // ...
-                                        
-                                        // And notify the sender
-                                        let read_message = serde_json::json!({
-                                            "type": "read",
-                                            "message_ids": message_ids,
-                                            "user_id": reader_id
-                                        });
-                                        
-                                        if let Ok(json) = serde_json::to_string(&read_message) {
-                                            // This would actually go to the message sender, but for simplicity:
-                                            ws_manager.broadcast_to_user(reader_id, json);
-                                        }
-                                    },
-                                    WebSocketMessage::Delivered { message_ids, user_id: ref recipient_id } => {
-                                        // Note the 'ref' keyword to prevent moving the String
-                                        info!("User {} received messages: {:?}", recipient_id, message_ids);
-                                        
-                                        // You'd typically update your database here to mark messages as delivered
-                                        // ...
-                                        
-                                        // And notify the sender
-                                        let delivered_message = serde_json::json!({
-                                            "type": "delivered",
-                                            "message_ids": message_ids,
-                                            "user_id": recipient_id
-                                        });
-                                        
-                                        if let Ok(json) = serde_json::to_string(&delivered_message) {
-                                            // This would actually go to the message sender, but for simplicity:
-                                            ws_manager.broadcast_to_user(recipient_id, json);
-                                        }
-                                    },
-                                    WebSocketMessage::Status { user_id: ref status_user_id, status } => {
-                                        // Note the 'ref' keyword to prevent moving the String
-                                        info!("User {} status updated: {:?}", status_user_id, status);
-                                        
-                                        // Broadcast status update
-                                        ws_manager.broadcast_status(status_user_id, status);
-                                    }
-                                }
-                            } else {
-                                error!("Failed to parse message: {}", text);
-                            }
-                        },
-                        Message::Binary(_) => {
-                            // Handle binary message if needed
-                        },
-                        Message::Ping(ping) => {
-                            if let Err(e) = sender.send(Message::Pong(ping)).await {
-                                error!("Error sending pong: {}", e);
-                            }
-                        },
-                        Message::Pong(_) => {},
-                        Message::Close(_) => break,
-                    }
-                },
-                Err(e) => {
-                    error!("Error receiving message: {}", e);
+// Process the WebSocket connection
+async fn process_socket(
+    mut ws_sender: SplitSink<WebSocket, Message>,
+    mut ws_receiver: SplitStream<WebSocket>,
+    mut receiver: mpsc::UnboundedReceiver<Message>,
+    user_id: String,
+    connection_id: String,
+    ws_manager: Arc<WebSocketManager>,
+) {
+    use tokio::select;
+    
+    // Send a welcome message
+    let welcome_msg = format!("{{\"type\":\"welcome\",\"message\":\"Welcome, User {}!\"}}", user_id);
+    let _ = ws_sender.send(Message::Text(welcome_msg)).await;
+    
+    loop {
+        select! {
+            // Handle outgoing messages
+            Some(msg) = receiver.recv() => {
+                if ws_sender.send(msg).await.is_err() {
                     break;
                 }
             }
-        }
-        
-        // Return connection ID to be used for cleanup
-        conn_id
-    });
-
-    // Wait for receive task to complete
-    match recv_task.await {
-        Ok(connection_id) => {
-            // Use the cloned state.ws_manager to avoid the move issue
-            let uid = uid.clone(); // Use the cloned uid to avoid the move issue
-            ws_manager.remove_connection(&uid, &connection_id);
-            ws_manager.broadcast_status(&uid, UserStatus::Offline);
-            info!("WebSocket connection closed for user {}", uid);
-        },
-        Err(e) => {
-            error!("Error in WebSocket task: {}", e);
+            
+            // Handle incoming messages
+            Some(result) = ws_receiver.next() => {
+                match result {
+                    Ok(msg) => {
+                        match msg {
+                            Message::Text(text) => {
+                                // Parse the message and handle it
+                                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
+                                    if let Some(msg_type) = json.get("type").and_then(|v| v.as_str()) {
+                                        match msg_type {
+                                            "ping" => {
+                                                let _ = ws_sender.send(Message::Text(String::from("{\"type\":\"pong\"}"))).await;
+                                            }
+                                            "message" => {
+                                                // Handle a chat message
+                                                if let (Some(recipient_id), Some(content)) = (
+                                                    json.get("recipient_id").and_then(|v| v.as_str()),
+                                                    json.get("content").and_then(|v| v.as_str()),
+                                                ) {
+                                                    let message_json = format!(
+                                                        "{{\"type\":\"message\",\"sender_id\":\"{}\",\"content\":\"{}\"}}",
+                                                        user_id, content
+                                                    );
+                                                    ws_manager.broadcast_to_user(recipient_id, message_json);
+                                                }
+                                            }
+                                            "typing" => {
+                                                // Handle typing indicator
+                                                if let Some(recipient_id) = json.get("recipient_id").and_then(|v| v.as_str()) {
+                                                    let typing_json = format!(
+                                                        "{{\"type\":\"typing\",\"user_id\":\"{}\"}}",
+                                                        user_id
+                                                    );
+                                                    ws_manager.broadcast_to_user(recipient_id, typing_json);
+                                                }
+                                            }
+                                            _ => {
+                                                // Unknown message type, echo it back
+                                                let _ = ws_sender.send(Message::Text(text)).await;
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    // If not valid JSON, echo it back
+                                    let _ = ws_sender.send(Message::Text(text)).await;
+                                }
+                            }
+                            Message::Binary(data) => {
+                                // Echo back binary data
+                                let _ = ws_sender.send(Message::Binary(data)).await;
+                            }
+                            Message::Ping(data) => {
+                                // Respond to ping with pong
+                                let _ = ws_sender.send(Message::Pong(data)).await;
+                            }
+                            Message::Pong(_) => {
+                                // Ignore pong responses
+                            }
+                            Message::Close(_) => {
+                                // Close the connection
+                                break;
+                            }
+                        }
+                    }
+                    Err(_) => {
+                        // Connection error, break the loop
+                        break;
+                    }
+                }
+            }
+            
+            // No more messages or socket closed
+            else => break,
         }
     }
 }

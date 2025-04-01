@@ -21,6 +21,7 @@ path = "src/bin/ws-demo.rs"
 [dependencies]
 # Web framework
 axum = { version = "0.6.20", features = ["headers", "json", "ws"] }
+axum-extra = { version = "0.7.2", features = ["cookie"] }
 tower-http = { version = "0.4.0", features = ["cors"] }
 tokio = { version = "1.33.0", features = ["full"] }
 
