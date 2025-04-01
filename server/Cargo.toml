@@ -7,9 +7,17 @@ description = "Secure messaging server with end-to-end encryption"
 
 [dependencies]
 # Web framework
-axum = "0.6.20"
+axum = { version = "0.6.20", features = ["headers", "json"] }
 tower-http = { version = "0.4.0", features = ["cors"] }
 tokio = { version = "1.33.0", features = ["full"] }
+
+# Serialization
+serde = { version = "1.0.192", features = ["derive"] }
+serde_json = "1.0.108"
+
+# Utilities
+uuid = { version = "1.5.0", features = ["v4", "serde"] }
+chrono = { version = "0.4.31", features = ["serde"] }
 
 # Logging
 tracing = "0.1.40"
