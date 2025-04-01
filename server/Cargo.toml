@@ -20,6 +20,9 @@ axum = { version = "0.6.20", features = ["headers", "json", "ws"] }
 tower-http = { version = "0.4.0", features = ["cors"] }
 tokio = { version = "1.33.0", features = ["full"] }
 
+# Database
+sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "json"] }
+
 # Serialization
 serde = { version = "1.0.192", features = ["derive"] }
 serde_json = "1.0.108"
@@ -42,3 +45,6 @@ once_cell = "1.18.0"
 
 # WebSockets
 futures = "0.3.28"
+
+# Validation
+validator = { version = "0.16", features = ["derive"] }
