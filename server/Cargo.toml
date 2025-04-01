@@ -5,6 +5,15 @@ edition = "2021"
 authors = ["OnyxChat Team"]
 description = "Secure messaging server with end-to-end encryption"
 
+# Define multiple binaries
+[[bin]]
+name = "onyxchat-server"
+path = "src/main.rs"
+
+[[bin]]
+name = "echo-server"
+path = "src/main_echo.rs"
+
 [dependencies]
 # Web framework
 axum = { version = "0.6.20", features = ["headers", "json", "ws"] }
@@ -22,6 +31,8 @@ chrono = { version = "0.4.31", features = ["serde"] }
 # Logging
 tracing = "0.1.40"
 tracing-subscriber = "0.3.17"
+log = "0.4"
+env_logger = "0.10"
 
 # Authentication & security
 jsonwebtoken = "8.3.0"

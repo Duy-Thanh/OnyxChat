@@ -100,7 +100,7 @@
             }
             
             try {
-                ws = new WebSocket('ws://localhost:8080/api/ws/echo');
+                ws = new WebSocket('ws://localhost:8080/ws');
                 
                 ws.onopen = () => {
                     updateStatus('Connected', true);
