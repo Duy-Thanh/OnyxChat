@@ -14,14 +14,14 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.AppCompat.Light.DarkActionBar"
-        android:usesCleartextTraffic="true"
+        android:theme="@style/Theme.OnyxChat"
         tools:targetApi="31">
         
         <!-- Welcome Activity as launcher -->
         <activity
-            android:name=".LoginActivity"
-            android:exported="true">
+            android:name=".ui.WelcomeActivity"
+            android:exported="true"
+            android:theme="@style/Theme.OnyxChat.NoActionBar">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -30,7 +30,7 @@
         
         <!-- Main Activity -->
         <activity
-            android:name=".ChatActivity"
+            android:name=".MainActivity"
             android:exported="false" />
         
         <!-- Settings Activity -->
