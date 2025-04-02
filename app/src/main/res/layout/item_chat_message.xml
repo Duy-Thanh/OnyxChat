@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginTop="4dp"
+    android:layout_marginBottom="4dp"
+    android:padding="8dp">
+
+    <TextView
+        android:id="@+id/message_sender"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Sender"
+        android:textColor="@color/text_secondary_dark"
+        android:textSize="12sp"
+        android:textStyle="bold"
+        android:visibility="gone"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <TextView
+        android:id="@+id/message_text"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:background="@drawable/bg_message_received"
+        android:maxWidth="280dp"
+        android:padding="12dp"
+        android:text="Message content goes here and can be multiple lines long if needed."
+        android:textColor="@color/text_primary_dark"
+        android:textSize="14sp"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/message_sender" />
+
+    <TextView
+        android:id="@+id/message_time"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:text="12:34"
+        android:textColor="@color/text_secondary_dark"
+        android:textSize="12sp"
+        app:layout_constraintStart_toStartOf="@id/message_text"
+        app:layout_constraintTop_toBottomOf="@id/message_text" />
+
+</androidx.constraintlayout.widget.ConstraintLayout> 
