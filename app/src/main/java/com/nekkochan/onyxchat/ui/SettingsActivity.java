@@ -1,127 +1,130 @@
 package com.nekkochan.onyxchat.ui;
 
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.os.Bundle;
-import android.view.View;
 import android.view.WindowManager;
-import android.widget.Toast;
 
+import androidx.appcompat.app.ActionBar;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.appcompat.widget.Toolbar;
-import androidx.core.view.ViewCompat;
-import androidx.core.view.WindowCompat;
-import androidx.core.view.WindowInsetsCompat;
-import androidx.core.view.WindowInsetsControllerCompat;
-import androidx.preference.PreferenceManager;
+import androidx.preference.Preference;
+import androidx.preference.PreferenceFragmentCompat;
+import androidx.preference.SwitchPreferenceCompat;
 
-import com.google.android.material.appbar.AppBarLayout;
-import com.google.android.material.button.MaterialButton;
-import com.google.android.material.dialog.MaterialAlertDialogBuilder;
-import com.google.android.material.switchmaterial.SwitchMaterial;
 import com.nekkochan.onyxchat.R;
+import com.nekkochan.onyxchat.ui.legal.PrivacyPolicyActivity;
+import com.nekkochan.onyxchat.ui.legal.TermsOfServiceActivity;
 
+/**
+ * Settings activity for the application
+ */
 public class SettingsActivity extends AppCompatActivity {
-
-    private Toolbar toolbar;
-    private AppBarLayout appBarLayout;
-    private MaterialButton btnProfile;
-    private MaterialButton btnEncryption;
-    private MaterialButton btnTheme;
-    private MaterialButton btnAbout;
-    private SwitchMaterial switchScreenSecurity;
-    
-    private SharedPreferences sharedPreferences;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        
-        // Set up edge-to-edge display
-        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
-        
         setContentView(R.layout.activity_settings);
         
-        sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this);
-        
-        // Initialize views
-        toolbar = findViewById(R.id.toolbar);
-        appBarLayout = findViewById(R.id.appBarLayout);
-        btnProfile = findViewById(R.id.btnProfile);
-        btnEncryption = findViewById(R.id.btnEncryption);
-        btnTheme = findViewById(R.id.btnTheme);
-        btnAbout = findViewById(R.id.btnAbout);
-        switchScreenSecurity = findViewById(R.id.switchScreenSecurity);
-        
-        // Apply window insets to fix status bar overlap
-        ViewCompat.setOnApplyWindowInsetsListener(appBarLayout, (view, windowInsets) -> {
-            int statusBarHeight = windowInsets.getInsets(WindowInsetsCompat.Type.statusBars()).top;
-            view.setPadding(view.getPaddingLeft(), statusBarHeight, view.getPaddingRight(), view.getPaddingBottom());
-            return WindowInsetsCompat.CONSUMED;
-        });
-        
-        // Set up toolbar
-        setSupportActionBar(toolbar);
-        if (getSupportActionBar() != null) {
-            getSupportActionBar().setDisplayHomeAsUpEnabled(true);
-            getSupportActionBar().setDisplayShowHomeEnabled(true);
+        if (savedInstanceState == null) {
+            getSupportFragmentManager()
+                    .beginTransaction()
+                    .replace(R.id.settings, new SettingsFragment())
+                    .commit();
         }
         
-        // Load saved preferences
-        switchScreenSecurity.setChecked(sharedPreferences.getBoolean("screen_security", true));
-        
-        // Set up click listeners
-        toolbar.setNavigationOnClickListener(v -> onBackPressed());
-        
-        btnProfile.setOnClickListener(v -> {
-            // Navigate to profile settings
-            Toast.makeText(this, "Profile settings coming soon", Toast.LENGTH_SHORT).show();
-        });
-        
-        btnEncryption.setOnClickListener(v -> {
-            // Navigate to encryption settings
-            Toast.makeText(this, "Encryption settings coming soon", Toast.LENGTH_SHORT).show();
-        });
-        
-        btnTheme.setOnClickListener(v -> {
-            showThemeDialog();
-        });
-        
-        btnAbout.setOnClickListener(v -> {
-            // Navigate to about screen
-            Toast.makeText(this, "About screen coming soon", Toast.LENGTH_SHORT).show();
-        });
-        
-        // Set up switch listener
-        switchScreenSecurity.setOnCheckedChangeListener((buttonView, isChecked) -> {
-            sharedPreferences.edit().putBoolean("screen_security", isChecked).apply();
-            if (isChecked) {
-                getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE,
-                        WindowManager.LayoutParams.FLAG_SECURE);
-            } else {
-                getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);
-            }
-        });
-        
-        // Apply screen security setting
-        if (switchScreenSecurity.isChecked()) {
-            getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE,
-                    WindowManager.LayoutParams.FLAG_SECURE);
+        ActionBar actionBar = getSupportActionBar();
+        if (actionBar != null) {
+            actionBar.setDisplayHomeAsUpEnabled(true);
+            actionBar.setTitle(R.string.settings);
         }
     }
-    
-    private void showThemeDialog() {
-        String[] themes = {"System Default", "Light", "Dark"};
-        int currentTheme = sharedPreferences.getInt("theme_mode", 0);
+
+    @Override
+    public boolean onSupportNavigateUp() {
+        onBackPressed();
+        return true;
+    }
+
+    /**
+     * Inner settings fragment
+     */
+    public static class SettingsFragment extends PreferenceFragmentCompat {
+        @Override
+        public void onCreatePreferences(Bundle savedInstanceState, String rootKey) {
+            setPreferencesFromResource(R.xml.root_preferences, rootKey);
+            
+            // Apply screen security if enabled
+            SwitchPreferenceCompat screenSecurityPref = findPreference("screen_security");
+            if (screenSecurityPref != null) {
+                // Set listener to update window secure flag when changed
+                screenSecurityPref.setOnPreferenceChangeListener((preference, newValue) -> {
+                    boolean secureEnabled = (Boolean) newValue;
+                    if (secureEnabled) {
+                        requireActivity().getWindow().setFlags(
+                                WindowManager.LayoutParams.FLAG_SECURE,
+                                WindowManager.LayoutParams.FLAG_SECURE);
+                    } else {
+                        requireActivity().getWindow().clearFlags(
+                                WindowManager.LayoutParams.FLAG_SECURE);
+                    }
+                    return true;
+                });
+                
+                // Apply current setting
+                if (screenSecurityPref.isChecked()) {
+                    requireActivity().getWindow().setFlags(
+                            WindowManager.LayoutParams.FLAG_SECURE,
+                            WindowManager.LayoutParams.FLAG_SECURE);
+                }
+            }
+            
+            // Set up privacy policy preference
+            setupLegalDocumentPreference(
+                    "privacy_policy",
+                    preference -> openPrivacyPolicy()
+            );
+            
+            // Set up terms of service preference
+            setupLegalDocumentPreference(
+                    "terms_of_service",
+                    preference -> openTermsOfService()
+            );
+            
+            // Set up generate new key preference
+            Preference generateKeyPref = findPreference("generate_new_key");
+            if (generateKeyPref != null) {
+                generateKeyPref.setOnPreferenceClickListener(preference -> {
+                    // TODO: Implement key generation
+                    return true;
+                });
+            }
+        }
         
-        new MaterialAlertDialogBuilder(this)
-                .setTitle("Choose Theme")
-                .setSingleChoiceItems(themes, currentTheme, (dialog, which) -> {
-                    sharedPreferences.edit().putInt("theme_mode", which).apply();
-                    dialog.dismiss();
-                    Toast.makeText(this, "Restart app to apply theme", Toast.LENGTH_SHORT).show();
-                })
-                .setNegativeButton("Cancel", null)
-                .show();
+        /**
+         * Set up a preference for viewing legal documents
+         */
+        private void setupLegalDocumentPreference(String key, Preference.OnPreferenceClickListener listener) {
+            Preference preference = findPreference(key);
+            if (preference != null) {
+                preference.setOnPreferenceClickListener(listener);
+            }
+        }
+        
+        /**
+         * Open the privacy policy screen
+         */
+        private boolean openPrivacyPolicy() {
+            Intent intent = new Intent(getActivity(), PrivacyPolicyActivity.class);
+            startActivity(intent);
+            return true;
+        }
+        
+        /**
+         * Open the terms of service screen
+         */
+        private boolean openTermsOfService() {
+            Intent intent = new Intent(getActivity(), TermsOfServiceActivity.class);
+            startActivity(intent);
+            return true;
+        }
     }
 } 

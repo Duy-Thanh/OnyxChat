@@ -58,6 +58,17 @@
             android:exported="false"
             android:parentActivityName=".MainActivity" />
         
+        <!-- Legal Activities -->
+        <activity
+            android:name=".ui.legal.PrivacyPolicyActivity"
+            android:exported="false"
+            android:parentActivityName=".ui.SettingsActivity" />
+            
+        <activity
+            android:name=".ui.legal.TermsOfServiceActivity"
+            android:exported="false"
+            android:parentActivityName=".ui.SettingsActivity" />
+        
     </application>
 
 </manifest>

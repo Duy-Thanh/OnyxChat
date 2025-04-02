@@ -12,6 +12,12 @@
     <string name="settings">Settings</string>
     <string name="profile">Profile</string>
     
+    <!-- Legal -->
+    <string name="privacy_policy">Privacy Policy</string>
+    <string name="terms_of_service">Terms of Service</string>
+    <string name="view_privacy_policy">View Privacy Policy</string>
+    <string name="view_terms_of_service">View Terms of Service</string>
+    
     <!-- Network Status -->
     <string name="network_connected">Connected</string>
     <string name="network_disconnected">Disconnected</string>

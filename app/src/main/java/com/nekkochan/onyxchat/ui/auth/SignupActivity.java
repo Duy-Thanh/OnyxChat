@@ -2,16 +2,24 @@ package com.nekkochan.onyxchat.ui.auth;
 
 import android.content.Intent;
 import android.os.Bundle;
+import android.text.SpannableString;
+import android.text.Spanned;
 import android.text.TextUtils;
+import android.text.method.LinkMovementMethod;
+import android.text.style.ClickableSpan;
 import android.util.Patterns;
 import android.view.View;
+import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.nekkochan.onyxchat.MainActivity;
 import com.nekkochan.onyxchat.R;
 import com.nekkochan.onyxchat.databinding.ActivitySignupBinding;
+import com.nekkochan.onyxchat.ui.legal.PrivacyPolicyActivity;
+import com.nekkochan.onyxchat.ui.legal.TermsOfServiceActivity;
 
 /**
  * Signup screen for the app
@@ -29,6 +37,58 @@ public class SignupActivity extends AppCompatActivity {
         // Set up listeners
         binding.signupButton.setOnClickListener(v -> attemptSignup());
         binding.loginText.setOnClickListener(v -> openLogin());
+        
+        // Set up clickable text for Terms of Service and Privacy Policy
+        setupClickableTermsText();
+    }
+    
+    /**
+     * Set up clickable spans in the terms text
+     */
+    private void setupClickableTermsText() {
+        String termsText = getString(R.string.accept_terms);
+        SpannableString spannableString = new SpannableString(termsText);
+        
+        // Find the start of "Terms of Service"
+        int termsStart = termsText.indexOf("Terms of Service");
+        if (termsStart != -1) {
+            spannableString.setSpan(new ClickableSpan() {
+                @Override
+                public void onClick(@NonNull View view) {
+                    openTermsOfService();
+                }
+            }, termsStart, termsStart + "Terms of Service".length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        }
+        
+        // Find the start of "Privacy Policy"
+        int privacyStart = termsText.indexOf("Privacy Policy");
+        if (privacyStart != -1) {
+            spannableString.setSpan(new ClickableSpan() {
+                @Override
+                public void onClick(@NonNull View view) {
+                    openPrivacyPolicy();
+                }
+            }, privacyStart, privacyStart + "Privacy Policy".length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        }
+        
+        binding.termsCheckbox.setText(spannableString);
+        binding.termsCheckbox.setMovementMethod(LinkMovementMethod.getInstance());
+    }
+    
+    /**
+     * Open the terms of service screen
+     */
+    private void openTermsOfService() {
+        Intent intent = new Intent(this, TermsOfServiceActivity.class);
+        startActivity(intent);
+    }
+    
+    /**
+     * Open the privacy policy screen
+     */
+    private void openPrivacyPolicy() {
+        Intent intent = new Intent(this, PrivacyPolicyActivity.class);
+        startActivity(intent);
     }
     
     /**
