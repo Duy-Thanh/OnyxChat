@@ -1,67 +1,44 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:paddingStart="8dp"
-    android:paddingTop="4dp"
-    android:paddingEnd="8dp"
-    android:paddingBottom="4dp">
+    android:orientation="vertical"
+    android:padding="8dp">
 
-    <androidx.cardview.widget.CardView
-        android:id="@+id/messageCard"
+    <TextView
+        android:id="@+id/tvSender"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginStart="48dp"
-        android:layout_marginEnd="8dp"
-        app:cardBackgroundColor="#E8F5E9"
-        app:cardCornerRadius="8dp"
-        app:layout_constrainedWidth="true"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="1.0"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent">
+        android:textSize="12sp"
+        android:textStyle="bold"
+        android:layout_marginStart="8dp"
+        tools:text="Sender" />
 
-        <LinearLayout
+    <FrameLayout
+        android:id="@+id/messageContainer"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:maxWidth="280dp">
+
+        <TextView
+            android:id="@+id/tvMessage"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:padding="8dp">
+            android:padding="12dp"
+            android:textSize="16sp"
+            android:background="@drawable/message_background"
+            tools:text="This is a message" />
 
-            <TextView
-                android:id="@+id/messageText"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:maxWidth="260dp"
-                android:textColor="@android:color/black"
-                android:textSize="16sp"
-                tools:text="This is a sample outgoing message that spans multiple lines to show how it works" />
+    </FrameLayout>
 
-            <LinearLayout
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="end"
-                android:layout_marginTop="4dp"
-                android:orientation="horizontal">
+    <TextView
+        android:id="@+id/tvTimestamp"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textSize="10sp"
+        android:layout_marginStart="8dp"
+        android:layout_marginTop="2dp"
+        tools:text="10:30 AM" />
 
-                <TextView
-                    android:id="@+id/messageTime"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:textColor="#757575"
-                    android:textSize="12sp"
-                    tools:text="10:30 AM" />
-
-                <ImageView
-                    android:id="@+id/messageStatus"
-                    android:layout_width="16dp"
-                    android:layout_height="16dp"
-                    android:layout_marginStart="4dp"
-                    android:contentDescription="Message status"
-                    android:src="@android:drawable/ic_dialog_info" />
-            </LinearLayout>
-        </LinearLayout>
-    </androidx.cardview.widget.CardView>
-
-</androidx.constraintlayout.widget.ConstraintLayout> 
+</LinearLayout> 
