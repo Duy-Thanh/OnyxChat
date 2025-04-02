@@ -7,6 +7,9 @@ import android.widget.ProgressBar;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
 
 import com.nekkochan.onyxchat.R;
 import com.nekkochan.onyxchat.databinding.ActivityLegalDocumentBinding;
@@ -21,6 +24,10 @@ public class TermsOfServiceActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        
+        // Set up edge-to-edge display
+        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+        
         binding = ActivityLegalDocumentBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
         
@@ -29,6 +36,13 @@ public class TermsOfServiceActivity extends AppCompatActivity {
         getSupportActionBar().setTitle(R.string.terms_of_service);
         getSupportActionBar().setDisplayHomeAsUpEnabled(true);
         binding.toolbar.setNavigationOnClickListener(v -> onBackPressed());
+        
+        // Apply window insets to fix status bar overlap
+        ViewCompat.setOnApplyWindowInsetsListener(binding.toolbar, (view, windowInsets) -> {
+            int statusBarHeight = windowInsets.getInsets(WindowInsetsCompat.Type.statusBars()).top;
+            view.setPadding(view.getPaddingLeft(), statusBarHeight, view.getPaddingRight(), view.getPaddingBottom());
+            return WindowInsetsCompat.CONSUMED;
+        });
         
         // Set up WebView with terms of service content
         binding.webView.loadDataWithBaseURL(null, getTermsOfServiceContent(), "text/html", "UTF-8", null);

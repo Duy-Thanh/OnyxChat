@@ -8,6 +8,9 @@ import android.view.View;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
 
 import com.nekkochan.onyxchat.R;
 import com.nekkochan.onyxchat.databinding.ActivityForgotPasswordBinding;
@@ -22,8 +25,28 @@ public class ForgotPasswordActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        
+        // Set up edge-to-edge display
+        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+        
         binding = ActivityForgotPasswordBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
+        
+        // Apply window insets to handle system bars
+        ViewCompat.setOnApplyWindowInsetsListener(binding.getRoot(), (view, windowInsets) -> {
+            int statusBarHeight = windowInsets.getInsets(WindowInsetsCompat.Type.statusBars()).top;
+            int navigationBarHeight = windowInsets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom;
+            
+            // Apply padding to the main container to avoid overlapping with system bars
+            binding.container.setPadding(
+                    binding.container.getPaddingLeft(),
+                    statusBarHeight + binding.container.getPaddingTop(),
+                    binding.container.getPaddingRight(),
+                    navigationBarHeight + binding.container.getPaddingBottom()
+            );
+            
+            return WindowInsetsCompat.CONSUMED;
+        });
         
         // Set up listeners
         binding.backButton.setOnClickListener(v -> onBackPressed());
