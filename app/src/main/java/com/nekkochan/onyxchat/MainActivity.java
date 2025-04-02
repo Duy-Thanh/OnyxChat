@@ -2,6 +2,7 @@ package com.nekkochan.onyxchat;
 
 import android.content.Intent;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.widget.Toast;
@@ -22,18 +23,21 @@ import com.nekkochan.onyxchat.ui.ContactsFragment;
 import com.nekkochan.onyxchat.ui.MessagesFragment;
 import com.nekkochan.onyxchat.ui.ProfileFragment;
 import com.nekkochan.onyxchat.ui.SettingsActivity;
+import com.nekkochan.onyxchat.ui.auth.LoginActivity;
 import com.nekkochan.onyxchat.ui.viewmodel.MainViewModel;
+import com.nekkochan.onyxchat.util.UserSessionManager;
 
 /**
  * Main activity for the OnyxChat application.
  */
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends AppCompatActivity implements BottomNavigationView.OnNavigationItemSelectedListener {
     private static final String TAG = "MainActivity";
     
     private ViewPager2 viewPager;
     private BottomNavigationView bottomNavigation;
     private FloatingActionButton fab;
     private MainViewModel viewModel;
+    private UserSessionManager sessionManager;
     
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -49,6 +53,26 @@ public class MainActivity extends AppCompatActivity {
         // Initialize ViewModel
         viewModel = new ViewModelProvider(this).get(MainViewModel.class);
         
+        // Initialize session manager
+        sessionManager = new UserSessionManager(this);
+        
+        // Check if user is logged in
+        if (!sessionManager.isLoggedIn()) {
+            // Redirect to login
+            Intent intent = new Intent(this, LoginActivity.class);
+            startActivity(intent);
+            finish();
+            return;
+        }
+        
+        // Get the user ID from session
+        String userId = sessionManager.getUserId();
+        if (userId != null) {
+            Log.d(TAG, "User ID from session: " + userId);
+            // Set the user ID in the view model
+            viewModel.setUserAddress(userId);
+        }
+        
         // Set up toolbar
         Toolbar toolbar = findViewById(R.id.toolbar);
         toolbar.setTitle(R.string.app_name);
@@ -63,7 +87,7 @@ public class MainActivity extends AppCompatActivity {
         setupViewPager();
         
         // Set up bottom navigation
-        setupBottomNavigation();
+        bottomNavigation.setOnNavigationItemSelectedListener(this);
         
         // Set up FAB
         fab.setOnClickListener(v -> {
@@ -77,17 +101,21 @@ public class MainActivity extends AppCompatActivity {
             }
         });
         
-        // Connect to chat server
-        connectToChat();
+        // Default to messages fragment
+        if (savedInstanceState == null) {
+            getSupportFragmentManager().beginTransaction()
+                    .replace(R.id.fragment_container, new MessagesFragment())
+                    .commit();
+        }
     }
     
     @Override
     protected void onResume() {
         super.onResume();
         
-        // Reconnect to chat if disconnected
-        if (viewModel.isChatConnected().getValue() != Boolean.TRUE) {
-            connectToChat();
+        // Reconnect to chat if needed
+        if (!viewModel.isChatConnected().getValue() && sessionManager.isLoggedIn()) {
+            viewModel.connectToChat();
         }
     }
     
@@ -95,20 +123,8 @@ public class MainActivity extends AppCompatActivity {
     protected void onDestroy() {
         super.onDestroy();
         
-        // Disconnect from chat when app is closed
+        // Disconnect from chat on app close
         viewModel.disconnectFromChat();
-    }
-    
-    /**
-     * Connect to the chat server
-     */
-    private void connectToChat() {
-        if (viewModel.isChatConnected().getValue() != Boolean.TRUE) {
-            boolean connectStarted = viewModel.connectToChat();
-            if (!connectStarted) {
-                Toast.makeText(this, R.string.error_connection, Toast.LENGTH_SHORT).show();
-            }
-        }
     }
     
     private void setupViewPager() {
@@ -153,21 +169,27 @@ public class MainActivity extends AppCompatActivity {
         });
     }
     
-    private void setupBottomNavigation() {
-        bottomNavigation.setOnItemSelectedListener(item -> {
-            int id = item.getItemId();
-            if (id == R.id.nav_messages) {
-                viewPager.setCurrentItem(0);
-                return true;
-            } else if (id == R.id.nav_contacts) {
-                viewPager.setCurrentItem(1);
-                return true;
-            } else if (id == R.id.nav_profile) {
-                viewPager.setCurrentItem(2);
-                return true;
-            }
-            return false;
-        });
+    @Override
+    public boolean onNavigationItemSelected(@NonNull MenuItem item) {
+        Fragment selectedFragment = null;
+        
+        int itemId = item.getItemId();
+        if (itemId == R.id.nav_messages) {
+            selectedFragment = new MessagesFragment();
+        } else if (itemId == R.id.nav_contacts) {
+            selectedFragment = new ContactsFragment();
+        } else if (itemId == R.id.nav_profile) {
+            selectedFragment = new ProfileFragment();
+        }
+        
+        if (selectedFragment != null) {
+            getSupportFragmentManager().beginTransaction()
+                    .replace(R.id.fragment_container, selectedFragment)
+                    .commit();
+            return true;
+        }
+        
+        return false;
     }
     
     @Override
@@ -182,10 +204,35 @@ public class MainActivity extends AppCompatActivity {
         
         if (id == R.id.action_settings) {
             // Open settings activity
-            startActivity(new Intent(this, SettingsActivity.class));
+            openSettings();
             return true;
         }
         
         return super.onOptionsItemSelected(item);
+    }
+    
+    /**
+     * Open the settings activity
+     */
+    public void openSettings() {
+        Intent intent = new Intent(this, SettingsActivity.class);
+        startActivity(intent);
+    }
+    
+    /**
+     * Log out the user and return to login screen
+     */
+    public void logOut() {
+        // Disconnect from chat
+        viewModel.disconnectFromChat();
+        
+        // Clear session
+        sessionManager.logout();
+        
+        // Redirect to login
+        Intent intent = new Intent(this, LoginActivity.class);
+        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_NEW_TASK);
+        startActivity(intent);
+        finish();
     }
 }

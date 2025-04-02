@@ -321,16 +321,23 @@ public class MainViewModel extends AndroidViewModel {
     
     /**
      * Connect to the chat server
-     * @return true if connection attempt started, false otherwise
+     * @return true if connection started, false otherwise
      */
     public boolean connectToChat() {
         if (currentUser == null) {
+            Log.e(TAG, "Cannot connect to chat: no current user");
             errorMessage.setValue("No current user");
             return false;
         }
         
-        // Use username part of the address as the user ID
-        String userId = currentUser.getAddress().split("@")[0];
+        String userId = currentUser.getAddress();
+        if (userId == null || userId.isEmpty()) {
+            Log.e(TAG, "Cannot connect to chat: invalid user ID");
+            errorMessage.setValue("Invalid user ID");
+            return false;
+        }
+        
+        Log.d(TAG, "Connecting to chat with user ID: " + userId);
         return chatService.connect(userId);
     }
     

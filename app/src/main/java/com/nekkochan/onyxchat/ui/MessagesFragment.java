@@ -29,6 +29,7 @@ import java.util.Map;
  */
 public class MessagesFragment extends Fragment {
     
+    private static final String TAG = "MessagesFragment";
     private MainViewModel viewModel;
     private RecyclerView recyclerView;
     private TextView emptyView;
@@ -91,6 +92,11 @@ public class MessagesFragment extends Fragment {
                 statusTextView.setText(R.string.status_disconnected);
                 statusTextView.setTextColor(getResources().getColor(R.color.error_red, null));
                 sendButton.setEnabled(false);
+                
+                // Auto-reconnect if disconnected
+                if (isAdded() && isVisible()) {
+                    viewModel.connectToChat();
+                }
             }
         });
         
@@ -124,14 +130,6 @@ public class MessagesFragment extends Fragment {
         }
     }
     
-    @Override
-    public void onPause() {
-        super.onPause();
-        
-        // Optionally disconnect from chat when the fragment is not visible
-        // viewModel.disconnectFromChat();
-    }
-    
     /**
      * Update the visibility of the empty view based on whether there are conversations
      */
@@ -155,17 +153,32 @@ public class MessagesFragment extends Fragment {
             return;
         }
         
+        boolean messageSent = false;
+        
         if (currentRecipientId != null) {
-            boolean sent = viewModel.sendDirectMessage(currentRecipientId, messageText);
-            if (sent) {
-                messageInput.setText("");
-            } else {
-                Toast.makeText(getContext(), "Failed to send message", Toast.LENGTH_SHORT).show();
-            }
+            messageSent = viewModel.sendDirectMessage(currentRecipientId, messageText);
         } else {
-            boolean sent = viewModel.sendChatMessage(messageText);
-            if (sent) {
-                messageInput.setText("");
+            messageSent = viewModel.sendChatMessage(messageText);
+        }
+        
+        if (messageSent) {
+            messageInput.setText("");
+        } else {
+            // If connection was lost, try to reconnect and send again
+            if (!viewModel.isChatConnected().getValue()) {
+                boolean reconnected = viewModel.connectToChat();
+                if (reconnected) {
+                    // Wait a bit for the connection to establish before retrying
+                    messageInput.postDelayed(() -> {
+                        if (viewModel.isChatConnected().getValue()) {
+                            sendMessage(); // Retry sending the message
+                        } else {
+                            Toast.makeText(getContext(), "Failed to reconnect", Toast.LENGTH_SHORT).show();
+                        }
+                    }, 1000);
+                } else {
+                    Toast.makeText(getContext(), "Failed to reconnect", Toast.LENGTH_SHORT).show();
+                }
             } else {
                 Toast.makeText(getContext(), "Failed to send message", Toast.LENGTH_SHORT).show();
             }
@@ -249,33 +262,20 @@ public class MessagesFragment extends Fragment {
                 String timeString = android.text.format.DateFormat.format("HH:mm", message.getTimestamp()).toString();
                 timeText.setText(timeString);
                 
-                // Show sender ID for messages from others
-                if (message.getType() == ChatService.ChatMessage.MessageType.DIRECT && 
-                    !message.getMessage().isSelf()) {
-                    senderText.setText(message.getSenderId());
-                    senderText.setVisibility(View.VISIBLE);
+                // Set message sender
+                String senderId = message.getSenderId();
+                if (senderId.equals(viewModel.getUserAddress().getValue())) {
+                    senderText.setText(R.string.you);
+                    // Align to the right for own messages
+                    messageText.setTextAlignment(View.TEXT_ALIGNMENT_TEXT_END);
+                    senderText.setTextAlignment(View.TEXT_ALIGNMENT_TEXT_END);
+                    timeText.setTextAlignment(View.TEXT_ALIGNMENT_TEXT_END);
                 } else {
-                    senderText.setVisibility(View.GONE);
-                }
-                
-                // Style the message based on type
-                switch (message.getType()) {
-                    case DIRECT:
-                        if (message.getMessage().isSelf()) {
-                            itemView.setBackgroundResource(R.drawable.bg_message_sent);
-                        } else {
-                            itemView.setBackgroundResource(R.drawable.bg_message_received);
-                        }
-                        break;
-                    case SYSTEM:
-                        itemView.setBackgroundResource(R.drawable.bg_message_system);
-                        break;
-                    case ERROR:
-                        itemView.setBackgroundResource(R.drawable.bg_message_error);
-                        break;
-                    default:
-                        itemView.setBackgroundResource(R.drawable.bg_message_received);
-                        break;
+                    senderText.setText(senderId);
+                    // Align to the left for others' messages
+                    messageText.setTextAlignment(View.TEXT_ALIGNMENT_TEXT_START);
+                    senderText.setTextAlignment(View.TEXT_ALIGNMENT_TEXT_START);
+                    timeText.setTextAlignment(View.TEXT_ALIGNMENT_TEXT_START);
                 }
             }
         }

@@ -6,9 +6,11 @@ import android.util.Log;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 
+import java.io.EOFException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -26,12 +28,21 @@ public class WebSocketClient {
     // Default WebSocket endpoint
     private static final String DEFAULT_WS_ENDPOINT = "ws://10.0.2.2:8081/ws/";
     
+    // Connection parameters
+    private static final int RECONNECT_ATTEMPTS = 3;
+    private static final long RECONNECT_DELAY_MS = 2000; // 2 seconds
+    
     private final OkHttpClient client;
     private final String wsEndpoint;
     private WebSocket webSocket;
     private final List<MessageListener> listeners = new ArrayList<>();
     private WebSocketState state = WebSocketState.DISCONNECTED;
     private final Gson gson = new Gson();
+    
+    // Connection tracking
+    private String currentUserId;
+    private int reconnectAttempts = 0;
+    private final AtomicBoolean reconnecting = new AtomicBoolean(false);
     
     /**
      * Enumeration for WebSocket connection states
@@ -60,8 +71,10 @@ public class WebSocketClient {
         // Build OkHttp client with reasonable timeouts
         this.client = new OkHttpClient.Builder()
                 .connectTimeout(10, TimeUnit.SECONDS)
-                .readTimeout(30, TimeUnit.SECONDS)
+                .readTimeout(60, TimeUnit.SECONDS) // Longer read timeout to prevent unnecessary disconnections
                 .writeTimeout(30, TimeUnit.SECONDS)
+                .pingInterval(30, TimeUnit.SECONDS) // Add ping to keep connection alive
+                .retryOnConnectionFailure(true)
                 .build();
     }
     
@@ -72,12 +85,26 @@ public class WebSocketClient {
      * @return true if connection started, false otherwise
      */
     public boolean connect(String userId) {
-        if (state != WebSocketState.DISCONNECTED) {
-            Log.d(TAG, "Already connecting or connected");
-            return false;
+        if (state == WebSocketState.CONNECTED) {
+            Log.d(TAG, "Already connected");
+            return true;
         }
         
-        String url = wsEndpoint + userId;
+        if (state == WebSocketState.CONNECTING && !reconnecting.get()) {
+            Log.d(TAG, "Already connecting");
+            return true;
+        }
+        
+        currentUserId = userId;
+        reconnectAttempts = 0;
+        return startConnection();
+    }
+    
+    /**
+     * Start a WebSocket connection
+     */
+    private boolean startConnection() {
+        String url = wsEndpoint + currentUserId;
         Log.d(TAG, "Connecting to WebSocket at " + url);
         
         try {
@@ -99,9 +126,37 @@ public class WebSocketClient {
     }
     
     /**
+     * Attempt to reconnect to the WebSocket server
+     */
+    private void attemptReconnect() {
+        if (reconnecting.compareAndSet(false, true)) {
+            Log.d(TAG, "Attempting reconnect, attempt " + (reconnectAttempts + 1));
+            
+            new Thread(() -> {
+                try {
+                    Thread.sleep(RECONNECT_DELAY_MS);
+                    
+                    if (reconnectAttempts < RECONNECT_ATTEMPTS) {
+                        reconnectAttempts++;
+                        startConnection();
+                    } else {
+                        Log.d(TAG, "Max reconnect attempts reached");
+                        reconnecting.set(false);
+                    }
+                } catch (InterruptedException e) {
+                    Log.e(TAG, "Reconnect thread interrupted", e);
+                    reconnecting.set(false);
+                }
+            }).start();
+        }
+    }
+    
+    /**
      * Disconnect from the WebSocket server
      */
     public void disconnect() {
+        reconnectAttempts = RECONNECT_ATTEMPTS; // Prevent auto-reconnect
+        
         if (webSocket != null) {
             webSocket.close(1000, "User initiated disconnect");
             webSocket = null;
@@ -248,17 +303,17 @@ public class WebSocketClient {
     public static abstract class MessageListenerAdapter implements MessageListener {
         @Override
         public void onStateChanged(WebSocketState state) {
-            // Default empty implementation
+            // Default implementation does nothing
         }
         
         @Override
         public void onMessageReceived(String message) {
-            // Default empty implementation
+            // Default implementation does nothing
         }
         
         @Override
         public void onError(String error) {
-            // Default empty implementation
+            // Default implementation does nothing
         }
     }
     
@@ -271,40 +326,53 @@ public class WebSocketClient {
             Log.d(TAG, "WebSocket connection opened");
             state = WebSocketState.CONNECTED;
             notifyStateChanged();
+            reconnectAttempts = 0;
+            reconnecting.set(false);
         }
         
         @Override
         public void onMessage(WebSocket webSocket, String text) {
-            Log.d(TAG, "Received message: " + text);
+            Log.d(TAG, "Message received: " + text);
             notifyMessageReceived(text);
         }
         
         @Override
         public void onMessage(WebSocket webSocket, ByteString bytes) {
-            Log.d(TAG, "Received bytes message");
-            // Most WebSocket APIs use text, but handle binary data just in case
+            Log.d(TAG, "Binary message received");
+            // Convert to string for simplicity
             notifyMessageReceived(bytes.utf8());
         }
         
         @Override
         public void onClosing(WebSocket webSocket, int code, String reason) {
-            Log.d(TAG, "WebSocket closing: " + code + " - " + reason);
+            Log.d(TAG, "WebSocket closing: " + code + " " + reason);
             webSocket.close(code, reason);
         }
         
         @Override
         public void onClosed(WebSocket webSocket, int code, String reason) {
-            Log.d(TAG, "WebSocket closed: " + code + " - " + reason);
+            Log.d(TAG, "WebSocket closed: " + code + " " + reason);
             state = WebSocketState.DISCONNECTED;
             notifyStateChanged();
         }
         
         @Override
         public void onFailure(WebSocket webSocket, Throwable t, Response response) {
-            Log.e(TAG, "WebSocket failure", t);
+            // Don't log EOFException as error since it's common when closing connections
+            if (t instanceof EOFException) {
+                Log.d(TAG, "WebSocket connection closed");
+            } else {
+                Log.e(TAG, "WebSocket failure", t);
+            }
+            
             state = WebSocketState.DISCONNECTED;
             notifyStateChanged();
-            notifyError(t.getMessage());
+            
+            String errorMessage = t != null ? t.getMessage() : "Unknown error";
+            notifyError(errorMessage);
+            
+            // Attempt to reconnect
+            attemptReconnect();
         }
     }
 }

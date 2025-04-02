@@ -1,30 +1,65 @@
 package com.nekkochan.onyxchat.ui.auth;
 
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.text.TextUtils;
+import android.util.Log;
 import android.view.View;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.preference.PreferenceManager;
 
 import com.google.android.material.textfield.TextInputLayout;
 import com.nekkochan.onyxchat.MainActivity;
 import com.nekkochan.onyxchat.R;
 import com.nekkochan.onyxchat.databinding.ActivityLoginBinding;
+import com.nekkochan.onyxchat.util.UserSessionManager;
 
 /**
  * Login screen for the app
  */
 public class LoginActivity extends AppCompatActivity {
     
+    private static final String TAG = "LoginActivity";
     private ActivityLoginBinding binding;
+    private UserSessionManager sessionManager;
     
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        
+        // Set up edge-to-edge display
+        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+        
         binding = ActivityLoginBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
+        
+        // Initialize session manager
+        sessionManager = new UserSessionManager(this);
+        
+        // Check if user is already logged in
+        if (sessionManager.isLoggedIn()) {
+            proceedToMainActivity();
+            return;
+        }
+        
+        // Apply window insets to handle system bars
+        ViewCompat.setOnApplyWindowInsetsListener(binding.getRoot(), (view, windowInsets) -> {
+            int statusBarHeight = windowInsets.getInsets(WindowInsetsCompat.Type.statusBars()).top;
+            int navigationBarHeight = windowInsets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom;
+            binding.container.setPadding(
+                    binding.container.getPaddingLeft(),
+                    statusBarHeight,
+                    binding.container.getPaddingRight(),
+                    navigationBarHeight
+            );
+            return WindowInsetsCompat.CONSUMED;
+        });
         
         // Set up listeners
         binding.loginButton.setOnClickListener(v -> attemptLogin());
@@ -66,11 +101,51 @@ public class LoginActivity extends AppCompatActivity {
         } else {
             // Show progress
             binding.loginButton.setEnabled(false);
+            binding.loginProgress.setVisibility(View.VISIBLE);
             
-            // TODO: Implement actual login logic
-            // For now, just proceed to main activity
-            proceedToMainActivity();
+            // Authenticate user
+            authenticateUser(username, password);
         }
+    }
+    
+    /**
+     * Authenticate user credentials
+     * In a real app, this would validate with a server
+     */
+    private void authenticateUser(String username, String password) {
+        // In a real app, this would validate with server
+        // For now, simulate a successful login with any credentials
+        Log.d(TAG, "Authenticating user: " + username);
+        
+        // Simulate network delay
+        binding.loginButton.postDelayed(() -> {
+            // Create user session
+            sessionManager.createLoginSession(username, generateUserId(username));
+            
+            // Hide progress
+            binding.loginProgress.setVisibility(View.GONE);
+            binding.loginButton.setEnabled(true);
+            
+            // Proceed to main activity
+            proceedToMainActivity();
+        }, 1000); // Simulated delay
+    }
+    
+    /**
+     * Generate a consistent user ID from username
+     * For a real app, the server should provide the user ID
+     */
+    private String generateUserId(String username) {
+        // Remove special characters and spaces, convert to lowercase
+        String baseId = username.replaceAll("[^a-zA-Z0-9]", "").toLowerCase();
+        
+        // Ensure ID is not empty
+        if (baseId.isEmpty()) {
+            baseId = "user";
+        }
+        
+        // Add a timestamp for uniqueness
+        return baseId + System.currentTimeMillis();
     }
     
     /**
