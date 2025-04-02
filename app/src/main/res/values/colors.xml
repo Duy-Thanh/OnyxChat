@@ -13,13 +13,19 @@
     <!-- Theme colors -->
     <color name="primary">#6C63FF</color>
     <color name="primary_dark">#5650D8</color>
+    <color name="primary_light">#CDC9FF</color>
+    <color name="secondary">#03DAC5</color>
+    <color name="secondary_light">#B3F1EA</color>
     <color name="accent">#03DAC5</color>
     <color name="background">#F8F8F8</color>
+    <color name="background_light">#FFFFFF</color>
     <color name="surface">#FFFFFF</color>
     <color name="on_primary">#FFFFFF</color>
     <color name="on_background">#121212</color>
     <color name="on_surface">#121212</color>
     <color name="error">#B00020</color>
+    <color name="error_red">#CF6679</color>
+    <color name="success_green">#4CAF50</color>
     <color name="on_error">#FFFFFF</color>
     
     <!-- Dark theme colors -->
@@ -66,6 +72,8 @@
     <color name="sent_message_text">@color/white</color>
     <color name="received_message_background">#2E2A3A</color>
     <color name="received_message_text">@color/white</color>
+    <color name="system_message_bg">#383838</color>
+    <color name="error_message_bg">#452227</color>
     
     <!-- Status colors -->
     <color name="status_online">#4CAF50</color>

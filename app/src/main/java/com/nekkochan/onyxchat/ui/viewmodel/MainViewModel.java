@@ -7,15 +7,20 @@ import androidx.annotation.NonNull;
 import androidx.lifecycle.AndroidViewModel;
 import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
+import androidx.lifecycle.Transformations;
 
 import com.nekkochan.onyxchat.crypto.PQCProvider;
 import com.nekkochan.onyxchat.data.Contact;
 import com.nekkochan.onyxchat.data.Repository;
 import com.nekkochan.onyxchat.data.SafeHelperFactory;
 import com.nekkochan.onyxchat.data.User;
+import com.nekkochan.onyxchat.network.ChatService;
+import com.nekkochan.onyxchat.network.WebSocketClient;
 
 import java.security.KeyPair;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * ViewModel for the MainActivity
@@ -24,10 +29,16 @@ import java.util.List;
 public class MainViewModel extends AndroidViewModel {
     private static final String TAG = "MainViewModel";
     private final Repository repository;
+    private final ChatService chatService;
     
     // Network connection state
     private final MutableLiveData<Boolean> isConnected = new MutableLiveData<>(false);
     private final MutableLiveData<String> userAddress = new MutableLiveData<>();
+    
+    // Chat state
+    private final LiveData<Boolean> isChatConnected;
+    private final MutableLiveData<List<ChatMessage>> chatMessages = new MutableLiveData<>(new ArrayList<>());
+    private final LiveData<Map<String, String>> onlineUsers;
     
     // Current UI state
     private final MutableLiveData<Boolean> isLoading = new MutableLiveData<>(false);
@@ -44,6 +55,31 @@ public class MainViewModel extends AndroidViewModel {
         SafeHelperFactory.initSQLCipher(application.getApplicationContext());
         
         repository = new Repository(application);
+        
+        // Initialize chat service
+        chatService = ChatService.getInstance(application);
+        
+        // Map WebSocket connection state to boolean
+        isChatConnected = Transformations.map(
+                chatService.getConnectionState(),
+                state -> state == WebSocketClient.WebSocketState.CONNECTED
+        );
+        
+        // Get online users from chat service
+        onlineUsers = chatService.getOnlineUsers();
+        
+        // Listen for new messages
+        chatService.getLatestMessage().observeForever(message -> {
+            if (message != null) {
+                // Add message to the list
+                List<ChatMessage> messages = chatMessages.getValue();
+                if (messages == null) {
+                    messages = new ArrayList<>();
+                }
+                messages.add(new ChatMessage(message));
+                chatMessages.postValue(messages);
+            }
+        });
         
         // Initialize current user
         initCurrentUser();
@@ -276,10 +312,127 @@ public class MainViewModel extends AndroidViewModel {
     }
 
     /**
-     * Get the repository instance
-     * @return The repository
+     * Get the repository
+     * @return Repository instance
      */
     public Repository getRepository() {
         return repository;
+    }
+    
+    /**
+     * Connect to the chat server
+     * @return true if connection attempt started, false otherwise
+     */
+    public boolean connectToChat() {
+        if (currentUser == null) {
+            errorMessage.setValue("No current user");
+            return false;
+        }
+        
+        // Use username part of the address as the user ID
+        String userId = currentUser.getAddress().split("@")[0];
+        return chatService.connect(userId);
+    }
+    
+    /**
+     * Disconnect from the chat server
+     */
+    public void disconnectFromChat() {
+        chatService.disconnect();
+    }
+    
+    /**
+     * Send a chat message
+     * @param message The message to send
+     * @return true if send was successful, false otherwise
+     */
+    public boolean sendChatMessage(String message) {
+        return chatService.sendMessage(message);
+    }
+    
+    /**
+     * Send a direct message to a user
+     * @param recipientId The recipient's user ID
+     * @param message The message to send
+     * @return true if send was successful, false otherwise
+     */
+    public boolean sendDirectMessage(String recipientId, String message) {
+        return chatService.sendDirectMessage(recipientId, message);
+    }
+    
+    /**
+     * Get chat connection state
+     * @return LiveData boolean of chat connection state
+     */
+    public LiveData<Boolean> isChatConnected() {
+        return isChatConnected;
+    }
+    
+    /**
+     * Get list of all chat messages
+     * @return LiveData list of chat messages
+     */
+    public LiveData<List<ChatMessage>> getChatMessages() {
+        return chatMessages;
+    }
+    
+    /**
+     * Get online users
+     * @return LiveData map of online users
+     */
+    public LiveData<Map<String, String>> getOnlineUsers() {
+        return onlineUsers;
+    }
+    
+    /**
+     * Clear chat messages
+     */
+    public void clearChatMessages() {
+        chatMessages.setValue(new ArrayList<>());
+    }
+    
+    /**
+     * A chat message in the UI
+     */
+    public static class ChatMessage {
+        private final ChatService.ChatMessage message;
+        private boolean isRead;
+        
+        public ChatMessage(ChatService.ChatMessage message) {
+            this.message = message;
+            this.isRead = false;
+        }
+        
+        public ChatService.ChatMessage getMessage() {
+            return message;
+        }
+        
+        public boolean isRead() {
+            return isRead;
+        }
+        
+        public void setRead(boolean read) {
+            isRead = read;
+        }
+        
+        public String getSenderId() {
+            return message.getSenderId();
+        }
+        
+        public String getRecipientId() {
+            return message.getRecipientId();
+        }
+        
+        public String getContent() {
+            return message.getContent();
+        }
+        
+        public long getTimestamp() {
+            return message.getTimestamp();
+        }
+        
+        public ChatService.ChatMessage.MessageType getType() {
+            return message.getType();
+        }
     }
 } 

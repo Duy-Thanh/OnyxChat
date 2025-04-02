@@ -18,6 +18,15 @@
     <string name="using_direct_networking">Using direct networking.</string>
     <string name="network_options">Network Options</string>
     
+    <!-- Chat Status -->
+    <string name="status_connected">Connected to chat</string>
+    <string name="status_disconnected">Disconnected from chat</string>
+    <string name="status_connecting">Connecting to chat...</string>
+    <string name="chatting_with">Chatting with %1$s</string>
+    <string name="online_users_count">%1$d users online</string>
+    <string name="message_hint">Type a message...</string>
+    <string name="send">Send</string>
+    
     <!-- Actions -->
     <string name="add">Add</string>
     <string name="cancel">Cancel</string>

@@ -66,8 +66,11 @@ dependencies {
     // Guardian Project's NetCipher for Tor integration - using only the main library
     implementation 'info.guardianproject.netcipher:netcipher:2.1.0'
     
-    // Use a compatible version of OkHttp that works with NetCipher
+    // OkHttp for network requests
     implementation 'com.squareup.okhttp3:okhttp:3.14.9'
+    
+    // Gson for JSON parsing
+    implementation 'com.google.code.gson:gson:2.10.1'
     
     // Post-Quantum Cryptography (PQC)
     implementation "org.bouncycastle:bcprov-jdk18on:1.77"

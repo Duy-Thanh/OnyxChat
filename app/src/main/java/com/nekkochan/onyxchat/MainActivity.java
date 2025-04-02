@@ -12,13 +12,17 @@ import androidx.appcompat.app.AppCompatDelegate;
 import androidx.appcompat.widget.Toolbar;
 import androidx.core.view.WindowCompat;
 import androidx.fragment.app.Fragment;
+import androidx.lifecycle.ViewModelProvider;
 import androidx.viewpager2.adapter.FragmentStateAdapter;
 import androidx.viewpager2.widget.ViewPager2;
 
 import com.google.android.material.bottomnavigation.BottomNavigationView;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
+import com.nekkochan.onyxchat.ui.ContactsFragment;
+import com.nekkochan.onyxchat.ui.MessagesFragment;
 import com.nekkochan.onyxchat.ui.ProfileFragment;
 import com.nekkochan.onyxchat.ui.SettingsActivity;
+import com.nekkochan.onyxchat.ui.viewmodel.MainViewModel;
 
 /**
  * Main activity for the OnyxChat application.
@@ -29,6 +33,7 @@ public class MainActivity extends AppCompatActivity {
     private ViewPager2 viewPager;
     private BottomNavigationView bottomNavigation;
     private FloatingActionButton fab;
+    private MainViewModel viewModel;
     
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -40,6 +45,9 @@ public class MainActivity extends AppCompatActivity {
         WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
         
         setContentView(R.layout.activity_main);
+        
+        // Initialize ViewModel
+        viewModel = new ViewModelProvider(this).get(MainViewModel.class);
         
         // Set up toolbar
         Toolbar toolbar = findViewById(R.id.toolbar);
@@ -59,8 +67,48 @@ public class MainActivity extends AppCompatActivity {
         
         // Set up FAB
         fab.setOnClickListener(v -> {
-            Toast.makeText(this, R.string.add_contact, Toast.LENGTH_SHORT).show();
+            // Action depends on current tab
+            int currentItem = viewPager.getCurrentItem();
+            if (currentItem == 0) { // Messages tab
+                // TODO: Start new conversation
+                Toast.makeText(this, R.string.new_conversation, Toast.LENGTH_SHORT).show();
+            } else if (currentItem == 1) { // Contacts tab
+                Toast.makeText(this, R.string.add_contact, Toast.LENGTH_SHORT).show();
+            }
         });
+        
+        // Connect to chat server
+        connectToChat();
+    }
+    
+    @Override
+    protected void onResume() {
+        super.onResume();
+        
+        // Reconnect to chat if disconnected
+        if (viewModel.isChatConnected().getValue() != Boolean.TRUE) {
+            connectToChat();
+        }
+    }
+    
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        
+        // Disconnect from chat when app is closed
+        viewModel.disconnectFromChat();
+    }
+    
+    /**
+     * Connect to the chat server
+     */
+    private void connectToChat() {
+        if (viewModel.isChatConnected().getValue() != Boolean.TRUE) {
+            boolean connectStarted = viewModel.connectToChat();
+            if (!connectStarted) {
+                Toast.makeText(this, R.string.error_connection, Toast.LENGTH_SHORT).show();
+            }
+        }
     }
     
     private void setupViewPager() {
@@ -139,18 +187,5 @@ public class MainActivity extends AppCompatActivity {
         }
         
         return super.onOptionsItemSelected(item);
-    }
-    
-    // Simple placeholder fragments
-    public static class MessagesFragment extends Fragment {
-        public MessagesFragment() {
-            super(R.layout.fragment_messages);
-        }
-    }
-    
-    public static class ContactsFragment extends Fragment {
-        public ContactsFragment() {
-            super(R.layout.fragment_contacts);
-        }
     }
 }
