@@ -19,9 +19,9 @@
         android:usesCleartextTraffic="true"
         tools:targetApi="31">
         
-        <!-- Welcome Activity as launcher -->
+        <!-- Login Activity as launcher -->
         <activity
-            android:name=".ui.WelcomeActivity"
+            android:name=".ui.auth.LoginActivity"
             android:exported="true"
             android:theme="@style/Theme.OnyxChat.NoActionBar">
             <intent-filter>
@@ -29,6 +29,23 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        
+        <!-- Auth Activities -->
+        <activity
+            android:name=".ui.auth.SignupActivity"
+            android:exported="false"
+            android:theme="@style/Theme.OnyxChat.NoActionBar" />
+            
+        <activity
+            android:name=".ui.auth.ForgotPasswordActivity"
+            android:exported="false"
+            android:theme="@style/Theme.OnyxChat.NoActionBar" />
+        
+        <!-- Welcome Activity -->
+        <activity
+            android:name=".ui.WelcomeActivity"
+            android:exported="false"
+            android:theme="@style/Theme.OnyxChat.NoActionBar" />
         
         <!-- Main Activity -->
         <activity
