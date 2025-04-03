@@ -44,6 +44,12 @@ public class WebSocketClient {
     private int reconnectAttempts = 0;
     private final AtomicBoolean reconnecting = new AtomicBoolean(false);
     
+    // Cooldown tracking to prevent excessive reconnection attempts
+    private long lastConnectAttemptTime = 0;
+    private static final long RECONNECT_COOLDOWN_MS = 5000; // 5 seconds between connection attempts
+    private static final int MAX_CONSECUTIVE_ATTEMPTS = 3;
+    private int consecutiveAttempts = 0;
+    
     /**
      * Enumeration for WebSocket connection states
      */
@@ -95,6 +101,22 @@ public class WebSocketClient {
             return true;
         }
         
+        // Check if we've attempted to connect too recently
+        long currentTime = System.currentTimeMillis();
+        if (currentTime - lastConnectAttemptTime < RECONNECT_COOLDOWN_MS) {
+            consecutiveAttempts++;
+            if (consecutiveAttempts > MAX_CONSECUTIVE_ATTEMPTS) {
+                Log.d(TAG, "Too many connection attempts, cooling down");
+                return false;
+            }
+        } else {
+            // Reset consecutive attempts counter if enough time has passed
+            consecutiveAttempts = 0;
+        }
+        
+        // Update last attempt time
+        lastConnectAttemptTime = currentTime;
+        
         currentUserId = userId;
         reconnectAttempts = 0;
         return startConnection();
@@ -132,15 +154,33 @@ public class WebSocketClient {
         if (reconnecting.compareAndSet(false, true)) {
             Log.d(TAG, "Attempting reconnect, attempt " + (reconnectAttempts + 1));
             
+            // Check if we've exceeded reconnect attempts
+            if (reconnectAttempts >= RECONNECT_ATTEMPTS) {
+                Log.d(TAG, "Max reconnect attempts reached");
+                reconnecting.set(false);
+                return;
+            }
+            
+            // Check if we've been trying too frequently
+            long currentTime = System.currentTimeMillis();
+            if (currentTime - lastConnectAttemptTime < RECONNECT_COOLDOWN_MS) {
+                consecutiveAttempts++;
+                if (consecutiveAttempts > MAX_CONSECUTIVE_ATTEMPTS) {
+                    Log.d(TAG, "Too many connection attempts in a short period, cooling down");
+                    reconnecting.set(false);
+                    return;
+                }
+            }
+            
             new Thread(() -> {
                 try {
                     Thread.sleep(RECONNECT_DELAY_MS);
                     
-                    if (reconnectAttempts < RECONNECT_ATTEMPTS) {
-                        reconnectAttempts++;
-                        startConnection();
-                    } else {
-                        Log.d(TAG, "Max reconnect attempts reached");
+                    reconnectAttempts++;
+                    lastConnectAttemptTime = System.currentTimeMillis();
+                    
+                    boolean connected = startConnection();
+                    if (!connected) {
                         reconnecting.set(false);
                     }
                 } catch (InterruptedException e) {
@@ -328,6 +368,7 @@ public class WebSocketClient {
             notifyStateChanged();
             reconnectAttempts = 0;
             reconnecting.set(false);
+            consecutiveAttempts = 0;  // Reset consecutive attempts on successful connection
         }
         
         @Override

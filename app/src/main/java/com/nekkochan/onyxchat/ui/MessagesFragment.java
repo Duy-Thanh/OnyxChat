@@ -71,11 +71,13 @@ public class MessagesFragment extends Fragment {
         adapter = new ChatMessageAdapter();
         recyclerView.setAdapter(adapter);
         
-        // Connect to chat server if not already connected
+        // Connect to chat server if not already connected - do this only once
         if (viewModel.isChatConnected().getValue() != Boolean.TRUE) {
             boolean connectStarted = viewModel.connectToChat();
             if (!connectStarted) {
-                Toast.makeText(getContext(), "Failed to connect to chat", Toast.LENGTH_SHORT).show();
+                // Show connection error, but don't repeat connection attempts
+                statusTextView.setText(R.string.status_disconnected);
+                statusTextView.setTextColor(getResources().getColor(R.color.error_red, null));
             }
         }
         
@@ -93,10 +95,8 @@ public class MessagesFragment extends Fragment {
                 statusTextView.setTextColor(getResources().getColor(R.color.error_red, null));
                 sendButton.setEnabled(false);
                 
-                // Auto-reconnect if disconnected
-                if (isAdded() && isVisible()) {
-                    viewModel.connectToChat();
-                }
+                // Don't auto-reconnect here - this would cause continuous retries
+                // Reconnect is handled in onResume and by user action instead
             }
         });
         
@@ -124,8 +124,10 @@ public class MessagesFragment extends Fragment {
     public void onResume() {
         super.onResume();
         
-        // Reconnect to chat if disconnected
-        if (viewModel.isChatConnected().getValue() != Boolean.TRUE) {
+        // Only try to reconnect if we're fully visible and disconnected,
+        // to avoid infinite reconnect loops
+        if (isVisible() && getUserVisibleHint() && 
+            viewModel.isChatConnected().getValue() != Boolean.TRUE) {
             viewModel.connectToChat();
         }
     }

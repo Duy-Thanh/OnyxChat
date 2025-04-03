@@ -105,18 +105,33 @@ public class MainActivity extends AppCompatActivity implements BottomNavigationV
     protected void onResume() {
         super.onResume();
         
-        // Reconnect to chat if needed
-        if (!viewModel.isChatConnected().getValue() && sessionManager.isLoggedIn()) {
+        // Only attempt to reconnect if we're not already connected
+        // This prevents multiple simultaneous connection attempts
+        Boolean isConnected = viewModel.isChatConnected().getValue();
+        if ((isConnected == null || !isConnected) && sessionManager.isLoggedIn()) {
+            // Add a debug log to track connection attempts
+            Log.d(TAG, "MainActivity onResume: attempting to connect to chat");
             viewModel.connectToChat();
         }
+    }
+    
+    @Override
+    protected void onPause() {
+        super.onPause();
+        
+        // Do NOT disconnect on pause - keep the connection alive
+        // We only want to disconnect when the app is actually closed
     }
     
     @Override
     protected void onDestroy() {
         super.onDestroy();
         
-        // Disconnect from chat on app close
-        viewModel.disconnectFromChat();
+        // Only disconnect if we're actually finishing (app is closing)
+        if (isFinishing()) {
+            Log.d(TAG, "MainActivity onDestroy: disconnecting from chat (app closing)");
+            viewModel.disconnectFromChat();
+        }
     }
     
     @Override

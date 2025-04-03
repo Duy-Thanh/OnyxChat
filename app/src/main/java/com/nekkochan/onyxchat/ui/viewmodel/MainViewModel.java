@@ -1,6 +1,7 @@
 package com.nekkochan.onyxchat.ui.viewmodel;
 
 import android.app.Application;
+import android.content.Context;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
@@ -19,6 +20,7 @@ import com.nekkochan.onyxchat.network.WebSocketClient;
 
 import java.security.KeyPair;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -28,25 +30,25 @@ import java.util.Map;
  */
 public class MainViewModel extends AndroidViewModel {
     private static final String TAG = "MainViewModel";
-    private final Repository repository;
-    private final ChatService chatService;
     
-    // Network connection state
     private final MutableLiveData<Boolean> isConnected = new MutableLiveData<>(false);
     private final MutableLiveData<String> userAddress = new MutableLiveData<>();
+    private final MutableLiveData<Boolean> isLoading = new MutableLiveData<>(false);
+    private final MutableLiveData<String> errorMessage = new MutableLiveData<>();
+    private final MutableLiveData<List<ChatMessage>> chatMessages = new MutableLiveData<>(new ArrayList<>());
+    
+    private final Repository repository;
+    private final ChatService chatService;
+    private User currentUser;
+    private LiveData<List<Contact>> activeContacts;
+    
+    // Connection debouncing
+    private long lastConnectionAttempt = 0;
+    private static final long CONNECTION_DEBOUNCE_MS = 3000; // 3 second cooldown between attempts
     
     // Chat state
     private final LiveData<Boolean> isChatConnected;
-    private final MutableLiveData<List<ChatMessage>> chatMessages = new MutableLiveData<>(new ArrayList<>());
     private final LiveData<Map<String, String>> onlineUsers;
-    
-    // Current UI state
-    private final MutableLiveData<Boolean> isLoading = new MutableLiveData<>(false);
-    private final MutableLiveData<String> errorMessage = new MutableLiveData<>();
-    
-    // User data cache
-    private User currentUser;
-    private LiveData<List<Contact>> activeContacts;
 
     public MainViewModel(@NonNull Application application) {
         super(application);
@@ -329,6 +331,16 @@ public class MainViewModel extends AndroidViewModel {
             errorMessage.setValue("No current user");
             return false;
         }
+        
+        // Implement debounce mechanism to prevent rapid successive connection attempts
+        long currentTime = System.currentTimeMillis();
+        if (currentTime - lastConnectionAttempt < CONNECTION_DEBOUNCE_MS) {
+            Log.d(TAG, "Connection attempt debounced - too frequent");
+            return false;
+        }
+        
+        // Update the last connection attempt timestamp
+        lastConnectionAttempt = currentTime;
         
         String userId = currentUser.getAddress();
         if (userId == null || userId.isEmpty()) {
