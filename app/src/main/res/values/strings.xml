@@ -70,6 +70,8 @@
     <string name="more_options">More options</string>
     <string name="set_expiration">Set Expiration</string>
     <string name="chat_with">Chat with</string>
+    <string name="action_settings">Settings</string>
+    <string name="action_logout">Log Out</string>
     
     <!-- Contacts -->
     <string name="add_contact">Add Contact</string>

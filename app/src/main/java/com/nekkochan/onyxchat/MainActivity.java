@@ -9,13 +9,10 @@ import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.appcompat.app.AppCompatDelegate;
 import androidx.appcompat.widget.Toolbar;
 import androidx.core.view.WindowCompat;
 import androidx.fragment.app.Fragment;
 import androidx.lifecycle.ViewModelProvider;
-import androidx.viewpager2.adapter.FragmentStateAdapter;
-import androidx.viewpager2.widget.ViewPager2;
 
 import com.google.android.material.bottomnavigation.BottomNavigationView;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
@@ -28,29 +25,27 @@ import com.nekkochan.onyxchat.ui.viewmodel.MainViewModel;
 import com.nekkochan.onyxchat.util.UserSessionManager;
 
 /**
- * Main activity for the OnyxChat application.
+ * Main activity for the application
  */
 public class MainActivity extends AppCompatActivity implements BottomNavigationView.OnNavigationItemSelectedListener {
-    private static final String TAG = "MainActivity";
     
-    private ViewPager2 viewPager;
-    private BottomNavigationView bottomNavigation;
-    private FloatingActionButton fab;
+    private static final String TAG = "MainActivity";
     private MainViewModel viewModel;
     private UserSessionManager sessionManager;
     
+    private BottomNavigationView bottomNavigation;
+    private FloatingActionButton fab;
+    
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        // Force dark mode
-        AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES);
-        
         super.onCreate(savedInstanceState);
+        
         // Set up edge-to-edge display
         WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
         
         setContentView(R.layout.activity_main);
         
-        // Initialize ViewModel
+        // Initialize view model
         viewModel = new ViewModelProvider(this).get(MainViewModel.class);
         
         // Initialize session manager
@@ -79,12 +74,8 @@ public class MainActivity extends AppCompatActivity implements BottomNavigationV
         setSupportActionBar(toolbar);
         
         // Initialize views
-        viewPager = findViewById(R.id.viewPager);
         bottomNavigation = findViewById(R.id.bottomNavigation);
         fab = findViewById(R.id.fab);
-        
-        // Set up ViewPager and adapter
-        setupViewPager();
         
         // Set up bottom navigation
         bottomNavigation.setOnNavigationItemSelectedListener(this);
@@ -92,11 +83,12 @@ public class MainActivity extends AppCompatActivity implements BottomNavigationV
         // Set up FAB
         fab.setOnClickListener(v -> {
             // Action depends on current tab
-            int currentItem = viewPager.getCurrentItem();
-            if (currentItem == 0) { // Messages tab
-                // TODO: Start new conversation
+            int selectedItemId = bottomNavigation.getSelectedItemId();
+            if (selectedItemId == R.id.nav_messages) {
+                // Start new conversation
                 Toast.makeText(this, R.string.new_conversation, Toast.LENGTH_SHORT).show();
-            } else if (currentItem == 1) { // Contacts tab
+            } else if (selectedItemId == R.id.nav_contacts) {
+                // Add contact
                 Toast.makeText(this, R.string.add_contact, Toast.LENGTH_SHORT).show();
             }
         });
@@ -127,65 +119,35 @@ public class MainActivity extends AppCompatActivity implements BottomNavigationV
         viewModel.disconnectFromChat();
     }
     
-    private void setupViewPager() {
-        viewPager.setAdapter(new FragmentStateAdapter(this) {
-            @NonNull
-            @Override
-            public Fragment createFragment(int position) {
-                switch (position) {
-                    case 0:
-                        return new MessagesFragment();
-                    case 1:
-                        return new ContactsFragment();
-                    case 2:
-                        return new ProfileFragment();
-                    default:
-                        return new MessagesFragment();
-                }
-            }
-            
-            @Override
-            public int getItemCount() {
-                return 3;
-            }
-        });
-        
-        viewPager.registerOnPageChangeCallback(new ViewPager2.OnPageChangeCallback() {
-            @Override
-            public void onPageSelected(int position) {
-                super.onPageSelected(position);
-                bottomNavigation.setSelectedItemId(
-                        position == 0 ? R.id.nav_messages :
-                        position == 1 ? R.id.nav_contacts :
-                        R.id.nav_profile);
-                
-                // Show/hide FAB based on page
-                if (position == 0 || position == 1) {
-                    fab.show();
-                } else {
-                    fab.hide();
-                }
-            }
-        });
-    }
-    
     @Override
     public boolean onNavigationItemSelected(@NonNull MenuItem item) {
         Fragment selectedFragment = null;
+        boolean showFab = false;
         
         int itemId = item.getItemId();
         if (itemId == R.id.nav_messages) {
             selectedFragment = new MessagesFragment();
+            showFab = true;
         } else if (itemId == R.id.nav_contacts) {
             selectedFragment = new ContactsFragment();
+            showFab = true;
         } else if (itemId == R.id.nav_profile) {
             selectedFragment = new ProfileFragment();
+            showFab = false;
         }
         
         if (selectedFragment != null) {
             getSupportFragmentManager().beginTransaction()
                     .replace(R.id.fragment_container, selectedFragment)
                     .commit();
+            
+            // Show/hide FAB based on the selected item
+            if (showFab) {
+                fab.show();
+            } else {
+                fab.hide();
+            }
+            
             return true;
         }
         
@@ -205,6 +167,10 @@ public class MainActivity extends AppCompatActivity implements BottomNavigationV
         if (id == R.id.action_settings) {
             // Open settings activity
             openSettings();
+            return true;
+        } else if (id == R.id.action_logout) {
+            // Log out
+            logOut();
             return true;
         }
         
