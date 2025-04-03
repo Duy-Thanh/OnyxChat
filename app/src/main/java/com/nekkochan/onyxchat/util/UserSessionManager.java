@@ -6,32 +6,27 @@ import android.content.SharedPreferences.Editor;
 import android.util.Log;
 
 /**
- * User session manager to handle login state and user data persistence
+ * Session manager to store and manage user session data.
+ * Stores user info and login/logout functionality.
  */
 public class UserSessionManager {
-    
-    private static final String TAG = "UserSessionManager";
-    
-    // Shared preferences file name
-    private static final String PREF_NAME = "OnyxChatUserSession";
-    
-    // Shared preferences mode
-    private static final int PRIVATE_MODE = Context.MODE_PRIVATE;
-    
-    // Shared preferences keys
-    private static final String KEY_IS_LOGGED_IN = "isLoggedIn";
-    private static final String KEY_USERNAME = "username";
-    private static final String KEY_USER_ID = "userId";
-    private static final String KEY_LOGIN_TIME = "loginTime";
-    
-    // Shared preferences editor
+    // Shared Preferences reference
     private final SharedPreferences pref;
     private final Editor editor;
     private final Context context;
     
+    // Shared preferences file name
+    private static final String PREF_NAME = "OnyxChatPref";
+    private static final int PRIVATE_MODE = 0;
+    
+    // Shared preferences keys
+    private static final String IS_LOGIN = "isLoggedIn";
+    private static final String KEY_USERNAME = "username";
+    private static final String KEY_USER_ID = "userId";
+    private static final String KEY_AUTH_TOKEN = "authToken";
+    
     /**
      * Constructor
-     * @param context Application context
      */
     public UserSessionManager(Context context) {
         this.context = context;
@@ -41,19 +36,63 @@ public class UserSessionManager {
     
     /**
      * Create login session
-     * @param username User's username or email
-     * @param userId User's unique ID
      */
-    public void createLoginSession(String username, String userId) {
-        Log.d(TAG, "Creating login session for " + username + " with ID " + userId);
+    public void createLoginSession(String username, String userId, String authToken) {
+        Log.d("UserSessionManager", "Creating login session for " + username + " with ID " + userId);
         
         // Store login values
-        editor.putBoolean(KEY_IS_LOGGED_IN, true);
+        editor.putBoolean(IS_LOGIN, true);
         editor.putString(KEY_USERNAME, username);
         editor.putString(KEY_USER_ID, userId);
-        editor.putLong(KEY_LOGIN_TIME, System.currentTimeMillis());
+        editor.putString(KEY_AUTH_TOKEN, authToken);
         
         // Commit changes
+        editor.apply();
+    }
+    
+    /**
+     * Create legacy login session (for backward compatibility)
+     */
+    public void createLoginSession(String username, String userId) {
+        createLoginSession(username, userId, "");
+    }
+    
+    /**
+     * Get stored username
+     */
+    public String getUsername() {
+        return pref.getString(KEY_USERNAME, null);
+    }
+    
+    /**
+     * Get stored user ID
+     */
+    public String getUserId() {
+        return pref.getString(KEY_USER_ID, null);
+    }
+    
+    /**
+     * Get stored auth token
+     */
+    public String getAuthToken() {
+        return pref.getString(KEY_AUTH_TOKEN, null);
+    }
+    
+    /**
+     * Check login status
+     */
+    public boolean isLoggedIn() {
+        return pref.getBoolean(IS_LOGIN, false);
+    }
+    
+    /**
+     * Clear session details
+     */
+    public void logout() {
+        Log.d("UserSessionManager", "Logging out user");
+        
+        // Clear all data from preferences
+        editor.clear();
         editor.apply();
     }
     
@@ -68,39 +107,9 @@ public class UserSessionManager {
         
         String username = pref.getString(KEY_USERNAME, null);
         String userId = pref.getString(KEY_USER_ID, null);
-        long loginTime = pref.getLong(KEY_LOGIN_TIME, 0);
+        String authToken = pref.getString(KEY_AUTH_TOKEN, null);
         
-        return new UserDetails(username, userId, loginTime);
-    }
-    
-    /**
-     * Clear session details and log user out
-     */
-    public void logout() {
-        Log.d(TAG, "Logging out user");
-        
-        // Clear all data from shared preferences
-        editor.clear();
-        editor.apply();
-    }
-    
-    /**
-     * Check if user is logged in
-     * @return true if user is logged in, false otherwise
-     */
-    public boolean isLoggedIn() {
-        return pref.getBoolean(KEY_IS_LOGGED_IN, false);
-    }
-    
-    /**
-     * Get current user ID
-     * @return User ID or null if not logged in
-     */
-    public String getUserId() {
-        if (!isLoggedIn()) {
-            return null;
-        }
-        return pref.getString(KEY_USER_ID, null);
+        return new UserDetails(username, userId, authToken);
     }
     
     /**
@@ -109,12 +118,12 @@ public class UserSessionManager {
     public static class UserDetails {
         private final String username;
         private final String userId;
-        private final long loginTime;
+        private final String authToken;
         
-        public UserDetails(String username, String userId, long loginTime) {
+        public UserDetails(String username, String userId, String authToken) {
             this.username = username;
             this.userId = userId;
-            this.loginTime = loginTime;
+            this.authToken = authToken;
         }
         
         public String getUsername() {
@@ -125,8 +134,8 @@ public class UserSessionManager {
             return userId;
         }
         
-        public long getLoginTime() {
-            return loginTime;
+        public String getAuthToken() {
+            return authToken;
         }
     }
 } 

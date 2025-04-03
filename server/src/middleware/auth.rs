@@ -10,6 +10,7 @@ use axum::{
 };
 use jsonwebtoken::{decode, DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 use crate::{
     error::AppError,
@@ -18,11 +19,19 @@ use crate::{
 };
 
 // Auth specific errors that can be used by other modules
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum AuthError {
+    #[error("Invalid token")]
     InvalidToken,
-    ExpiredToken,
+    
+    #[error("Token expired")]
+    TokenExpired,
+    
+    #[error("Invalid password")]
     InvalidPassword,
+    
+    #[error("Unauthorized")]
+    Unauthorized,
 }
 
 // Implementation for displaying auth errors
@@ -30,8 +39,9 @@ impl std::fmt::Display for AuthError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let message = match self {
             AuthError::InvalidToken => "Invalid token",
-            AuthError::ExpiredToken => "Token has expired",
+            AuthError::TokenExpired => "Token has expired",
             AuthError::InvalidPassword => "Invalid password",
+            AuthError::Unauthorized => "Unauthorized",
         };
         write!(f, "{}", message)
     }
@@ -128,5 +138,65 @@ where
         // Try to extract the user, but don't fail if not possible
         let user = CurrentUser::from_request_parts(parts, state).await.ok();
         Ok(OptionalUser { user })
+    }
+}
+
+// Middleware for routes that need authentication
+pub async fn auth_middleware<B>(
+    State(state): State<AppState>,
+    // Try to extract the token from the Authorization header
+    typed_header: Option<TypedHeader<Authorization<Bearer>>>,
+    mut request: Request<B>,
+    next: Next<B>,
+) -> Result<Response, AppError> {
+    // Public routes that don't require authentication
+    let path = request.uri().path();
+    if path == "/api/health" || 
+       path == "/api/hello" || 
+       path == "/api/auth/login" || 
+       path.starts_with("/ws/") ||
+       (path == "/api/users" && request.method() == axum::http::Method::POST) {
+        return Ok(next.run(request).await);
+    }
+    
+    // For protected routes, require authentication
+    if let Some(TypedHeader(Authorization(bearer))) = typed_header {
+        match AuthService::validate_token(bearer.token()) {
+            Ok(claims) => {
+                // Add current user to request extensions
+                let current_user = CurrentUser {
+                    id: claims.sub,
+                    username: claims.username,
+                };
+                request.extensions_mut().insert(current_user);
+                return Ok(next.run(request).await);
+            },
+            Err(e) => {
+                return Err(AppError::auth("Invalid or expired token"));
+            }
+        }
+    }
+    
+    // No token provided
+    Err(AppError::auth("Authentication required"))
+}
+
+// Extractor for the current user
+#[axum::async_trait]
+impl<S> axum::extract::FromRequestParts<S> for CurrentUser 
+where
+    S: Send + Sync,
+{
+    type Rejection = AppError;
+    
+    async fn from_request_parts(
+        parts: &mut axum::http::request::Parts,
+        _state: &S,
+    ) -> Result<Self, Self::Rejection> {
+        parts
+            .extensions
+            .get::<CurrentUser>()
+            .cloned()
+            .ok_or_else(|| AppError::auth("Unauthorized: Missing authentication"))
     }
 } 

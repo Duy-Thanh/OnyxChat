@@ -9,6 +9,7 @@ use axum::{
     response::IntoResponse,
     Json,
 };
+use sqlx::postgres::PgPoolOptions;
 use serde::{Serialize, Deserialize};
 use log::info;
 use dotenv::dotenv;
@@ -27,7 +28,8 @@ use crate::models::{
     User, Message, LoginRequest, AuthResponse, 
     UserCreatedResponse, MessageResponse, AuthService
 };
-use crate::middleware::auth::CurrentUser;
+use crate::handlers::auth;
+use crate::middleware::auth::{CurrentUser, auth_middleware};
 use crate::error::{AppError, Result};
 use crate::middleware::auth::AuthError;
 use crate::ws::WebSocketManager;
@@ -53,14 +55,32 @@ impl AppState {
 #[tokio::main]
 async fn main() -> Result<()> {
     // Initialize environment
-    dotenv::dotenv().ok();
+    dotenv().ok();
     env_logger::init();
+    
+    // Try to connect to the database
+    let database_url = std::env::var("DATABASE_URL")
+        .unwrap_or_else(|_| "postgres://postgres:postgres@localhost/onyxchat".to_string());
+    
+    let db = match PgPoolOptions::new()
+        .max_connections(10)
+        .connect(&database_url)
+        .await {
+            Ok(pool) => {
+                info!("Connected to database successfully");
+                Some(pool)
+            },
+            Err(e) => {
+                eprintln!("Failed to connect to database: {}", e);
+                None
+            }
+        };
     
     // Create WebSocket manager
     let ws_manager = Arc::new(WebSocketManager::new());
     
     // Create application state
-    let app_state = AppState::new(None, ws_manager);
+    let app_state = AppState::new(db, ws_manager);
     
     // CORS configuration
     let cors = CorsLayer::new()
@@ -75,11 +95,11 @@ async fn main() -> Result<()> {
         .route("/api/hello", get(hello_world))
         
         // User routes
-        .route("/api/users", post(register_user))
+        .route("/api/users", post(auth::register))
         .route("/api/users/:user_id", get(get_user_by_id))
         
         // Auth routes
-        .route("/api/auth/login", post(login))
+        .route("/api/auth/login", post(auth::login))
         
         // Message routes
         .route("/api/messages", post(send_message))
@@ -92,6 +112,7 @@ async fn main() -> Result<()> {
         
         // Apply middleware
         .layer(cors)
+        .layer(axum::middleware::from_fn(auth_middleware))
         
         // Add app state
         .with_state(app_state);

@@ -14,7 +14,13 @@ use crate::{
     config::AppConfig,
     error::{AppError, Result},
     middleware::auth::Claims,
+    models::user::UserProfile,
 };
+
+// Environment variables for JWT configuration
+// In production, these should be loaded from .env or another secure source
+const JWT_SECRET: &str = "super_secret_key_change_in_production";
+const JWT_EXPIRY_SECONDS: u64 = 86400; // 24 hours
 
 #[derive(Debug, Serialize, Deserialize, FromRow)]
 pub struct RefreshToken {
@@ -39,14 +45,14 @@ pub struct LoginRequest {
 #[derive(Debug, Serialize)]
 pub struct AuthResponse {
     pub token: String,
-    pub refresh_token: String,
+    pub user: UserProfile,
     pub token_type: String,
     pub expires_in: u64,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct TokenRefreshRequest {
-    pub refresh_token: String,
+    pub token: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -91,7 +97,7 @@ impl AuthService {
             .expect("Time went backwards")
             .as_secs();
         
-        let exp = now + 86400; // 24 hours
+        let exp = now + JWT_EXPIRY_SECONDS;
         
         let claims = Claims {
             sub: user_id.to_string(),
@@ -103,26 +109,21 @@ impl AuthService {
         let token = encode(
             &Header::default(),
             &claims,
-            &EncodingKey::from_secret("super_secret_key_change_in_production".as_bytes()),
+            &EncodingKey::from_secret(JWT_SECRET.as_bytes()),
         )?;
         
         Ok(token)
     }
 
     // Validate JWT token
-    pub fn validate_token(config: &AppConfig, token: &str) -> Result<TokenClaims> {
-        let token_data = decode::<TokenClaims>(
+    pub fn validate_token(token: &str) -> Result<Claims> {
+        decode::<Claims>(
             token,
-            &DecodingKey::from_secret(config.jwt_secret.as_bytes()),
-            &Validation::default()
+            &DecodingKey::from_secret(JWT_SECRET.as_bytes()),
+            &Validation::default(),
         )
-        .map_err(|e| match e.kind() {
-            jsonwebtoken::errors::ErrorKind::ExpiredSignature => AppError::auth("Token expired"),
-            jsonwebtoken::errors::ErrorKind::InvalidToken => AppError::auth("Invalid token"),
-            _ => AppError::auth(format!("Token validation error: {}", e)),
-        })?;
-        
-        Ok(token_data.claims)
+        .map(|data| data.claims)
+        .map_err(|e| AppError::auth(&format!("Invalid token: {}", e)))
     }
 
     // Store refresh token in database

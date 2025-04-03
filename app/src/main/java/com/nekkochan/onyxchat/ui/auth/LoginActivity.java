@@ -18,6 +18,7 @@ import com.google.android.material.textfield.TextInputLayout;
 import com.nekkochan.onyxchat.MainActivity;
 import com.nekkochan.onyxchat.R;
 import com.nekkochan.onyxchat.databinding.ActivityLoginBinding;
+import com.nekkochan.onyxchat.network.ApiClient;
 import com.nekkochan.onyxchat.util.UserSessionManager;
 
 /**
@@ -28,6 +29,7 @@ public class LoginActivity extends AppCompatActivity {
     private static final String TAG = "LoginActivity";
     private ActivityLoginBinding binding;
     private UserSessionManager sessionManager;
+    private ApiClient apiClient;
     
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -41,6 +43,9 @@ public class LoginActivity extends AppCompatActivity {
         
         // Initialize session manager
         sessionManager = new UserSessionManager(this);
+        
+        // Initialize API client
+        apiClient = ApiClient.getInstance(this);
         
         // Check if user is already logged in
         if (sessionManager.isLoggedIn()) {
@@ -68,84 +73,69 @@ public class LoginActivity extends AppCompatActivity {
     }
     
     /**
-     * Attempt to log in with the provided credentials
+     * Attempt to login with the provided credentials
      */
     private void attemptLogin() {
-        // Clear errors
-        binding.usernameInputLayout.setError(null);
-        binding.passwordInputLayout.setError(null);
+        // Reset errors
+        binding.usernameInput.setError(null);
+        binding.passwordInput.setError(null);
         
         // Get values
         String username = binding.usernameInput.getText().toString().trim();
-        String password = binding.passwordInput.getText().toString().trim();
+        String password = binding.passwordInput.getText().toString();
         
-        // Validate fields
-        boolean cancel = false;
-        View focusView = null;
+        // Validate inputs
+        if (TextUtils.isEmpty(username)) {
+            binding.usernameInput.setError(getString(R.string.error_field_required));
+            binding.usernameInput.requestFocus();
+            return;
+        }
         
         if (TextUtils.isEmpty(password)) {
-            binding.passwordInputLayout.setError(getString(R.string.error_invalid_password));
-            focusView = binding.passwordInput;
-            cancel = true;
+            binding.passwordInput.setError(getString(R.string.error_field_required));
+            binding.passwordInput.requestFocus();
+            return;
         }
         
-        if (TextUtils.isEmpty(username)) {
-            binding.usernameInputLayout.setError(getString(R.string.error_username_required));
-            focusView = binding.usernameInput;
-            cancel = true;
-        }
+        // Show progress
+        binding.loginProgress.setVisibility(View.VISIBLE);
+        binding.loginButton.setEnabled(false);
         
-        if (cancel) {
-            // Focus the first field with an error
-            focusView.requestFocus();
-        } else {
-            // Show progress
-            binding.loginButton.setEnabled(false);
-            binding.loginProgress.setVisibility(View.VISIBLE);
-            
-            // Authenticate user
-            authenticateUser(username, password);
-        }
+        // Authenticate with the server
+        authenticateUser(username, password);
     }
     
     /**
-     * Authenticate user credentials
-     * In a real app, this would validate with a server
+     * Authenticate the user with the server
      */
     private void authenticateUser(String username, String password) {
-        // In a real app, this would validate with server
-        // For now, simulate a successful login with any credentials
         Log.d(TAG, "Authenticating user: " + username);
         
-        // Simulate network delay
-        binding.loginButton.postDelayed(() -> {
-            // Create user session
-            sessionManager.createLoginSession(username, generateUserId(username));
+        apiClient.login(username, password, new ApiClient.ApiCallback<ApiClient.AuthResponse>() {
+            @Override
+            public void onSuccess(ApiClient.AuthResponse response) {
+                Log.d(TAG, "Login successful: " + response.user.username);
+                
+                // Hide progress
+                binding.loginProgress.setVisibility(View.GONE);
+                binding.loginButton.setEnabled(true);
+                
+                // Proceed to main activity
+                proceedToMainActivity();
+            }
             
-            // Hide progress
-            binding.loginProgress.setVisibility(View.GONE);
-            binding.loginButton.setEnabled(true);
-            
-            // Proceed to main activity
-            proceedToMainActivity();
-        }, 1000); // Simulated delay
-    }
-    
-    /**
-     * Generate a consistent user ID from username
-     * For a real app, the server should provide the user ID
-     */
-    private String generateUserId(String username) {
-        // Remove special characters and spaces, convert to lowercase
-        String baseId = username.replaceAll("[^a-zA-Z0-9]", "").toLowerCase();
-        
-        // Ensure ID is not empty
-        if (baseId.isEmpty()) {
-            baseId = "user";
-        }
-        
-        // Add a timestamp for uniqueness
-        return baseId + System.currentTimeMillis();
+            @Override
+            public void onFailure(String errorMessage) {
+                Log.e(TAG, "Login failed: " + errorMessage);
+                
+                // Hide progress
+                binding.loginProgress.setVisibility(View.GONE);
+                binding.loginButton.setEnabled(true);
+                
+                // Show error
+                Toast.makeText(LoginActivity.this, errorMessage, Toast.LENGTH_LONG).show();
+            }
+        });
     }
     
     /**
@@ -170,7 +160,7 @@ public class LoginActivity extends AppCompatActivity {
      */
     private void proceedToMainActivity() {
         Intent intent = new Intent(this, MainActivity.class);
-        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_NEW_TASK);
+        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
         startActivity(intent);
         finish();
     }

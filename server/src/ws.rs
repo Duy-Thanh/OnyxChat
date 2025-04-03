@@ -3,6 +3,8 @@ use axum::{
     response::IntoResponse,
     routing::get,
     Router,
+    TypedHeader,
+    http::StatusCode,
 };
 use futures::{sink::SinkExt, stream::StreamExt};
 use serde::{Deserialize, Serialize};
@@ -16,11 +18,10 @@ use uuid::Uuid;
 use tokio::{sync::mpsc, task::JoinHandle};
 use tokio::net::TcpStream;
 use futures::stream::{SplitSink, SplitStream};
-
 use crate::{
     error::{AppError, Result},
     AppState,
-    Message as DbMessage,
+    models::auth::AuthService,
     middleware::auth::CurrentUser,
 };
 
@@ -150,12 +151,33 @@ pub fn ws_routes() -> Router<AppState> {
         .route("/echo", get(ws_echo_handler))
 }
 
-// WebSocket handler
+// WebSocket handler with token-based authentication
 pub async fn ws_handler(
     ws: WebSocketUpgrade,
     Path(user_id): Path<String>,
     State(state): State<AppState>,
+    TypedHeader(auth_header): Option<TypedHeader<Authorization<Bearer>>>,
 ) -> impl IntoResponse {
+    // Extract and validate the token if present
+    let is_authenticated = if let Some(Authorization(bearer)) = auth_header {
+        match AuthService::validate_token(bearer.token()) {
+            Ok(claims) => {
+                // Verify that the user ID in the path matches the one in the token
+                claims.sub == user_id
+            },
+            Err(_) => false,
+        }
+    } else {
+        // For development, allow unauthenticated WebSocket connections
+        // In production, you would return an error here
+        true
+    };
+
+    if !is_authenticated {
+        return (StatusCode::UNAUTHORIZED, "Unauthorized").into_response();
+    }
+
+    // Upgrade the connection and handle the socket
     ws.on_upgrade(move |socket| handle_socket(socket, user_id, state))
 }
 

@@ -1,10 +1,13 @@
 package com.nekkochan.onyxchat.network;
 
 import android.content.Context;
+import android.content.SharedPreferences;
+import android.preference.PreferenceManager;
 import android.util.Log;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import com.nekkochan.onyxchat.util.UserSessionManager;
 
 import java.io.EOFException;
 import java.util.ArrayList;
@@ -50,6 +53,9 @@ public class WebSocketClient {
     private static final int MAX_CONSECUTIVE_ATTEMPTS = 3;
     private int consecutiveAttempts = 0;
     
+    private final UserSessionManager sessionManager;
+    private final SharedPreferences sharedPreferences;
+    
     /**
      * Enumeration for WebSocket connection states
      */
@@ -62,82 +68,95 @@ public class WebSocketClient {
     /**
      * Create a new WebSocket client with the default endpoint
      */
-    public WebSocketClient() {
-        this(DEFAULT_WS_ENDPOINT);
+    public WebSocketClient(Context context) {
+        this.sessionManager = new UserSessionManager(context);
+        this.sharedPreferences = PreferenceManager.getDefaultSharedPreferences(context);
+        
+        // Get server URL from preferences
+        String serverUrl = sharedPreferences.getString("server_url", DEFAULT_WS_ENDPOINT);
+        this.wsEndpoint = serverUrl;
+        
+        // Configure OkHttp client
+        client = new OkHttpClient.Builder()
+                .connectTimeout(10, TimeUnit.SECONDS)
+                .readTimeout(30, TimeUnit.SECONDS)
+                .writeTimeout(15, TimeUnit.SECONDS)
+                .pingInterval(20, TimeUnit.SECONDS)
+                .build();
     }
     
     /**
      * Create a new WebSocket client with a custom endpoint
-     * 
-     * @param wsEndpoint the WebSocket endpoint URL
      */
-    public WebSocketClient(String wsEndpoint) {
+    public WebSocketClient(String wsEndpoint, Context context) {
+        this.sessionManager = new UserSessionManager(context);
+        this.sharedPreferences = PreferenceManager.getDefaultSharedPreferences(context);
         this.wsEndpoint = wsEndpoint;
         
-        // Build OkHttp client with reasonable timeouts
-        this.client = new OkHttpClient.Builder()
+        // Configure OkHttp client
+        client = new OkHttpClient.Builder()
                 .connectTimeout(10, TimeUnit.SECONDS)
-                .readTimeout(60, TimeUnit.SECONDS) // Longer read timeout to prevent unnecessary disconnections
-                .writeTimeout(30, TimeUnit.SECONDS)
-                .pingInterval(30, TimeUnit.SECONDS) // Add ping to keep connection alive
-                .retryOnConnectionFailure(true)
+                .readTimeout(30, TimeUnit.SECONDS)
+                .writeTimeout(15, TimeUnit.SECONDS)
+                .pingInterval(20, TimeUnit.SECONDS)
                 .build();
     }
     
     /**
      * Connect to the WebSocket server
-     * 
-     * @param userId the ID of the user connecting
+     * @param userId The user ID to connect with
      * @return true if connection started, false otherwise
      */
     public boolean connect(String userId) {
-        if (state == WebSocketState.CONNECTED) {
-            Log.d(TAG, "Already connected");
-            return true;
+        if (webSocket != null) {
+            Log.w(TAG, "WebSocket already exists, disconnecting first");
+            disconnect();
         }
         
-        if (state == WebSocketState.CONNECTING && !reconnecting.get()) {
-            Log.d(TAG, "Already connecting");
-            return true;
-        }
-        
-        // Check if we've attempted to connect too recently
-        long currentTime = System.currentTimeMillis();
-        if (currentTime - lastConnectAttemptTime < RECONNECT_COOLDOWN_MS) {
+        // Track connection attempt cooldown
+        long now = System.currentTimeMillis();
+        if (now - lastConnectAttemptTime < RECONNECT_COOLDOWN_MS) {
             consecutiveAttempts++;
             if (consecutiveAttempts > MAX_CONSECUTIVE_ATTEMPTS) {
-                Log.d(TAG, "Too many connection attempts, cooling down");
+                Log.w(TAG, "Too many connection attempts, cooling down");
                 return false;
             }
         } else {
-            // Reset consecutive attempts counter if enough time has passed
-            consecutiveAttempts = 0;
+            consecutiveAttempts = 1;
         }
         
-        // Update last attempt time
-        lastConnectAttemptTime = currentTime;
+        lastConnectAttemptTime = now;
         
-        currentUserId = userId;
-        reconnectAttempts = 0;
-        return startConnection();
-    }
-    
-    /**
-     * Start a WebSocket connection
-     */
-    private boolean startConnection() {
-        String url = wsEndpoint + currentUserId;
-        Log.d(TAG, "Connecting to WebSocket at " + url);
+        // Store the current user ID
+        this.currentUserId = userId;
+        
+        // Build WebSocket URL
+        String url = wsEndpoint;
+        if (!url.endsWith("/")) {
+            url += "/";
+        }
+        url += "ws/" + userId;
+        
+        // Create WebSocket request
+        Request.Builder requestBuilder = new Request.Builder()
+                .url(url);
+        
+        // Add auth token if available
+        String token = sessionManager.getAuthToken();
+        if (token != null && !token.isEmpty()) {
+            requestBuilder.addHeader("Authorization", "Bearer " + token);
+        }
+        
+        // Create request
+        Request request = requestBuilder.build();
+        
+        // Update state
+        state = WebSocketState.CONNECTING;
+        notifyStateChanged();
         
         try {
-            Request request = new Request.Builder()
-                    .url(url)
-                    .build();
-            
-            state = WebSocketState.CONNECTING;
-            notifyStateChanged();
-            
-            webSocket = client.newWebSocket(request, new WebSocketHandler());
+            // Attempt connection
+            webSocket = client.newWebSocket(request, new WebSocketListenerImpl());
             return true;
         } catch (Exception e) {
             Log.e(TAG, "Error connecting to WebSocket", e);
@@ -358,36 +377,65 @@ public class WebSocketClient {
     }
     
     /**
+     * Schedule a reconnection attempt
+     */
+    private void scheduleReconnect() {
+        reconnectAttempts++;
+        
+        if (reconnectAttempts > RECONNECT_ATTEMPTS) {
+            Log.d(TAG, "Maximum reconnection attempts reached");
+            return;
+        }
+        
+        long delay = RECONNECT_DELAY_MS * reconnectAttempts;
+        Log.d(TAG, "Scheduling reconnect in " + delay + "ms (attempt " + reconnectAttempts + ")");
+        
+        // Use a background thread for reconnection
+        new Thread(() -> {
+            try {
+                Thread.sleep(delay);
+                Log.d(TAG, "Attempting to reconnect now");
+                
+                if (currentUserId != null) {
+                    connect(currentUserId);
+                }
+            } catch (InterruptedException e) {
+                Log.e(TAG, "Reconnect thread interrupted", e);
+            }
+        }).start();
+    }
+    
+    /**
      * WebSocket event handler
      */
-    private class WebSocketHandler extends WebSocketListener {
+    private class WebSocketListenerImpl extends WebSocketListener {
         @Override
         public void onOpen(WebSocket webSocket, Response response) {
             Log.d(TAG, "WebSocket connection opened");
             state = WebSocketState.CONNECTED;
-            notifyStateChanged();
             reconnectAttempts = 0;
-            reconnecting.set(false);
-            consecutiveAttempts = 0;  // Reset consecutive attempts on successful connection
+            notifyStateChanged();
         }
         
         @Override
         public void onMessage(WebSocket webSocket, String text) {
-            Log.d(TAG, "Message received: " + text);
-            notifyMessageReceived(text);
+            Log.d(TAG, "WebSocket message received: " + text);
+            try {
+                notifyMessageReceived(text);
+            } catch (Exception e) {
+                Log.e(TAG, "Error processing WebSocket message", e);
+            }
         }
         
         @Override
         public void onMessage(WebSocket webSocket, ByteString bytes) {
-            Log.d(TAG, "Binary message received");
-            // Convert to string for simplicity
-            notifyMessageReceived(bytes.utf8());
+            // Not handling binary messages
         }
         
         @Override
         public void onClosing(WebSocket webSocket, int code, String reason) {
             Log.d(TAG, "WebSocket closing: " + code + " " + reason);
-            webSocket.close(code, reason);
+            webSocket.close(1000, null);
         }
         
         @Override
@@ -399,21 +447,20 @@ public class WebSocketClient {
         
         @Override
         public void onFailure(WebSocket webSocket, Throwable t, Response response) {
-            // Don't log EOFException as error since it's common when closing connections
-            if (t instanceof EOFException) {
-                Log.d(TAG, "WebSocket connection closed");
-            } else {
+            // Don't log EOFException as error since it's common when disconnecting
+            if (!(t instanceof EOFException)) {
                 Log.e(TAG, "WebSocket failure", t);
             }
             
+            String errorMessage = t.getMessage();
             state = WebSocketState.DISCONNECTED;
             notifyStateChanged();
+            notifyError(errorMessage != null ? errorMessage : "Unknown error");
             
-            String errorMessage = t != null ? t.getMessage() : "Unknown error";
-            notifyError(errorMessage);
-            
-            // Attempt to reconnect
-            attemptReconnect();
+            // Schedule reconnect if needed
+            if (currentUserId != null && !(t instanceof EOFException)) {
+                scheduleReconnect();
+            }
         }
     }
 }
