@@ -7,6 +7,8 @@ import androidx.room.Ignore;
 import androidx.room.Index;
 import androidx.room.PrimaryKey;
 
+import java.util.Date;
+
 /**
  * Entity representing a conversation in the OnyxChat application.
  * A conversation is a collection of messages between the user and a contact.

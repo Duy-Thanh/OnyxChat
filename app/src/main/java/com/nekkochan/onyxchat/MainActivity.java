@@ -17,7 +17,7 @@ import androidx.lifecycle.ViewModelProvider;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.nekkochan.onyxchat.ui.ContactsFragment;
-import com.nekkochan.onyxchat.ui.MessagesFragment;
+import com.nekkochan.onyxchat.ui.ConversationListFragment;
 import com.nekkochan.onyxchat.ui.ProfileFragment;
 import com.nekkochan.onyxchat.ui.SettingsActivity;
 import com.nekkochan.onyxchat.ui.auth.LoginActivity;
@@ -81,23 +81,20 @@ public class MainActivity extends AppCompatActivity implements BottomNavigationV
         bottomNavigation.setOnNavigationItemSelectedListener(this);
         
         // Set up FAB
-        fab.setOnClickListener(v -> {
-            // Action depends on current tab
+        fab.setOnClickListener(view -> {
             int selectedItemId = bottomNavigation.getSelectedItemId();
             if (selectedItemId == R.id.nav_messages) {
-                // Start new conversation
-                Toast.makeText(this, R.string.new_conversation, Toast.LENGTH_SHORT).show();
+                // Action for messages tab - start new chat
+                startNewChat();
             } else if (selectedItemId == R.id.nav_contacts) {
-                // Add contact
-                Toast.makeText(this, R.string.add_contact, Toast.LENGTH_SHORT).show();
+                // Action for contacts tab - add new contact
+                addNewContact();
             }
         });
         
-        // Default to messages fragment
+        // Set initial fragment
         if (savedInstanceState == null) {
-            getSupportFragmentManager().beginTransaction()
-                    .replace(R.id.fragment_container, new MessagesFragment())
-                    .commit();
+            bottomNavigation.setSelectedItemId(R.id.nav_messages);
         }
     }
     
@@ -105,12 +102,8 @@ public class MainActivity extends AppCompatActivity implements BottomNavigationV
     protected void onResume() {
         super.onResume();
         
-        // Only attempt to reconnect if we're not already connected
-        // This prevents multiple simultaneous connection attempts
-        Boolean isConnected = viewModel.isChatConnected().getValue();
-        if ((isConnected == null || !isConnected) && sessionManager.isLoggedIn()) {
-            // Add a debug log to track connection attempts
-            Log.d(TAG, "MainActivity onResume: attempting to connect to chat");
+        // Connect to chat server
+        if (!viewModel.isChatConnected().getValue()) {
             viewModel.connectToChat();
         }
     }
@@ -118,20 +111,20 @@ public class MainActivity extends AppCompatActivity implements BottomNavigationV
     @Override
     protected void onPause() {
         super.onPause();
-        
-        // Do NOT disconnect on pause - keep the connection alive
-        // We only want to disconnect when the app is actually closed
     }
     
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        
-        // Only disconnect if we're actually finishing (app is closing)
-        if (isFinishing()) {
-            Log.d(TAG, "MainActivity onDestroy: disconnecting from chat (app closing)");
-            viewModel.disconnectFromChat();
-        }
+    /**
+     * Start a new chat
+     */
+    private void startNewChat() {
+        Toast.makeText(this, "Start new chat", Toast.LENGTH_SHORT).show();
+    }
+    
+    /**
+     * Add a new contact
+     */
+    private void addNewContact() {
+        Toast.makeText(this, "Add new contact", Toast.LENGTH_SHORT).show();
     }
     
     @Override
@@ -141,7 +134,7 @@ public class MainActivity extends AppCompatActivity implements BottomNavigationV
         
         int itemId = item.getItemId();
         if (itemId == R.id.nav_messages) {
-            selectedFragment = new MessagesFragment();
+            selectedFragment = new ConversationListFragment();
             showFab = true;
         } else if (itemId == R.id.nav_contacts) {
             selectedFragment = new ContactsFragment();
@@ -210,9 +203,8 @@ public class MainActivity extends AppCompatActivity implements BottomNavigationV
         // Clear session
         sessionManager.logout();
         
-        // Redirect to login
+        // Return to login screen
         Intent intent = new Intent(this, LoginActivity.class);
-        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_NEW_TASK);
         startActivity(intent);
         finish();
     }

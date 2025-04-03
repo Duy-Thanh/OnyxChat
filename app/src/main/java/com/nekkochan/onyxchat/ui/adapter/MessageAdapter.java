@@ -135,7 +135,7 @@ public class MessageAdapter extends ListAdapter<Message, MessageAdapter.MessageV
             timeText.setText(formatMessageTime(message.getTimestamp()));
             
             // Set message status icon
-            if (getItemViewType() == VIEW_TYPE_SENT) {
+            if (getItemViewType() == VIEW_TYPE_SENT && statusIcon != null) {
                 if (message.isDelivered()) {
                     statusIcon.setImageResource(R.drawable.ic_delivered);
                     statusIcon.setVisibility(View.VISIBLE);
@@ -145,7 +145,7 @@ public class MessageAdapter extends ListAdapter<Message, MessageAdapter.MessageV
                 } else {
                     statusIcon.setVisibility(View.GONE);
                 }
-            } else {
+            } else if (statusIcon != null) {
                 statusIcon.setVisibility(View.GONE);
             }
             

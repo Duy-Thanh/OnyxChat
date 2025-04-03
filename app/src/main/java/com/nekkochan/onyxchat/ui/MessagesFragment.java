@@ -71,64 +71,65 @@ public class MessagesFragment extends Fragment {
         adapter = new ChatMessageAdapter();
         recyclerView.setAdapter(adapter);
         
-        // Connect to chat server if not already connected - do this only once
-        if (viewModel.isChatConnected().getValue() != Boolean.TRUE) {
-            boolean connectStarted = viewModel.connectToChat();
-            if (!connectStarted) {
-                // Show connection error, but don't repeat connection attempts
-                statusTextView.setText(R.string.status_disconnected);
-                statusTextView.setTextColor(getResources().getColor(R.color.error_red, null));
-            }
-        }
+        // Update connection status immediately
+        updateConnectionStatus(viewModel.isChatConnected().getValue() == Boolean.TRUE);
         
         // Set up send button
         sendButton.setOnClickListener(v -> sendMessage());
         
         // Observe chat connection state
-        viewModel.isChatConnected().observe(getViewLifecycleOwner(), isConnected -> {
-            if (isConnected) {
-                statusTextView.setText(R.string.status_connected);
-                statusTextView.setTextColor(getResources().getColor(R.color.success_green, null));
-                sendButton.setEnabled(true);
-            } else {
-                statusTextView.setText(R.string.status_disconnected);
-                statusTextView.setTextColor(getResources().getColor(R.color.error_red, null));
-                sendButton.setEnabled(false);
-                
-                // Don't auto-reconnect here - this would cause continuous retries
-                // Reconnect is handled in onResume and by user action instead
-            }
-        });
+        viewModel.isChatConnected().observe(getViewLifecycleOwner(), this::updateConnectionStatus);
         
         // Observe chat messages
-        viewModel.getChatMessages().observe(getViewLifecycleOwner(), chatMessages -> {
-            if (chatMessages != null && !chatMessages.isEmpty()) {
-                updateEmptyViewVisibility(false);
-                adapter.submitList(chatMessages);
-                recyclerView.scrollToPosition(chatMessages.size() - 1);
-            } else {
-                updateEmptyViewVisibility(true);
-            }
-        });
+        viewModel.getChatMessages().observe(getViewLifecycleOwner(), this::updateMessages);
         
         // Observe online users
-        viewModel.getOnlineUsers().observe(getViewLifecycleOwner(), onlineUsers -> {
-            if (onlineUsers != null && !onlineUsers.isEmpty()) {
-                // Update UI with online users
-                updateOnlineUsers(onlineUsers);
-            }
-        });
+        viewModel.getOnlineUsers().observe(getViewLifecycleOwner(), this::updateOnlineUsers);
     }
     
     @Override
     public void onResume() {
         super.onResume();
         
-        // Only try to reconnect if we're fully visible and disconnected,
-        // to avoid infinite reconnect loops
-        if (isVisible() && getUserVisibleHint() && 
-            viewModel.isChatConnected().getValue() != Boolean.TRUE) {
+        // Force UI update on resume
+        updateConnectionStatus(viewModel.isChatConnected().getValue() == Boolean.TRUE);
+        updateMessages(viewModel.getChatMessages().getValue());
+        
+        // Only try to reconnect if disconnected and visible
+        if (isAdded() && isVisible() && viewModel.isChatConnected().getValue() != Boolean.TRUE) {
             viewModel.connectToChat();
+        }
+    }
+    
+    /**
+     * Update the connection status UI
+     */
+    private void updateConnectionStatus(boolean isConnected) {
+        if (!isAdded()) return;
+        
+        if (isConnected) {
+            statusTextView.setText(R.string.status_connected);
+            statusTextView.setTextColor(getResources().getColor(R.color.success_green, null));
+            sendButton.setEnabled(true);
+        } else {
+            statusTextView.setText(R.string.status_disconnected);
+            statusTextView.setTextColor(getResources().getColor(R.color.error_red, null));
+            sendButton.setEnabled(false);
+        }
+    }
+    
+    /**
+     * Update the messages list
+     */
+    private void updateMessages(List<MainViewModel.ChatMessage> chatMessages) {
+        if (!isAdded()) return;
+        
+        if (chatMessages != null && !chatMessages.isEmpty()) {
+            updateEmptyViewVisibility(false);
+            adapter.submitList(chatMessages);
+            recyclerView.scrollToPosition(chatMessages.size() - 1);
+        } else {
+            updateEmptyViewVisibility(true);
         }
     }
     
@@ -188,15 +189,18 @@ public class MessagesFragment extends Fragment {
     }
     
     /**
-     * Update the UI with online users
+     * Update online users display
      */
-    private void updateOnlineUsers(Map<String, String> onlineUsers) {
-        // For now, just show a toast with the number of online users
-        Toast.makeText(getContext(), 
-            getString(R.string.online_users_count, onlineUsers.size()), 
-            Toast.LENGTH_SHORT).show();
-            
-        // TODO: Add UI for selecting a recipient for direct messages
+    private void updateOnlineUsers(List<String> onlineUsers) {
+        if (!isAdded()) return;
+        
+        if (onlineUsers != null && !onlineUsers.isEmpty()) {
+            // Update UI with online users count
+            String statusText = getString(R.string.status_connected) + 
+                " (" + onlineUsers.size() + " " + 
+                getString(R.string.online_users) + ")";
+            statusTextView.setText(statusText);
+        }
     }
     
     /**

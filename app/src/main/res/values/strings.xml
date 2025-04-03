@@ -32,6 +32,7 @@
     <string name="status_connecting">Connecting...</string>
     <string name="chatting_with">Chatting with %1$s</string>
     <string name="online_users_count">%1$d users online</string>
+    <string name="online_users">online</string>
     <string name="message_hint">Type a message...</string>
     <string name="send">Send</string>
     <string name="you">You</string>

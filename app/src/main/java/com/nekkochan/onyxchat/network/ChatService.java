@@ -12,7 +12,9 @@ import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -287,8 +289,8 @@ public class ChatService {
     }
     
     /**
-     * Get the current user ID
-     * @return The user ID, or null if not connected
+     * Get the user ID of the current connection
+     * @return the user ID
      */
     public String getUserId() {
         return userId;
@@ -309,6 +311,26 @@ public class ChatService {
         if (wasConnected && userId != null) {
             connect(userId);
         }
+    }
+    
+    /**
+     * Get the online users
+     * @return LiveData containing a list of online users
+     */
+    public LiveData<List<String>> getOnlineUsersList() {
+        // Convert the map to a list for compatibility with old code
+        MutableLiveData<List<String>> userList = new MutableLiveData<>(new ArrayList<>());
+        
+        // Update the list whenever the map changes
+        onlineUsers.observeForever(users -> {
+            if (users != null) {
+                userList.setValue(new ArrayList<>(users.keySet()));
+            } else {
+                userList.setValue(new ArrayList<>());
+            }
+        });
+        
+        return userList;
     }
     
     /**

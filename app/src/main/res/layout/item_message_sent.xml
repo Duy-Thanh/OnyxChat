@@ -4,69 +4,52 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:paddingStart="16dp"
+    android:paddingStart="64dp"
     android:paddingTop="4dp"
     android:paddingEnd="8dp"
     android:paddingBottom="4dp">
 
     <androidx.cardview.widget.CardView
-        android:id="@+id/message_card"
+        android:id="@+id/messageCardView"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginStart="48dp"
-        app:cardBackgroundColor="@color/message_sent_background"
+        app:cardBackgroundColor="@color/primary"
         app:cardCornerRadius="12dp"
         app:cardElevation="1dp"
-        app:cardPreventCornerOverlap="false"
-        app:cardUseCompatPadding="true"
+        app:contentPadding="8dp"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="1.0"
-        app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent">
 
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="12dp"
-            android:layout_marginTop="8dp"
-            android:layout_marginEnd="12dp"
-            android:layout_marginBottom="8dp"
             android:orientation="vertical">
 
             <TextView
                 android:id="@+id/message_text"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:maxWidth="260dp"
-                android:textColor="@color/message_sent_text"
+                android:textColor="@color/white"
                 android:textSize="16sp"
-                tools:text="This is a sample message that I sent to someone else" />
+                tools:text="This is a sent message" />
 
-            <LinearLayout
+            <TextView
+                android:id="@+id/message_time"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_gravity="end"
-                android:layout_marginTop="4dp"
-                android:orientation="horizontal">
+                android:layout_marginTop="2dp"
+                android:textColor="@color/white"
+                android:textSize="12sp"
+                android:alpha="0.7"
+                tools:text="12:34" />
 
-                <TextView
-                    android:id="@+id/message_time"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_gravity="center_vertical"
-                    android:textColor="@color/message_time_text"
-                    android:textSize="12sp"
-                    tools:text="12:34" />
-
-                <ImageView
-                    android:id="@+id/message_status"
-                    android:layout_width="16dp"
-                    android:layout_height="16dp"
-                    android:layout_gravity="center_vertical"
-                    android:layout_marginStart="4dp"
-                    android:contentDescription="@string/message_status"
-                    app:srcCompat="@drawable/ic_sent" />
-            </LinearLayout>
+            <!-- Alias for backward compatibility -->
+            <View
+                android:id="@+id/message_status"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:visibility="invisible" />
         </LinearLayout>
     </androidx.cardview.widget.CardView>
 

@@ -15,11 +15,13 @@ import com.nekkochan.onyxchat.data.Contact;
 import com.nekkochan.onyxchat.data.Repository;
 import com.nekkochan.onyxchat.data.SafeHelperFactory;
 import com.nekkochan.onyxchat.data.User;
+import com.nekkochan.onyxchat.model.ConversationDisplay;
 import com.nekkochan.onyxchat.network.ChatService;
 import com.nekkochan.onyxchat.network.WebSocketClient;
 
 import java.security.KeyPair;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -50,6 +52,9 @@ public class MainViewModel extends AndroidViewModel {
     private final LiveData<Boolean> isChatConnected;
     private final LiveData<Map<String, String>> onlineUsers;
 
+    // Conversations list
+    private final MutableLiveData<List<ConversationDisplay>> conversations = new MutableLiveData<>(new ArrayList<>());
+
     public MainViewModel(@NonNull Application application) {
         super(application);
         
@@ -78,7 +83,17 @@ public class MainViewModel extends AndroidViewModel {
                 if (messages == null) {
                     messages = new ArrayList<>();
                 }
-                messages.add(new ChatMessage(message));
+                
+                // Create a new chat message from the service message
+                ChatMessage chatMessage = new ChatMessage(
+                    message.getType().name(),
+                    message.getSenderId(),
+                    message.getRecipientId(),
+                    message.getContent(),
+                    new Date(message.getTimestamp())
+                );
+                
+                messages.add(chatMessage);
                 chatMessages.postValue(messages);
             }
         });
@@ -323,33 +338,21 @@ public class MainViewModel extends AndroidViewModel {
     
     /**
      * Connect to the chat server
-     * @return true if connection started, false otherwise
+     * @return true if connection was successful or already connected
      */
     public boolean connectToChat() {
-        if (currentUser == null) {
-            Log.e(TAG, "Cannot connect to chat: no current user");
-            errorMessage.setValue("No current user");
-            return false;
+        // Check if we're already connected
+        if (isChatConnected().getValue() == Boolean.TRUE) {
+            return true;
         }
         
-        // Implement debounce mechanism to prevent rapid successive connection attempts
-        long currentTime = System.currentTimeMillis();
-        if (currentTime - lastConnectionAttempt < CONNECTION_DEBOUNCE_MS) {
-            Log.d(TAG, "Connection attempt debounced - too frequent");
-            return false;
-        }
-        
-        // Update the last connection attempt timestamp
-        lastConnectionAttempt = currentTime;
-        
-        String userId = currentUser.getAddress();
+        // Only attempt to connect if we have a user ID
+        String userId = userAddress.getValue();
         if (userId == null || userId.isEmpty()) {
-            Log.e(TAG, "Cannot connect to chat: invalid user ID");
-            errorMessage.setValue("Invalid user ID");
             return false;
         }
         
-        Log.d(TAG, "Connecting to chat with user ID: " + userId);
+        // Connect to chat service
         return chatService.connect(userId);
     }
     
@@ -359,48 +362,59 @@ public class MainViewModel extends AndroidViewModel {
     public void disconnectFromChat() {
         chatService.disconnect();
     }
-    
+
     /**
-     * Send a chat message
-     * @param message The message to send
-     * @return true if send was successful, false otherwise
-     */
-    public boolean sendChatMessage(String message) {
-        return chatService.sendMessage(message);
-    }
-    
-    /**
-     * Send a direct message to a user
-     * @param recipientId The recipient's user ID
-     * @param message The message to send
-     * @return true if send was successful, false otherwise
+     * Send a direct message to the specified user
+     * @param recipientId the ID of the recipient
+     * @param message the message to send
+     * @return true if the message was sent successfully
      */
     public boolean sendDirectMessage(String recipientId, String message) {
         return chatService.sendDirectMessage(recipientId, message);
     }
     
     /**
-     * Get chat connection state
-     * @return LiveData boolean of chat connection state
+     * Send a message to the public chat
+     * @param message the message to send
+     * @return true if the message was sent successfully
      */
-    public LiveData<Boolean> isChatConnected() {
-        return isChatConnected;
+    public boolean sendChatMessage(String message) {
+        return chatService.sendMessage(message);
     }
     
     /**
-     * Get list of all chat messages
-     * @return LiveData list of chat messages
+     * Get the list of conversations
+     * @return LiveData containing the list of conversations
+     */
+    public LiveData<List<ConversationDisplay>> getConversations() {
+        return conversations;
+    }
+    
+    /**
+     * Get the list of chat messages
+     * @return LiveData containing the list of chat messages
      */
     public LiveData<List<ChatMessage>> getChatMessages() {
         return chatMessages;
     }
     
     /**
-     * Get online users
-     * @return LiveData map of online users
+     * Get the chat connection status
+     * @return LiveData containing the connection status
      */
-    public LiveData<Map<String, String>> getOnlineUsers() {
-        return onlineUsers;
+    public LiveData<Boolean> isChatConnected() {
+        return Transformations.map(
+            chatService.getConnectionState(),
+            state -> state == WebSocketClient.WebSocketState.CONNECTED
+        );
+    }
+    
+    /**
+     * Get the online users
+     * @return LiveData containing the list of online users
+     */
+    public LiveData<List<String>> getOnlineUsers() {
+        return chatService.getOnlineUsersList();
     }
     
     /**
@@ -411,47 +425,41 @@ public class MainViewModel extends AndroidViewModel {
     }
     
     /**
-     * A chat message in the UI
+     * A chat message class that represents a message in the chat
      */
     public static class ChatMessage {
-        private final ChatService.ChatMessage message;
-        private boolean isRead;
+        private final String type;
+        private final String senderId;
+        private final String recipientId;
+        private final String content;
+        private final Date timestamp;
         
-        public ChatMessage(ChatService.ChatMessage message) {
-            this.message = message;
-            this.isRead = false;
+        public ChatMessage(String type, String senderId, String recipientId, String content, Date timestamp) {
+            this.type = type;
+            this.senderId = senderId;
+            this.recipientId = recipientId;
+            this.content = content;
+            this.timestamp = timestamp;
         }
         
-        public ChatService.ChatMessage getMessage() {
-            return message;
-        }
-        
-        public boolean isRead() {
-            return isRead;
-        }
-        
-        public void setRead(boolean read) {
-            isRead = read;
+        public String getType() {
+            return type;
         }
         
         public String getSenderId() {
-            return message.getSenderId();
+            return senderId;
         }
         
         public String getRecipientId() {
-            return message.getRecipientId();
+            return recipientId;
         }
         
         public String getContent() {
-            return message.getContent();
+            return content;
         }
         
-        public long getTimestamp() {
-            return message.getTimestamp();
-        }
-        
-        public ChatService.ChatMessage.MessageType getType() {
-            return message.getType();
+        public Date getTimestamp() {
+            return timestamp;
         }
     }
 } 
