@@ -13,9 +13,15 @@ services:
       POSTGRES_DB: onyxchat
     volumes:
       - postgres_data_dev:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
     restart: unless-stopped
     networks:
       - onyxchat-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   server:
     build:
@@ -25,7 +31,8 @@ services:
     ports:
       - "8082:8081"
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     environment:
       - NODE_ENV=production
       - DB_HOST=postgres

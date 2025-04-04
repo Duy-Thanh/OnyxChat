@@ -24,12 +24,24 @@ const authenticateWsConnection = (token) => {
 // Handle incoming messages
 const handleMessage = async (userId, messageData) => {
   try {
-    const { type, data } = JSON.parse(messageData);
+    const message = JSON.parse(messageData);
+    const { type, data } = message;
     
     switch (type) {
+      case 'ping':
+        // Respond to ping with pong to keep connection alive
+        const client = clients.get(userId);
+        if (client && client.readyState === 1) { // WebSocket.OPEN
+          client.send(JSON.stringify({
+            type: 'pong',
+            timestamp: new Date().getTime()
+          }));
+        }
+        break;
+        
       case 'MESSAGE':
         // Save message to database
-        const message = await db.Message.create({
+        const newMessage = await db.Message.create({
           senderId: userId,
           recipientId: data.recipientId,
           content: data.content,
@@ -44,12 +56,12 @@ const handleMessage = async (userId, messageData) => {
             client.send(JSON.stringify({
               type: 'NEW_MESSAGE',
               data: {
-                id: message.id,
+                id: newMessage.id,
                 senderId: userId,
                 content: data.content,
                 encrypted: data.encrypted || false,
                 contentType: data.contentType || 'text',
-                timestamp: message.createdAt
+                timestamp: newMessage.createdAt
               }
             }));
           }

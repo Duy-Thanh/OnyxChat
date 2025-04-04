@@ -11,8 +11,12 @@ import com.google.gson.JsonParser;
 import com.nekkochan.onyxchat.util.UserSessionManager;
 
 import java.io.EOFException;
+import java.io.IOException;
+import java.net.SocketException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -56,6 +60,9 @@ public class WebSocketClient {
     
     private final UserSessionManager sessionManager;
     private final SharedPreferences sharedPreferences;
+    
+    // Add this as a class field
+    private ScheduledExecutorService heartbeatExecutor;
     
     /**
      * Enumeration for WebSocket connection states
@@ -169,12 +176,51 @@ public class WebSocketClient {
         try {
             // Attempt connection
             webSocket = client.newWebSocket(request, new WebSocketListenerImpl());
+            
+            // Start heartbeat to keep connection alive
+            startHeartbeat();
+            
             return true;
         } catch (Exception e) {
             Log.e(TAG, "Error connecting to WebSocket", e);
             state = WebSocketState.DISCONNECTED;
             notifyStateChanged();
             return false;
+        }
+    }
+    
+    /**
+     * Start a periodic heartbeat to keep the connection alive
+     */
+    private void startHeartbeat() {
+        if (heartbeatExecutor != null) {
+            heartbeatExecutor.shutdownNow();
+        }
+        
+        heartbeatExecutor = Executors.newSingleThreadScheduledExecutor();
+        heartbeatExecutor.scheduleAtFixedRate(() -> {
+            if (webSocket != null && state == WebSocketState.CONNECTED) {
+                try {
+                    // Send a ping message to keep the connection alive
+                    JsonObject ping = new JsonObject();
+                    ping.addProperty("type", "ping");
+                    ping.addProperty("timestamp", System.currentTimeMillis());
+                    webSocket.send(gson.toJson(ping));
+                    Log.d(TAG, "Heartbeat ping sent");
+                } catch (Exception e) {
+                    Log.e(TAG, "Error sending heartbeat", e);
+                }
+            }
+        }, 20, 20, TimeUnit.SECONDS);
+    }
+    
+    /**
+     * Stop the heartbeat task
+     */
+    private void stopHeartbeat() {
+        if (heartbeatExecutor != null) {
+            heartbeatExecutor.shutdownNow();
+            heartbeatExecutor = null;
         }
     }
     
@@ -237,17 +283,22 @@ public class WebSocketClient {
      * Disconnect from the WebSocket server
      */
     public void disconnect() {
-        reconnectAttempts = RECONNECT_ATTEMPTS; // Prevent auto-reconnect
-        
         if (webSocket != null) {
-            webSocket.close(1000, "User initiated disconnect");
-            webSocket = null;
+            try {
+                // Stop heartbeat
+                stopHeartbeat();
+                
+                // Close normally
+                webSocket.close(1000, "Closed by client");
+                webSocket = null;
+            } catch (Exception e) {
+                Log.e(TAG, "Error disconnecting WebSocket", e);
+            }
         }
         
-        if (state != WebSocketState.DISCONNECTED) {
-            state = WebSocketState.DISCONNECTED;
-            notifyStateChanged();
-        }
+        state = WebSocketState.DISCONNECTED;
+        notifyStateChanged();
+        reconnectAttempts = 0;
     }
     
     /**
@@ -446,11 +497,13 @@ public class WebSocketClient {
         
         @Override
         public void onMessage(WebSocket webSocket, String text) {
-            Log.d(TAG, "WebSocket message received: " + text);
-            
             try {
-                // Process server messages
-                notifyMessageReceived(text);
+                Log.d(TAG, "WebSocket message received: " + text);
+                
+                // Notify listeners
+                for (MessageListener listener : listeners) {
+                    listener.onMessageReceived(text);
+                }
             } catch (Exception e) {
                 Log.e(TAG, "Error processing WebSocket message", e);
             }
@@ -464,31 +517,43 @@ public class WebSocketClient {
         @Override
         public void onClosing(WebSocket webSocket, int code, String reason) {
             Log.d(TAG, "WebSocket closing: " + code + " " + reason);
-            webSocket.close(1000, null);
         }
         
         @Override
         public void onClosed(WebSocket webSocket, int code, String reason) {
             Log.d(TAG, "WebSocket closed: " + code + " " + reason);
+            
             state = WebSocketState.DISCONNECTED;
             notifyStateChanged();
+            
+            // Attempt reconnect (if code indicates a temporary failure)
+            if ((code == 1001 || code == 1006 || code == 1012 || code == 1013) &&
+                reconnectAttempts < RECONNECT_ATTEMPTS) {
+                attemptReconnect();
+            }
         }
         
         @Override
         public void onFailure(WebSocket webSocket, Throwable t, Response response) {
-            // Don't log EOFException as error since it's common when disconnecting
-            if (!(t instanceof EOFException)) {
-                Log.e(TAG, "WebSocket failure", t);
-            }
-            
-            String errorMessage = t.getMessage();
-            state = WebSocketState.DISCONNECTED;
-            notifyStateChanged();
-            notifyError(errorMessage != null ? errorMessage : "Unknown error");
-            
-            // Schedule reconnect if needed
-            if (currentUserId != null && !(t instanceof EOFException)) {
-                scheduleReconnect();
+            try {
+                int code = response != null ? response.code() : 0;
+                
+                // Don't log EOFException as a serious error since it's common when server closes connection
+                if (t instanceof EOFException) {
+                    Log.w(TAG, "WebSocket closed by server (EOFException)");
+                } else {
+                    Log.e(TAG, "WebSocket error: " + t.getMessage() + ", code: " + code, t);
+                }
+                
+                state = WebSocketState.DISCONNECTED;
+                notifyStateChanged();
+                
+                // Attempt reconnect for connection failures
+                if (t instanceof IOException || t instanceof SocketException) {
+                    attemptReconnect();
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Error handling WebSocket failure", e);
             }
         }
     }

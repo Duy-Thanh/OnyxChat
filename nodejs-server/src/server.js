@@ -46,6 +46,72 @@ const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 setupWebSocketServer(wss);
 
+// Create test user in mock mode
+if (process.env.USE_MOCK_DB === 'true' || process.env.NODE_ENV === 'test') {
+  console.log('Creating test user for mock mode');
+  const bcrypt = require('bcryptjs');
+  const { v4: uuidv4 } = require('uuid');
+  
+  const createTestUser = async () => {
+    try {
+      // Check if user already exists
+      const existingUser = await db.User.findOne({ where: { username: 'testuser' } });
+      if (existingUser) {
+        console.log('Test user already exists with ID:', existingUser.id);
+        
+        // Make sure the toProfile method is added
+        if (!existingUser.toProfile) {
+          existingUser.toProfile = function() {
+            return {
+              id: this.id,
+              username: this.username,
+              displayName: this.displayName,
+              isActive: this.isActive,
+              lastActiveAt: this.lastActiveAt
+            };
+          };
+          console.log('Added toProfile method to existing user');
+        }
+        return;
+      }
+      
+      // Create test user with ID
+      const testUserId = uuidv4();
+      console.log('Generated test user ID:', testUserId);
+      
+      const hashedPassword = await bcrypt.hash('password123', 10);
+      console.log('Hashed password for test user');
+      
+      // Create with explicit toProfile method
+      const user = await db.User.create({
+        id: testUserId,
+        username: 'testuser',
+        password: hashedPassword,
+        displayName: 'Test User',
+        isActive: false,
+        lastActiveAt: new Date(),
+        toProfile: function() {
+          return {
+            id: this.id,
+            username: this.username,
+            displayName: this.displayName,
+            isActive: this.isActive,
+            lastActiveAt: this.lastActiveAt
+          };
+        }
+      });
+      
+      console.log('Created test user with ID:', user.id);
+      const profile = user.toProfile();
+      console.log('Test user profile:', profile);
+    } catch (error) {
+      console.error('Error creating test user:', error);
+    }
+  };
+  
+  createTestUser();
+}
+
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error(err.stack);

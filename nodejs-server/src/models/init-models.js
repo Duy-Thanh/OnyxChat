@@ -192,9 +192,209 @@ module.exports = (sequelize) => {
   User.hasMany(RefreshToken, { foreignKey: 'userId' });
   RefreshToken.belongsTo(User, { foreignKey: 'userId' });
 
+  // Contact model
+  const Contact = sequelize.define('Contact', {
+    id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true
+    },
+    userId: {
+      type: DataTypes.UUID,
+      allowNull: false,
+      references: {
+        model: 'users',
+        key: 'id'
+      }
+    },
+    contactId: {
+      type: DataTypes.UUID,
+      allowNull: false,
+      references: {
+        model: 'users',
+        key: 'id'
+      }
+    },
+    nickname: {
+      type: DataTypes.STRING,
+      allowNull: true
+    },
+    blocked: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false
+    },
+    createdAt: {
+      type: DataTypes.DATE,
+      defaultValue: DataTypes.NOW
+    },
+    updatedAt: {
+      type: DataTypes.DATE,
+      defaultValue: DataTypes.NOW
+    }
+  }, {
+    tableName: 'contacts',
+    timestamps: true
+  });
+
+  // Add Contact associations
+  User.hasMany(Contact, { foreignKey: 'userId' });
+  Contact.belongsTo(User, { foreignKey: 'userId' });
+  Contact.belongsTo(User, { foreignKey: 'contactId', as: 'contactUser' });
+
+  // UserKey model
+  const UserKey = sequelize.define('UserKey', {
+    id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true
+    },
+    userId: {
+      type: DataTypes.UUID,
+      allowNull: false,
+      references: {
+        model: 'users',
+        key: 'id'
+      }
+    },
+    publicKey: {
+      type: DataTypes.TEXT,
+      allowNull: false
+    },
+    privateKey: {
+      type: DataTypes.TEXT,
+      allowNull: true
+    },
+    active: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: true
+    },
+    createdAt: {
+      type: DataTypes.DATE,
+      defaultValue: DataTypes.NOW
+    },
+    updatedAt: {
+      type: DataTypes.DATE,
+      defaultValue: DataTypes.NOW
+    }
+  }, {
+    tableName: 'user_keys',
+    timestamps: true
+  });
+
+  // OneTimePreKey model
+  const OneTimePreKey = sequelize.define('OneTimePreKey', {
+    id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true
+    },
+    userId: {
+      type: DataTypes.UUID,
+      allowNull: false,
+      references: {
+        model: 'users',
+        key: 'id'
+      }
+    },
+    keyId: {
+      type: DataTypes.INTEGER,
+      allowNull: false
+    },
+    key: {
+      type: DataTypes.TEXT,
+      allowNull: false
+    },
+    used: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false
+    },
+    createdAt: {
+      type: DataTypes.DATE,
+      defaultValue: DataTypes.NOW
+    },
+    updatedAt: {
+      type: DataTypes.DATE,
+      defaultValue: DataTypes.NOW
+    }
+  }, {
+    tableName: 'one_time_prekeys',
+    timestamps: true,
+    indexes: [
+      {
+        unique: true,
+        fields: ['userId', 'keyId']
+      }
+    ]
+  });
+
+  // Session model
+  const Session = sequelize.define('Session', {
+    id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true
+    },
+    userId: {
+      type: DataTypes.UUID,
+      allowNull: false,
+      references: {
+        model: 'users',
+        key: 'id'
+      }
+    },
+    otherUserId: {
+      type: DataTypes.UUID,
+      allowNull: false,
+      references: {
+        model: 'users',
+        key: 'id'
+      }
+    },
+    sessionData: {
+      type: DataTypes.TEXT,
+      allowNull: false
+    },
+    active: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: true
+    },
+    createdAt: {
+      type: DataTypes.DATE,
+      defaultValue: DataTypes.NOW
+    },
+    updatedAt: {
+      type: DataTypes.DATE,
+      defaultValue: DataTypes.NOW
+    }
+  }, {
+    tableName: 'sessions',
+    timestamps: true,
+    indexes: [
+      {
+        unique: true,
+        fields: ['userId', 'otherUserId']
+      }
+    ]
+  });
+
+  // Add associations for new models
+  User.hasMany(UserKey, { foreignKey: 'userId' });
+  UserKey.belongsTo(User, { foreignKey: 'userId' });
+  
+  User.hasMany(OneTimePreKey, { foreignKey: 'userId' });
+  OneTimePreKey.belongsTo(User, { foreignKey: 'userId' });
+  
+  User.hasMany(Session, { foreignKey: 'userId' });
+  Session.belongsTo(User, { foreignKey: 'userId' });
+  Session.belongsTo(User, { foreignKey: 'otherUserId', as: 'otherUser' });
+
   return {
     User,
     Message,
-    RefreshToken
+    RefreshToken,
+    Contact,
+    UserKey,
+    OneTimePreKey,
+    Session
   };
 }; 

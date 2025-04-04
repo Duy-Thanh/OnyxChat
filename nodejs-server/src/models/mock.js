@@ -8,6 +8,7 @@ const refreshTokens = [];
 const userKeys = [];
 const sessions = [];
 const oneTimePrekeys = [];
+const contacts = [];  // New array for contacts
 
 // Mock User model
 class User {
@@ -292,6 +293,42 @@ class UserKey {
   }
 }
 
+// Add Contact model
+class Contact {
+  static async findAll(options = {}) {
+    if (options.where) {
+      return contacts.filter(contact => 
+        Object.keys(options.where).every(key => 
+          contact[key] === options.where[key]
+        )
+      );
+    }
+    return [...contacts];
+  }
+  
+  static async findOne(options = {}) {
+    if (options.where) {
+      return contacts.find(contact => 
+        Object.keys(options.where).every(key => 
+          contact[key] === options.where[key]
+        )
+      ) || null;
+    }
+    return contacts[0] || null;
+  }
+  
+  static async create(data) {
+    const newContact = {
+      id: uuidv4(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      ...data
+    };
+    contacts.push(newContact);
+    return newContact;
+  }
+}
+
 // Initialize with some seed data
 const init = async () => {
   // Create admin user
@@ -344,10 +381,7 @@ module.exports = {
     create: (data) => Promise.resolve({ id: uuidv4(), ...data }),
     update: () => Promise.resolve(1)
   },
-  Contact: {
-    findAll: () => Promise.resolve([]),
-    create: (data) => Promise.resolve({ id: uuidv4(), ...data }),
-  },
+  Contact,
   sequelize: mockSequelize,
   Sequelize: {
     Op: {
