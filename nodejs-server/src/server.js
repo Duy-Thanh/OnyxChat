@@ -39,11 +39,19 @@ app.use('/api/users', userRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/crypto', cryptoRoutes);
 
+// Add a route to handle WebSocket connections for better debugging
+app.get('/ws', (req, res) => {
+  res.status(200).send('WebSocket endpoint is available. Please use a WebSocket client to connect.');
+});
+
 // Create HTTP server
 const server = http.createServer(app);
 
 // Set up WebSocket server
-const wss = new WebSocket.Server({ server });
+const wss = new WebSocket.Server({ 
+  server,
+  path: '/ws' // Explicitly set the path
+});
 setupWebSocketServer(wss);
 
 // Create test user in mock mode

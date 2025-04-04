@@ -9,11 +9,15 @@ const clients = new Map();
 const authenticateWsConnection = (token) => {
   try {
     if (!token) {
+      console.log('No token provided for WebSocket authentication');
       return null;
     }
+
+    console.log('Authenticating WebSocket with token:', token.substring(0, 10) + '...');
     
     // Verify JWT token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    console.log('WebSocket token verified successfully for user:', decoded.sub);
     return decoded.sub; // User ID from token
   } catch (error) {
     console.error('WebSocket authentication error:', error);
@@ -117,58 +121,106 @@ const handleMessage = async (userId, messageData) => {
 
 // Set up WebSocket server
 const setupWebSocketServer = (wss) => {
+  console.log('Setting up WebSocket server on path: ' + (wss.options.path || 'default'));
+  
+  // Handle upgrade requests explicitly
+  wss.on('headers', (headers, request) => {
+    console.log('WebSocket upgrade request headers:', headers);
+  });
+  
   wss.on('connection', (ws, req) => {
     console.log('WebSocket client connected');
+    console.log('Connection URL:', req.url);
+    console.log('Connection headers:', JSON.stringify(req.headers));
+    
     const connectionId = uuidv4();
     
-    // Extract token from URL params
-    const url = new URL(req.url, 'ws://localhost');
-    const token = url.searchParams.get('token');
+    // First try to extract token from Authorization header
+    let token = null;
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.substring(7);
+      console.log('Found token in Authorization header:', token.substring(0, 10) + '...');
+    }
+    
+    // If no token in header, try URL params as fallback
+    if (!token) {
+      try {
+        // Parse the URL even if it's partial
+        const parsedUrl = new URL(req.url, 'ws://localhost');
+        token = parsedUrl.searchParams.get('token');
+        if (token) {
+          console.log('Found token in URL parameters:', token.substring(0, 10) + '...');
+        }
+      } catch (e) {
+        console.error('Error parsing WebSocket URL for token:', e.message);
+        console.error('Original URL:', req.url);
+      }
+    }
+    
+    // If still no token, check custom header as last resort
+    if (!token) {
+      const customToken = req.headers['x-auth-token'];
+      if (customToken) {
+        token = customToken;
+        console.log('Found token in custom header:', token.substring(0, 10) + '...');
+      }
+    }
+    
+    // If still no token, wait for an auth message
+    if (!token) {
+      console.log('No token found in connection, waiting for auth message');
+      
+      // Set up a one-time handler for the auth message
+      const authHandler = (message) => {
+        try {
+          const parsedMessage = JSON.parse(message);
+          if (parsedMessage.type === 'auth' && parsedMessage.token) {
+            token = parsedMessage.token;
+            console.log('Received token in auth message:', token.substring(0, 10) + '...');
+            
+            // Authenticate and proceed
+            const userId = authenticateWsConnection(token);
+            if (userId) {
+              console.log(`WebSocket authenticated for user: ${userId}`);
+              setupAuthenticatedConnection(ws, userId, connectionId);
+            } else {
+              console.log('WebSocket authentication failed via message, closing connection');
+              ws.close(4001, 'Unauthorized');
+            }
+            
+            // Remove this handler
+            ws.removeEventListener('message', authHandler);
+          }
+        } catch (error) {
+          console.error('Error processing auth message:', error);
+        }
+      };
+      
+      // Add the auth handler
+      ws.on('message', authHandler);
+      
+      // Set a timeout for authentication
+      setTimeout(() => {
+        if (!ws.userId) {  // If not authenticated yet
+          console.log('Authentication timeout, closing connection');
+          ws.close(4001, 'Authentication timeout');
+        }
+      }, 10000);  // 10 seconds timeout
+      
+      return;
+    }
+    
     const userId = authenticateWsConnection(token);
     
     if (!userId) {
       // Close connection if authentication fails
+      console.log('WebSocket authentication failed, closing connection');
       ws.close(4001, 'Unauthorized');
       return;
     }
     
-    // Store client connection
-    clients.set(userId, ws);
-    ws.userId = userId;
-    ws.connectionId = connectionId;
-    
-    // Update user as online
-    db.User.update({ isActive: true, lastActiveAt: new Date() }, { where: { id: userId } })
-      .catch(err => console.error('Failed to update user active status:', err));
-    
-    // Send confirmation that connection is established
-    ws.send(JSON.stringify({
-      type: 'CONNECTION_ESTABLISHED',
-      data: { connectionId, userId }
-    }));
-    
-    // Notify user's contacts that they're online
-    notifyUserStatus(userId, true);
-    
-    // Handle incoming messages
-    ws.on('message', (message) => {
-      handleMessage(userId, message);
-    });
-    
-    // Handle disconnection
-    ws.on('close', () => {
-      console.log('WebSocket client disconnected:', connectionId);
-      
-      // Update user as offline
-      db.User.update({ isActive: false, lastActiveAt: new Date() }, { where: { id: userId } })
-        .catch(err => console.error('Failed to update user inactive status:', err));
-      
-      // Remove from clients map
-      clients.delete(userId);
-      
-      // Notify user's contacts that they're offline
-      notifyUserStatus(userId, false);
-    });
+    setupAuthenticatedConnection(ws, userId, connectionId);
   });
   
   // Heartbeat to keep connections alive
@@ -182,6 +234,49 @@ const setupWebSocketServer = (wss) => {
       ws.ping();
     });
   }, 30000);
+};
+
+// Setup authenticated connection
+const setupAuthenticatedConnection = (ws, userId, connectionId) => {
+  console.log(`WebSocket authenticated for user: ${userId}`);
+  
+  // Store client connection
+  clients.set(userId, ws);
+  ws.userId = userId;
+  ws.connectionId = connectionId;
+  
+  // Update user as online
+  db.User.update({ isActive: true, lastActiveAt: new Date() }, { where: { id: userId } })
+    .catch(err => console.error('Failed to update user active status:', err));
+  
+  // Send confirmation that connection is established
+  ws.send(JSON.stringify({
+    type: 'CONNECTION_ESTABLISHED',
+    data: { connectionId, userId }
+  }));
+  
+  // Notify user's contacts that they're online
+  notifyUserStatus(userId, true);
+  
+  // Handle incoming messages
+  ws.on('message', (message) => {
+    handleMessage(userId, message);
+  });
+  
+  // Handle disconnection
+  ws.on('close', () => {
+    console.log('WebSocket client disconnected:', connectionId);
+    
+    // Update user as offline
+    db.User.update({ isActive: false, lastActiveAt: new Date() }, { where: { id: userId } })
+      .catch(err => console.error('Failed to update user inactive status:', err));
+    
+    // Remove from clients map
+    clients.delete(userId);
+    
+    // Notify user's contacts that they're offline
+    notifyUserStatus(userId, false);
+  });
 };
 
 // Notify user's contacts about online/offline status change

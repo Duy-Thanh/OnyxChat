@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+        }
+        #log {
+            border: 1px solid #ccc;
+            padding: 10px;
+            height: 300px;
+            overflow-y: auto;
+            margin-bottom: 10px;
+            background-color: #f9f9f9;
+        }
+        .error {
+            color: red;
+        }
+        .success {
+            color: green;
+        }
+        input[type="text"] {
+            width: 400px;
+            padding: 5px;
+        }
+        button {
+            padding: 5px 10px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <h1>OnyxChat WebSocket Test</h1>
+    
+    <div>
+        <label for="token">JWT Token:</label>
+        <input type="text" id="token" placeholder="Enter your JWT token here" 
+            value="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJjOTRlMTg2MS00MDVhLTQ0NTctOWMxYi00YzI0NTYxNTU4MDUiLCJpYXQiOjE3NDM3NzYwMDMsImV4cCI6MTc0Mzc3OTYwM30.bFG13wv8E5yTPwif_IBLBHUfdYWse4g5Ho7biDmX4Qs" />
+    </div>
+    
+    <div style="margin-top: 10px;">
+        <label for="url">WebSocket URL:</label>
+        <input type="text" id="url" placeholder="WebSocket URL" value="wss://localhost/ws" />
+    </div>
+    
+    <div style="margin-top: 10px;">
+        <button id="connect-header">Connect with Header Auth</button>
+        <button id="connect-url">Connect with URL Param</button>
+        <button id="disconnect">Disconnect</button>
+    </div>
+    
+    <h3>Log:</h3>
+    <div id="log"></div>
+    
+    <div>
+        <input type="text" id="message" placeholder="Type a message to send" />
+        <button id="send">Send</button>
+    </div>
+    
+    <script>
+        let ws = null;
+        const log = document.getElementById('log');
+        const tokenInput = document.getElementById('token');
+        const urlInput = document.getElementById('url');
+        const messageInput = document.getElementById('message');
+        
+        function addToLog(message, isError = false) {
+            const div = document.createElement('div');
+            div.textContent = message;
+            div.className = isError ? 'error' : '';
+            
+            if (message.includes('Connected') || message.includes('established')) {
+                div.className = 'success';
+            }
+            
+            log.appendChild(div);
+            log.scrollTop = log.scrollHeight;
+        }
+        
+        document.getElementById('connect-header').addEventListener('click', function() {
+            if (ws) {
+                addToLog('Closing existing connection first...');
+                ws.close();
+            }
+            
+            const token = tokenInput.value.trim();
+            if (!token) {
+                addToLog('Please enter a valid JWT token', true);
+                return;
+            }
+            
+            const url = urlInput.value.trim();
+            if (!url) {
+                addToLog('Please enter a valid WebSocket URL', true);
+                return;
+            }
+            
+            try {
+                addToLog(`Connecting to ${url} with header authentication...`);
+                
+                ws = new WebSocket(url);
+                
+                // Set headers by extending WebSocket
+                ws.onopen = function() {
+                    addToLog('WebSocket connection established with header auth!');
+                    
+                    // Need to send token after connection
+                    ws.send(JSON.stringify({ 
+                        type: 'auth',
+                        token: token
+                    }));
+                };
+                
+                ws.onmessage = function(event) {
+                    addToLog(`Received: ${event.data}`);
+                };
+                
+                ws.onerror = function(error) {
+                    addToLog(`Error: ${error.message}`, true);
+                };
+                
+                ws.onclose = function(event) {
+                    addToLog(`Connection closed: ${event.code} ${event.reason}`);
+                    ws = null;
+                };
+            } catch (error) {
+                addToLog(`Connection error: ${error.message}`, true);
+            }
+        });
+        
+        document.getElementById('connect-url').addEventListener('click', function() {
+            if (ws) {
+                addToLog('Closing existing connection first...');
+                ws.close();
+            }
+            
+            const token = tokenInput.value.trim();
+            if (!token) {
+                addToLog('Please enter a valid JWT token', true);
+                return;
+            }
+            
+            const url = urlInput.value.trim();
+            if (!url) {
+                addToLog('Please enter a valid WebSocket URL', true);
+                return;
+            }
+            
+            try {
+                const urlWithToken = `${url}?token=${encodeURIComponent(token)}`;
+                addToLog(`Connecting to ${urlWithToken}...`);
+                
+                ws = new WebSocket(urlWithToken);
+                
+                ws.onopen = function() {
+                    addToLog('WebSocket connection established with URL parameter!');
+                };
+                
+                ws.onmessage = function(event) {
+                    addToLog(`Received: ${event.data}`);
+                };
+                
+                ws.onerror = function(error) {
+                    addToLog(`Error: ${error.message}`, true);
+                };
+                
+                ws.onclose = function(event) {
+                    addToLog(`Connection closed: ${event.code} ${event.reason}`);
+                    ws = null;
+                };
+            } catch (error) {
+                addToLog(`Connection error: ${error.message}`, true);
+            }
+        });
+        
+        document.getElementById('disconnect').addEventListener('click', function() {
+            if (ws) {
+                ws.close();
+                addToLog('Connection closed by user');
+                ws = null;
+            } else {
+                addToLog('No active connection to close');
+            }
+        });
+        
+        document.getElementById('send').addEventListener('click', function() {
+            const message = messageInput.value.trim();
+            if (!message) {
+                addToLog('Please enter a message to send', true);
+                return;
+            }
+            
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                addToLog('No active WebSocket connection', true);
+                return;
+            }
+            
+            try {
+                ws.send(JSON.stringify({
+                    type: 'ping',
+                    timestamp: new Date().getTime()
+                }));
+                addToLog(`Sent: ${message}`);
+                messageInput.value = '';
+            } catch (error) {
+                addToLog(`Error sending message: ${error.message}`, true);
+            }
+        });
+    </script>
+</body>
+</html> 

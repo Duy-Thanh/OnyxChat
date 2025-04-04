@@ -13,12 +13,24 @@ import com.nekkochan.onyxchat.util.UserSessionManager;
 import java.io.EOFException;
 import java.io.IOException;
 import java.net.SocketException;
+import java.security.KeyManagementException;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
+import java.security.cert.CertificateException;
+import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+
+import javax.net.ssl.HostnameVerifier;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSession;
+import javax.net.ssl.SSLSocketFactory;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
 
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -34,7 +46,7 @@ public class WebSocketClient {
     private static final String TAG = "WebSocketClient";
     
     // Default WebSocket endpoint
-    private static final String DEFAULT_WS_ENDPOINT = "ws://10.0.2.2:8082/ws/";
+    private static final String DEFAULT_WS_ENDPOINT = "wss://10.0.2.2:443/ws/";
     
     // Connection parameters
     private static final int RECONNECT_ATTEMPTS = 3;
@@ -85,12 +97,7 @@ public class WebSocketClient {
         this.wsEndpoint = serverUrl;
         
         // Configure OkHttp client
-        client = new OkHttpClient.Builder()
-                .connectTimeout(10, TimeUnit.SECONDS)
-                .readTimeout(30, TimeUnit.SECONDS)
-                .writeTimeout(15, TimeUnit.SECONDS)
-                .pingInterval(20, TimeUnit.SECONDS)
-                .build();
+        client = getUnsafeOkHttpClient();
     }
     
     /**
@@ -102,12 +109,66 @@ public class WebSocketClient {
         this.wsEndpoint = wsEndpoint;
         
         // Configure OkHttp client
-        client = new OkHttpClient.Builder()
-                .connectTimeout(10, TimeUnit.SECONDS)
-                .readTimeout(30, TimeUnit.SECONDS)
-                .writeTimeout(15, TimeUnit.SECONDS)
-                .pingInterval(20, TimeUnit.SECONDS)
-                .build();
+        client = getUnsafeOkHttpClient();
+    }
+    
+    /**
+     * Creates an OkHttpClient that trusts all certificates for development
+     * DO NOT USE IN PRODUCTION
+     */
+    private OkHttpClient getUnsafeOkHttpClient() {
+        try {
+            // Create a trust manager that does not validate certificate chains
+            final TrustManager[] trustAllCerts = new TrustManager[]{
+                    new X509TrustManager() {
+                        @Override
+                        public void checkClientTrusted(X509Certificate[] chain, String authType) throws CertificateException {
+                        }
+
+                        @Override
+                        public void checkServerTrusted(X509Certificate[] chain, String authType) throws CertificateException {
+                        }
+
+                        @Override
+                        public X509Certificate[] getAcceptedIssuers() {
+                            return new X509Certificate[]{};
+                        }
+                    }
+            };
+
+            // Install the all-trusting trust manager
+            final SSLContext sslContext = SSLContext.getInstance("TLS");
+            sslContext.init(null, trustAllCerts, new SecureRandom());
+            
+            // Create an ssl socket factory with our all-trusting manager
+            final SSLSocketFactory sslSocketFactory = sslContext.getSocketFactory();
+
+            OkHttpClient.Builder builder = new OkHttpClient.Builder();
+            builder.sslSocketFactory(sslSocketFactory, (X509TrustManager) trustAllCerts[0]);
+            builder.hostnameVerifier(new HostnameVerifier() {
+                @Override
+                public boolean verify(String hostname, SSLSession session) {
+                    return true; // Allow all hostnames
+                }
+            });
+            
+            return builder
+                    .connectTimeout(10, TimeUnit.SECONDS)
+                    .readTimeout(30, TimeUnit.SECONDS)
+                    .writeTimeout(15, TimeUnit.SECONDS)
+                    .pingInterval(20, TimeUnit.SECONDS)
+                    .build();
+        } catch (Exception e) {
+            Log.e(TAG, "Error creating unsafe OkHttpClient", e);
+            
+            // Fall back to default client without SSL customization
+            return new OkHttpClient.Builder()
+                    .connectTimeout(10, TimeUnit.SECONDS)
+                    .readTimeout(30, TimeUnit.SECONDS)
+                    .writeTimeout(15, TimeUnit.SECONDS)
+                    .pingInterval(20, TimeUnit.SECONDS)
+                    .build();
+        }
     }
     
     /**
@@ -138,6 +199,25 @@ public class WebSocketClient {
         // Store the current user ID
         this.currentUserId = userId;
         
+        // Try to refresh the token first
+        sessionManager.refreshToken().thenAccept(refreshSuccess -> {
+            if (refreshSuccess) {
+                Log.d(TAG, "Successfully refreshed token before connecting");
+            } else {
+                Log.w(TAG, "Failed to refresh token, will continue with current token");
+            }
+            
+            // Continue with connection after token refresh attempt
+            connectWithCurrentToken();
+        });
+        
+        return true;
+    }
+    
+    /**
+     * Connect to the WebSocket server with the current auth token
+     */
+    private boolean connectWithCurrentToken() {
         // Get auth token
         String token = sessionManager.getAuthToken();
         if (token == null || token.isEmpty()) {
@@ -145,9 +225,21 @@ public class WebSocketClient {
             return false;
         }
         
+        // For debugging, print the first 10 chars of the token
+        if (token.length() > 10) {
+            Log.d(TAG, "Auth token starts with: " + token.substring(0, 10) + "...");
+        }
+        
         // Build WebSocket URL - We need to use the correct WebSocket endpoint
         String url = wsEndpoint;
         
+        // Ensure we're using secure WebSocket when needed
+        if (url.startsWith("http://")) {
+            url = url.replace("http://", "ws://");
+        } else if (url.startsWith("https://")) {
+            url = url.replace("https://", "wss://");
+        }
+
         // Make sure URL is correctly formatted
         if (url.endsWith("/")) {
             // The URL should end with "/ws" not just "/"
@@ -159,15 +251,13 @@ public class WebSocketClient {
             url += "/ws/";
         }
         
-        // Add token as URL parameter instead of header
-        url = url + "?token=" + token;
-        
-        Log.d(TAG, "Connecting to WebSocket URL: " + url);
-        
-        // Create WebSocket request without auth header
+        // Create WebSocket request with auth header instead of URL parameter
         Request request = new Request.Builder()
                 .url(url)
+                .header("Authorization", "Bearer " + token)
                 .build();
+        
+        Log.d(TAG, "Connecting to WebSocket URL: " + url + " with auth header");
         
         // Update state
         state = WebSocketState.CONNECTING;
@@ -183,6 +273,77 @@ public class WebSocketClient {
             return true;
         } catch (Exception e) {
             Log.e(TAG, "Error connecting to WebSocket", e);
+            state = WebSocketState.DISCONNECTED;
+            notifyStateChanged();
+            return false;
+        }
+    }
+    
+    /**
+     * Try to reconnect using URL parameters instead of header
+     */
+    public boolean reconnectWithUrlToken() {
+        if (currentUserId == null) {
+            Log.e(TAG, "Cannot reconnect: no user ID");
+            return false;
+        }
+        
+        // Get auth token
+        String token = sessionManager.getAuthToken();
+        if (token == null || token.isEmpty()) {
+            Log.e(TAG, "Cannot reconnect: no auth token available");
+            return false;
+        }
+        
+        // Build WebSocket URL with token in URL parameter
+        String url = wsEndpoint;
+        
+        // Ensure we're using secure WebSocket when needed
+        if (url.startsWith("http://")) {
+            url = url.replace("http://", "ws://");
+        } else if (url.startsWith("https://")) {
+            url = url.replace("https://", "wss://");
+        }
+
+        // Make sure URL is correctly formatted
+        if (url.endsWith("/")) {
+            // The URL should end with "/ws" not just "/"
+            if (!url.endsWith("ws/")) {
+                url = url.substring(0, url.length() - 1) + "ws/";
+            }
+        } else {
+            // If no trailing slash, add the "/ws/" suffix
+            url += "/ws/";
+        }
+        
+        // Add token as URL parameter instead of header
+        url = url + "?token=" + token;
+        
+        Log.d(TAG, "Reconnecting to WebSocket URL with token parameter: " + url);
+        
+        // Disconnect existing WebSocket if any
+        if (webSocket != null) {
+            Log.w(TAG, "WebSocket already exists, disconnecting first");
+            disconnect();
+        }
+        
+        // Update state
+        state = WebSocketState.CONNECTING;
+        notifyStateChanged();
+        
+        try {
+            // Attempt connection
+            Request request = new Request.Builder()
+                    .url(url)
+                    .build();
+            webSocket = client.newWebSocket(request, new WebSocketListenerImpl());
+            
+            // Start heartbeat to keep connection alive
+            startHeartbeat();
+            
+            return true;
+        } catch (Exception e) {
+            Log.e(TAG, "Error connecting to WebSocket with URL parameter", e);
             state = WebSocketState.DISCONNECTED;
             notifyStateChanged();
             return false;
@@ -525,6 +686,13 @@ public class WebSocketClient {
             
             state = WebSocketState.DISCONNECTED;
             notifyStateChanged();
+            
+            // If closed with unauthorized code, try to reconnect using URL parameter
+            if (code == 4001 && reason.equals("Unauthorized")) {
+                Log.d(TAG, "Authentication failed with header, trying URL parameter...");
+                reconnectWithUrlToken();
+                return;
+            }
             
             // Attempt reconnect (if code indicates a temporary failure)
             if ((code == 1001 || code == 1006 || code == 1012 || code == 1013) &&

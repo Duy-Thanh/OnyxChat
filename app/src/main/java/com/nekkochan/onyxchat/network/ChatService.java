@@ -18,13 +18,30 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import android.os.Message;
+
+import java.security.SecureRandom;
+import java.security.cert.CertificateException;
+import java.security.cert.X509Certificate;
+import java.util.concurrent.TimeUnit;
+
+import javax.net.ssl.HostnameVerifier;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSession;
+import javax.net.ssl.SSLSocketFactory;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
+
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+
 /**
  * Service for managing chat functionality
  */
 public class ChatService {
     private static final String TAG = "ChatService";
     private static final String PREF_SERVER_URL = "chat_server_url";
-    private static final String DEFAULT_SERVER_URL = "ws://10.0.2.2:8082/ws/"; // localhost for emulator
+    private static final String DEFAULT_SERVER_URL = "wss://10.0.2.2:443/ws/"; // localhost for emulator
     
     private static ChatService instance;
     

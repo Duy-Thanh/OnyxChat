@@ -1,6 +1,8 @@
 package com.nekkochan.onyxchat.network;
 
 import android.content.Context;
+import android.content.SharedPreferences;
+import android.preference.PreferenceManager;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
@@ -9,10 +11,26 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.IOException;
+import java.security.KeyManagementException;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
+import java.security.cert.CertificateException;
+import java.security.cert.X509Certificate;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+
+import javax.net.ssl.HostnameVerifier;
+import javax.net.ssl.HttpsURLConnection;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSession;
+import javax.net.ssl.SSLSocketFactory;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
+
+import com.nekkochan.onyxchat.util.UserSessionManager;
 
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
@@ -28,29 +46,139 @@ public class DirectApiClient {
     private static final MediaType JSON = MediaType.parse("application/json; charset=utf-8");
     
     // Default server endpoint
-    private static final String DEFAULT_API_ENDPOINT = "http://10.0.2.2:8082";
+    private static final String DEFAULT_API_ENDPOINT = "https://10.0.2.2:443";
     
-    private final OkHttpClient httpClient;
+    private final Context context;
     private final ExecutorService executor;
     private final String apiBaseUrl;
+    private final UserSessionManager sessionManager;
+    private final OkHttpClient httpClient;
     
     /**
-     * Create a new API client with default endpoint
-     * @param context Application context
+     * Create a new API client with the default endpoint
      */
     public DirectApiClient(Context context) {
-        this(context, DEFAULT_API_ENDPOINT);
+        this.context = context;
+        this.executor = Executors.newCachedThreadPool();
+        this.sessionManager = new UserSessionManager(context);
+        
+        // Get API URL from preferences or use default
+        SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(context);
+        String apiUrl = sharedPreferences.getString("server_url", DEFAULT_API_ENDPOINT);
+        if (apiUrl.endsWith("/ws") || apiUrl.endsWith("/ws/")) {
+            // If the URL points to a WebSocket endpoint, strip the /ws
+            apiUrl = apiUrl.replace("/ws/", "/").replace("/ws", "/");
+        }
+        this.apiBaseUrl = apiUrl;
+        
+        // Configure OkHttpClient with SSL trust for development
+        this.httpClient = createTrustingOkHttpClient();
+        
+        // Configure TLS for development (allows self-signed certificates)
+        trustAllCertificates();
     }
     
     /**
-     * Create a new API client with custom endpoint
-     * @param context Application context
-     * @param apiBaseUrl Base URL for API access
+     * Create a new API client with a custom endpoint
      */
-    public DirectApiClient(Context context, String apiBaseUrl) {
-        this.httpClient = new OkHttpClient();
+    public DirectApiClient(String apiBaseUrl, Context context) {
+        this.context = context;
         this.executor = Executors.newCachedThreadPool();
         this.apiBaseUrl = apiBaseUrl;
+        this.sessionManager = new UserSessionManager(context);
+        
+        // Configure OkHttpClient with SSL trust for development
+        this.httpClient = createTrustingOkHttpClient();
+        
+        // Configure TLS for development (allows self-signed certificates)
+        trustAllCertificates();
+    }
+    
+    /**
+     * Create an OkHttpClient that trusts all SSL certificates
+     */
+    private OkHttpClient createTrustingOkHttpClient() {
+        OkHttpClient.Builder builder = new OkHttpClient.Builder()
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS);
+            
+        try {
+            // Create a trust manager that does not validate certificate chains
+            final TrustManager[] trustAllCerts = new TrustManager[]{
+                new X509TrustManager() {
+                    @Override
+                    public void checkClientTrusted(X509Certificate[] chain, String authType) throws CertificateException {
+                    }
+
+                    @Override
+                    public void checkServerTrusted(X509Certificate[] chain, String authType) throws CertificateException {
+                    }
+
+                    @Override
+                    public X509Certificate[] getAcceptedIssuers() {
+                        return new X509Certificate[]{};
+                    }
+                }
+            };
+
+            // Install the all-trusting trust manager
+            final SSLContext sslContext = SSLContext.getInstance("TLS");
+            sslContext.init(null, trustAllCerts, new SecureRandom());
+            
+            // Create an ssl socket factory with our all-trusting manager
+            final SSLSocketFactory sslSocketFactory = sslContext.getSocketFactory();
+
+            builder.sslSocketFactory(sslSocketFactory, (X509TrustManager) trustAllCerts[0]);
+            builder.hostnameVerifier(new HostnameVerifier() {
+                @Override
+                public boolean verify(String hostname, SSLSession session) {
+                    return true; // Allow all hostnames
+                }
+            });
+        } catch (Exception e) {
+            Log.e(TAG, "Error setting up SSL trust for OkHttpClient", e);
+        }
+        
+        return builder.build();
+    }
+    
+    /**
+     * Set up trust for all SSL certificates in development mode
+     * DO NOT USE IN PRODUCTION
+     */
+    private void trustAllCertificates() {
+        try {
+            // Create a trust manager that does not validate certificate chains
+            TrustManager[] trustAllCerts = new TrustManager[] {
+                new X509TrustManager() {
+                    public X509Certificate[] getAcceptedIssuers() {
+                        return new X509Certificate[0];
+                    }
+
+                    @Override
+                    public void checkClientTrusted(X509Certificate[] chain, String authType) throws CertificateException {
+                    }
+
+                    @Override
+                    public void checkServerTrusted(X509Certificate[] chain, String authType) throws CertificateException {
+                    }
+                }
+            };
+
+            // Install the all-trusting trust manager
+            SSLContext sslContext = SSLContext.getInstance("TLS");
+            sslContext.init(null, trustAllCerts, new SecureRandom());
+            HttpsURLConnection.setDefaultSSLSocketFactory(sslContext.getSocketFactory());
+            HttpsURLConnection.setDefaultHostnameVerifier(new HostnameVerifier() {
+                @Override
+                public boolean verify(String hostname, SSLSession session) {
+                    return true; // Allow all hostnames
+                }
+            });
+        } catch (KeyManagementException | NoSuchAlgorithmException e) {
+            Log.e(TAG, "Failed to trust all certificates", e);
+        }
     }
     
     /**

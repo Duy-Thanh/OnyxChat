@@ -27,6 +27,29 @@ import retrofit2.converter.gson.GsonConverterFactory;
 import retrofit2.http.Body;
 import retrofit2.http.POST;
 
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.security.KeyManagementException;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
+import java.security.cert.CertificateException;
+import java.security.cert.X509Certificate;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+
+import javax.net.ssl.HostnameVerifier;
+import javax.net.ssl.HttpsURLConnection;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSession;
+import javax.net.ssl.SSLSocketFactory;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
+
 /**
  * API client for interacting with the OnyxChat server
  */
@@ -34,7 +57,7 @@ public class ApiClient {
     private static final String TAG = "ApiClient";
     
     // Default server URL - for testing using Android emulator
-    private static final String DEFAULT_API_URL = "http://10.0.2.2:8082/";
+    private static final String DEFAULT_API_URL = "https://10.0.2.2:443/";
     
     // Singleton instance
     private static ApiClient instance;
@@ -44,6 +67,8 @@ public class ApiClient {
     private final ApiService apiService;
     private final UserSessionManager sessionManager;
     private final SharedPreferences sharedPreferences;
+    private final Executor executor;
+    private String apiUrl;
     
     /**
      * Get the singleton instance
@@ -61,9 +86,17 @@ public class ApiClient {
     private ApiClient(Context context) {
         this.sharedPreferences = PreferenceManager.getDefaultSharedPreferences(context);
         this.sessionManager = new UserSessionManager(context);
+        this.executor = Executors.newCachedThreadPool();
         
-        // Get server URL from preferences
-        String serverUrl = sharedPreferences.getString("server_url", DEFAULT_API_URL);
+        // Get API URL from preferences or use default
+        apiUrl = sharedPreferences.getString("server_url", DEFAULT_API_URL);
+        if (apiUrl.endsWith("/ws") || apiUrl.endsWith("/ws/")) {
+            // If the URL points to a WebSocket endpoint, strip the /ws
+            apiUrl = apiUrl.replace("/ws/", "/").replace("/ws", "/");
+        }
+        
+        // Configure TLS for development (allows self-signed certificates)
+        trustAllCertificates();
         
         // Create OkHttpClient with interceptors
         OkHttpClient.Builder httpClient = new OkHttpClient.Builder();
@@ -105,6 +138,44 @@ public class ApiClient {
         httpClient.readTimeout(15, TimeUnit.SECONDS);
         httpClient.writeTimeout(15, TimeUnit.SECONDS);
         
+        // Apply SSL trust settings for development
+        try {
+            // Create a trust manager that does not validate certificate chains
+            final TrustManager[] trustAllCerts = new TrustManager[]{
+                    new X509TrustManager() {
+                        @Override
+                        public void checkClientTrusted(X509Certificate[] chain, String authType) throws CertificateException {
+                        }
+
+                        @Override
+                        public void checkServerTrusted(X509Certificate[] chain, String authType) throws CertificateException {
+                        }
+
+                        @Override
+                        public X509Certificate[] getAcceptedIssuers() {
+                            return new X509Certificate[]{};
+                        }
+                    }
+            };
+
+            // Install the all-trusting trust manager
+            final SSLContext sslContext = SSLContext.getInstance("SSL");
+            sslContext.init(null, trustAllCerts, new SecureRandom());
+            
+            // Create an ssl socket factory with our all-trusting manager
+            final SSLSocketFactory sslSocketFactory = sslContext.getSocketFactory();
+
+            httpClient.sslSocketFactory(sslSocketFactory, (X509TrustManager) trustAllCerts[0]);
+            httpClient.hostnameVerifier(new HostnameVerifier() {
+                @Override
+                public boolean verify(String hostname, SSLSession session) {
+                    return true; // Allow all hostnames
+                }
+            });
+        } catch (Exception e) {
+            Log.e(TAG, "Error setting up SSL trust for OkHttpClient", e);
+        }
+        
         // Create Gson converter
         Gson gson = new GsonBuilder()
                 .setDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
@@ -112,13 +183,51 @@ public class ApiClient {
         
         // Create Retrofit instance
         retrofit = new Retrofit.Builder()
-                .baseUrl(serverUrl)
+                .baseUrl(apiUrl)
                 .addConverterFactory(GsonConverterFactory.create(gson))
                 .client(httpClient.build())
                 .build();
         
         // Create API service
         apiService = retrofit.create(ApiService.class);
+    }
+    
+    /**
+     * Set up trust for all SSL certificates in development mode
+     * DO NOT USE IN PRODUCTION
+     */
+    private void trustAllCertificates() {
+        try {
+            // Create a trust manager that does not validate certificate chains
+            TrustManager[] trustAllCerts = new TrustManager[] {
+                new X509TrustManager() {
+                    public X509Certificate[] getAcceptedIssuers() {
+                        return new X509Certificate[0];
+                    }
+
+                    @Override
+                    public void checkClientTrusted(X509Certificate[] chain, String authType) throws CertificateException {
+                    }
+
+                    @Override
+                    public void checkServerTrusted(X509Certificate[] chain, String authType) throws CertificateException {
+                    }
+                }
+            };
+
+            // Install the all-trusting trust manager
+            SSLContext sslContext = SSLContext.getInstance("TLS");
+            sslContext.init(null, trustAllCerts, new SecureRandom());
+            HttpsURLConnection.setDefaultSSLSocketFactory(sslContext.getSocketFactory());
+            HttpsURLConnection.setDefaultHostnameVerifier(new HostnameVerifier() {
+                @Override
+                public boolean verify(String hostname, SSLSession session) {
+                    return true; // Allow all hostnames
+                }
+            });
+        } catch (KeyManagementException | NoSuchAlgorithmException e) {
+            Log.e(TAG, "Failed to trust all certificates", e);
+        }
     }
     
     /**
