@@ -1,82 +1,65 @@
 require('dotenv').config();
 const { Sequelize } = require('sequelize');
+const path = require('path');
 const initModels = require('../models/init-models');
 
+// Parse command line arguments
+const args = process.argv.slice(2);
+const forceMode = args.includes('--force');
+
+// Database connection parameters from environment variables
+const dbConfig = {
+  host: process.env.DB_HOST || 'localhost',
+  port: process.env.DB_PORT || 5433,
+  database: process.env.DB_NAME || 'onyxchat',
+  username: process.env.DB_USER || 'postgres',
+  password: process.env.DB_PASSWORD || 'postgres',
+};
+
+console.log(`Starting database migration${forceMode ? ' in FORCE mode' : ''}...`);
+console.log(`Connecting to PostgreSQL at ${dbConfig.host}:${dbConfig.port}`);
+
+// Create Sequelize instance
 const sequelize = new Sequelize(
-  process.env.DB_NAME,
-  process.env.DB_USER,
-  process.env.DB_PASSWORD,
+  dbConfig.database,
+  dbConfig.username,
+  dbConfig.password,
   {
-    host: process.env.DB_HOST,
-    port: process.env.DB_PORT,
+    host: dbConfig.host,
+    port: dbConfig.port,
     dialect: 'postgres',
-    logging: true
+    logging: console.log,
+    pool: {
+      max: 5,
+      min: 0,
+      acquire: 30000,
+      idle: 10000
+    }
   }
 );
 
+// Migrate database schema
 async function migrate() {
   try {
-    console.log('Connecting to database...');
+    // Test database connection
     await sequelize.authenticate();
-    console.log('Connection established successfully.');
-
+    console.log('Database connection established successfully.');
+    
+    // Initialize models
     console.log('Initializing models...');
     const models = initModels(sequelize);
-
-    console.log('Syncing database...');
-    // Force: true will drop tables if they exist
-    // Use with caution in production!
-    const force = process.argv.includes('--force');
-    if (force) {
-      console.log('WARNING: Forcing database sync. This will drop all tables!');
-    }
     
-    await sequelize.sync({ force });
-    console.log('Database synchronized successfully.');
-
-    // Create admin user if it doesn't exist
-    if (!force) {
-      console.log('Checking for admin user...');
-      const { User } = models;
-      const adminUser = await User.findOne({ where: { username: 'admin' } });
-      
-      if (!adminUser) {
-        const bcrypt = require('bcrypt');
-        const salt = await bcrypt.genSalt(10);
-        const passwordHash = await bcrypt.hash('password', salt);
-        
-        console.log('Creating admin user...');
-        await User.create({
-          username: 'admin',
-          email: 'admin@example.com',
-          passwordHash,
-          displayName: 'Admin User',
-          isActive: true,
-          lastActiveAt: new Date()
-        });
-        
-        console.log('Creating regular user...');
-        await User.create({
-          username: 'user',
-          email: 'user@example.com',
-          passwordHash,
-          displayName: 'Regular User',
-          isActive: true,
-          lastActiveAt: new Date()
-        });
-        
-        console.log('Users created successfully.');
-      } else {
-        console.log('Admin user already exists.');
-      }
-    }
-
-    console.log('Migration completed successfully.');
+    // Sync all models with database
+    console.log(`Syncing database schema${forceMode ? ' (force mode - will drop tables if they exist)' : ''}...`);
+    await sequelize.sync({ force: forceMode });
+    
+    console.log('Database migration completed successfully!');
     process.exit(0);
   } catch (error) {
-    console.error('Error during migration:', error);
+    console.error('Database migration failed:', error);
     process.exit(1);
   }
 }
 
+// Run migration
 migrate(); 
