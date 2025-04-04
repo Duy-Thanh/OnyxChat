@@ -7,12 +7,50 @@ services:
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_USER: onyxchat
-      POSTGRES_PASSWORD: onyxchat
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
       POSTGRES_DB: onyxchat
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
+    networks:
+      - onyxchat-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  server:
+    build:
+      context: ./nodejs-server
+      dockerfile: Dockerfile
+    container_name: onyxchat-server
+    ports:
+      - "8081:8081"
+    environment:
+      - NODE_ENV=production
+      - USE_MOCK_DB=false
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=onyxchat
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - JWT_SECRET=your_jwt_secret_replace_in_production
+      - JWT_REFRESH_SECRET=your_refresh_secret_replace_in_production
+      - JWT_EXPIRES_IN=1h
+      - JWT_REFRESH_EXPIRES_IN=7d
+      - ENCRYPTION_KEY=your_encryption_key_here
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - onyxchat-network
+    restart: unless-stopped
+
+networks:
+  onyxchat-network:
+    driver: bridge
 
 volumes:
   postgres_data: 

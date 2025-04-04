@@ -6,11 +6,17 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
+    "mock": "NODE_ENV=test USE_MOCK_DB=true nodemon src/server.js",
+    "db:migrate": "node src/db/migrate.js",
+    "db:migrate:force": "node src/db/migrate.js --force",
+    "db:seed": "node src/db/seed.js",
+    "db:reset": "npm run db:migrate:force && npm run db:seed",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "OnyxChat Team",
   "license": "MIT",
   "dependencies": {
+    "bcrypt": "^5.1.1",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
@@ -27,4 +33,4 @@
   "devDependencies": {
     "nodemon": "^3.0.1"
   }
-} 
+}

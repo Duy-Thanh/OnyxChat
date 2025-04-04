@@ -23,9 +23,21 @@ app.use(morgan('dev'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Health check route
+// Health check route that also reports database status
 app.get('/api/health', (req, res) => {
-  res.status(200).send('OK');
+  const dbStatus = db.sequelize ? 
+    (db.sequelize.authenticate().then(() => true).catch(() => false)) :
+    false;
+  
+  Promise.resolve(dbStatus).then(isConnected => {
+    res.status(200).json({
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      database: isConnected ? 'connected' : 'disconnected',
+      environment: process.env.NODE_ENV,
+      mockMode: process.env.NODE_ENV === 'test' || process.env.USE_MOCK_DB === 'true'
+    });
+  });
 });
 
 // Basic test route
@@ -57,30 +69,50 @@ app.use((err, req, res, next) => {
 
 // Start server without requiring database sync
 const startServer = () => {
-  server.listen(PORT, () => {
+  server.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on port ${PORT}`);
   });
 };
 
 // Determine if we're in mock mode
-const isMockMode = process.env.NODE_ENV === 'development' || process.env.USE_MOCK_DB === 'true';
+const isMockMode = process.env.NODE_ENV === 'test' || process.env.USE_MOCK_DB === 'true';
 
 // Handle startup based on mode
 if (isMockMode) {
-  console.log('Starting server in development mode with mock database');
+  console.log('Starting server in mock database mode');
   startServer();
 } else {
   // In production, try to sync the database before starting
-  db.sequelize.sync({ alter: true })
-    .then(() => {
-      console.log('Database connected and synced');
-      startServer();
-    })
-    .catch(err => {
-      console.error('Failed to connect to database:', err);
-      console.log('Starting server without database connection');
-      startServer();
-    });
+  if (db.sequelize) {
+    // Wait a bit for the database to be fully ready in Docker environment
+    const retryInterval = 5000; // 5 seconds
+    const maxRetries = 10;
+    let retries = 0;
+
+    const connectWithRetry = () => {
+      db.sequelize.sync({ alter: false })
+        .then(() => {
+          console.log('Database connected and synced');
+          startServer();
+        })
+        .catch(err => {
+          retries++;
+          if (retries < maxRetries) {
+            console.error(`Failed to connect to database (attempt ${retries}/${maxRetries}):`, err.message);
+            console.log(`Retrying in ${retryInterval/1000} seconds...`);
+            setTimeout(connectWithRetry, retryInterval);
+          } else {
+            console.error('Max retries reached. Starting server without database connection');
+            startServer();
+          }
+        });
+    };
+
+    connectWithRetry();
+  } else {
+    console.error('No database connection available');
+    startServer();
+  }
 }
 
 // Handle graceful shutdown
