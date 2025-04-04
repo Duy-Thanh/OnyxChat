@@ -7698,3 +7698,6 @@ local.properties
 /target/debug/ws-demo
 /target/.rustc_info.json
 /target/CACHEDIR.TAG
+/.env.production
+/certs/server.crt
+/certs/server.key
