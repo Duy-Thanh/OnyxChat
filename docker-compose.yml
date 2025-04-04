@@ -1,17 +1,18 @@
 version: '3.8'
+name: onyxchat-dev
 
 services:
   postgres:
     image: postgres:14
-    container_name: onyxchat-postgres
+    container_name: onyxchat-dev-postgres
     ports:
-      - "5432:5432"
+      - "5433:5432"
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: onyxchat
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data_dev:/var/lib/postgresql/data
     restart: unless-stopped
     networks:
       - onyxchat-network
@@ -20,9 +21,9 @@ services:
     build:
       context: ./nodejs-server
       dockerfile: Dockerfile
-    container_name: onyxchat-server
+    container_name: onyxchat-dev-server
     ports:
-      - "8081:8081"
+      - "8082:8081"
     depends_on:
       - postgres
     environment:
@@ -47,4 +48,4 @@ networks:
     driver: bridge
 
 volumes:
-  postgres_data: 
+  postgres_data_dev: 

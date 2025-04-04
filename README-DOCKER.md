@@ -21,10 +21,10 @@ This guide explains how to run the OnyxChat server and PostgreSQL database using
    ```
 
    This will:
-   - Start a PostgreSQL database container
+   - Start a PostgreSQL database container (accessible on port 5433)
    - Build and start the OnyxChat server container
    - Run database migrations and seed data
-   - Make the server available on port 8081
+   - Make the server available on port 8082
 
 3. Check if the containers are running:
    ```
@@ -38,8 +38,14 @@ This guide explains how to run the OnyxChat server and PostgreSQL database using
 
 5. Test the API:
    ```
-   curl http://localhost:8081/api/health
+   curl http://localhost:8082/api/health
    ```
+
+## Port Configuration
+
+This setup uses the following ports to avoid conflicts with existing services:
+- PostgreSQL: 5433 (external) → 5432 (internal)
+- OnyxChat Server: 8082 (external) → 8081 (internal)
 
 ## Stopping the Services
 
@@ -75,6 +81,16 @@ You can modify the environment variables in the `docker-compose.yml` file to cus
 For production use, make sure to change all default secrets and passwords!
 
 ## Troubleshooting
+
+If you encounter container name conflicts:
+```
+sudo docker ps -a
+```
+Then stop and remove any conflicting containers:
+```
+sudo docker stop <container-name>
+sudo docker rm <container-name>
+```
 
 If the server fails to connect to the database:
 1. Check if the PostgreSQL container is running
