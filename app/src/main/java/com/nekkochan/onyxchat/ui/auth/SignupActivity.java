@@ -185,7 +185,7 @@ public class SignupActivity extends AppCompatActivity {
         apiClient.registerUser(username, email, password, displayName, new ApiClient.ApiCallback<ApiClient.AuthResponse>() {
             @Override
             public void onSuccess(ApiClient.AuthResponse response) {
-                Log.d(TAG, "Registration successful: " + response.user.username);
+                Log.d(TAG, "Registration successful: " + response.data.user.username);
                 
                 // Hide progress
                 binding.signupProgress.setVisibility(View.GONE);

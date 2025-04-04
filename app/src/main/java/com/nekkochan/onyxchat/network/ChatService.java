@@ -62,7 +62,7 @@ public class ChatService {
         String serverUrl = prefs.getString(PREF_SERVER_URL, DEFAULT_SERVER_URL);
         
         // Create WebSocket client
-        this.webSocketClient = new WebSocketClient(serverUrl);
+        this.webSocketClient = new WebSocketClient(context);
         
         // Register for WebSocket events
         this.webSocketClient.addListener(new WebSocketClient.MessageListener() {

@@ -45,6 +45,7 @@
     <string name="email">Email Address</string>
     <string name="password">Password</string>
     <string name="confirm_password">Confirm Password</string>
+    <string name="display_name">Display Name</string>
     <string name="forgot_password">Forgot Password?</string>
     <string name="reset_password">Reset Password</string>
     <string name="reset_password_description">Enter your email address and we will send you a link to reset your password.</string>
@@ -120,4 +121,6 @@
     <string name="error_passwords_dont_match">Passwords don\'t match</string>
     <string name="error_username_required">Username is required</string>
     <string name="error_terms_required">You must accept the terms to continue</string>
+    <string name="error_field_required">This field is required</string>
+    <string name="error_password_too_short">Password must be at least 8 characters</string>
 </resources>

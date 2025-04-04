@@ -69,7 +69,8 @@ public class ApiClient {
         OkHttpClient.Builder httpClient = new OkHttpClient.Builder();
         
         // Add logging interceptor for debug builds
-        if (BuildConfig.DEBUG) {
+        boolean isDebug = true; // Set to true for debugging, false for release
+        if (isDebug) {
             HttpLoggingInterceptor loggingInterceptor = new HttpLoggingInterceptor();
             loggingInterceptor.setLevel(HttpLoggingInterceptor.Level.BODY);
             httpClient.addInterceptor(loggingInterceptor);
@@ -132,26 +133,47 @@ public class ApiClient {
         apiService.register(request).enqueue(new Callback<AuthResponse>() {
             @Override
             public void onResponse(Call<AuthResponse> call, retrofit2.Response<AuthResponse> response) {
-                if (response.isSuccessful() && response.body() != null) {
+                if (response.isSuccessful() && response.body() != null && "success".equals(response.body().status)) {
                     // Save auth token and user details
                     AuthResponse authResponse = response.body();
                     sessionManager.createLoginSession(
-                            authResponse.user.username,
-                            authResponse.user.id,
-                            authResponse.token);
+                            authResponse.data.user.username,
+                            authResponse.data.user.id,
+                            authResponse.data.tokens.accessToken);
                     
                     // Notify callback
                     callback.onSuccess(authResponse);
                 } else {
                     // Parse error message
                     String errorMsg = "Registration failed";
-                    if (response.errorBody() != null) {
+                    
+                    // Check if we have a body with an error message
+                    if (response.body() != null && response.body().message != null) {
+                        errorMsg = response.body().message;
+                    }
+                    // Otherwise try to parse the error body
+                    else if (response.errorBody() != null) {
                         try {
-                            errorMsg = response.errorBody().string();
+                            String errorBody = response.errorBody().string();
+                            // Try to extract the message from error body if it's in JSON format
+                            if (errorBody.contains("\"message\"")) {
+                                Gson gson = new Gson();
+                                try {
+                                    ErrorResponse error = gson.fromJson(errorBody, ErrorResponse.class);
+                                    if (error != null && error.message != null) {
+                                        errorMsg = error.message;
+                                    }
+                                } catch (Exception e) {
+                                    Log.e(TAG, "Error parsing JSON error response", e);
+                                }
+                            } else {
+                                errorMsg = errorBody;
+                            }
                         } catch (IOException e) {
                             Log.e(TAG, "Error parsing error response", e);
                         }
                     }
+                    
                     callback.onFailure(errorMsg);
                 }
             }
@@ -174,26 +196,47 @@ public class ApiClient {
         apiService.login(request).enqueue(new Callback<AuthResponse>() {
             @Override
             public void onResponse(Call<AuthResponse> call, retrofit2.Response<AuthResponse> response) {
-                if (response.isSuccessful() && response.body() != null) {
+                if (response.isSuccessful() && response.body() != null && "success".equals(response.body().status)) {
                     // Save auth token and user details
                     AuthResponse authResponse = response.body();
                     sessionManager.createLoginSession(
-                            authResponse.user.username,
-                            authResponse.user.id,
-                            authResponse.token);
+                            authResponse.data.user.username,
+                            authResponse.data.user.id,
+                            authResponse.data.tokens.accessToken);
                     
                     // Notify callback
                     callback.onSuccess(authResponse);
                 } else {
                     // Parse error message
                     String errorMsg = "Login failed";
-                    if (response.errorBody() != null) {
+                    
+                    // Check if we have a body with an error message
+                    if (response.body() != null && response.body().message != null) {
+                        errorMsg = response.body().message;
+                    }
+                    // Otherwise try to parse the error body
+                    else if (response.errorBody() != null) {
                         try {
-                            errorMsg = response.errorBody().string();
+                            String errorBody = response.errorBody().string();
+                            // Try to extract the message from error body if it's in JSON format
+                            if (errorBody.contains("\"message\"")) {
+                                Gson gson = new Gson();
+                                try {
+                                    ErrorResponse error = gson.fromJson(errorBody, ErrorResponse.class);
+                                    if (error != null && error.message != null) {
+                                        errorMsg = error.message;
+                                    }
+                                } catch (Exception e) {
+                                    Log.e(TAG, "Error parsing JSON error response", e);
+                                }
+                            } else {
+                                errorMsg = errorBody;
+                            }
                         } catch (IOException e) {
                             Log.e(TAG, "Error parsing error response", e);
                         }
                     }
+                    
                     callback.onFailure(errorMsg);
                 }
             }
@@ -226,7 +269,7 @@ public class ApiClient {
      * API service interface
      */
     private interface ApiService {
-        @POST("api/users")
+        @POST("api/auth/register")
         Call<AuthResponse> register(@Body RegisterRequest request);
         
         @POST("api/auth/login")
@@ -277,17 +320,30 @@ public class ApiClient {
      * Auth response model
      */
     public static class AuthResponse {
-        @SerializedName("token")
-        public String token;
+        @SerializedName("status")
+        public String status;
         
-        @SerializedName("user")
-        public UserProfile user;
+        @SerializedName("message")
+        public String message;
         
-        @SerializedName("token_type")
-        public String tokenType;
+        @SerializedName("data")
+        public AuthData data;
         
-        @SerializedName("expires_in")
-        public long expiresIn;
+        public static class AuthData {
+            @SerializedName("user")
+            public UserProfile user;
+            
+            @SerializedName("tokens")
+            public TokenInfo tokens;
+        }
+        
+        public static class TokenInfo {
+            @SerializedName("accessToken")
+            public String accessToken;
+            
+            @SerializedName("refreshToken")
+            public String refreshToken;
+        }
     }
     
     /**
@@ -300,10 +356,21 @@ public class ApiClient {
         @SerializedName("username")
         public String username;
         
-        @SerializedName("display_name")
+        @SerializedName("displayName")
         public String displayName;
         
-        @SerializedName("is_active")
+        @SerializedName("isActive")
         public boolean isActive;
+    }
+    
+    /**
+     * Error response model
+     */
+    private static class ErrorResponse {
+        @SerializedName("status")
+        public String status;
+        
+        @SerializedName("message")
+        public String message;
     }
 } 

@@ -211,6 +211,17 @@ public class WebSocketClient {
     }
     
     /**
+     * Start connection to WebSocket server with the current user ID
+     * @return true if connection started successfully
+     */
+    private boolean startConnection() {
+        if (currentUserId != null) {
+            return connect(currentUserId);
+        }
+        return false;
+    }
+    
+    /**
      * Disconnect from the WebSocket server
      */
     public void disconnect() {

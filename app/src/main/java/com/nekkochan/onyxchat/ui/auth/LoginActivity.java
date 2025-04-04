@@ -114,7 +114,7 @@ public class LoginActivity extends AppCompatActivity {
         apiClient.login(username, password, new ApiClient.ApiCallback<ApiClient.AuthResponse>() {
             @Override
             public void onSuccess(ApiClient.AuthResponse response) {
-                Log.d(TAG, "Login successful: " + response.user.username);
+                Log.d(TAG, "Login successful: " + response.data.user.username);
                 
                 // Hide progress
                 binding.loginProgress.setVisibility(View.GONE);
