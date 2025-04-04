@@ -7,6 +7,7 @@ import android.util.Log;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.nekkochan.onyxchat.util.UserSessionManager;
 
 import java.io.EOFException;
@@ -130,25 +131,36 @@ public class WebSocketClient {
         // Store the current user ID
         this.currentUserId = userId;
         
-        // Build WebSocket URL
-        String url = wsEndpoint;
-        if (!url.endsWith("/")) {
-            url += "/";
-        }
-        url += "ws/" + userId;
-        
-        // Create WebSocket request
-        Request.Builder requestBuilder = new Request.Builder()
-                .url(url);
-        
-        // Add auth token if available
+        // Get auth token
         String token = sessionManager.getAuthToken();
-        if (token != null && !token.isEmpty()) {
-            requestBuilder.addHeader("Authorization", "Bearer " + token);
+        if (token == null || token.isEmpty()) {
+            Log.e(TAG, "Cannot connect: no auth token available");
+            return false;
         }
         
-        // Create request
-        Request request = requestBuilder.build();
+        // Build WebSocket URL - We need to use the correct WebSocket endpoint
+        String url = wsEndpoint;
+        
+        // Make sure URL is correctly formatted
+        if (url.endsWith("/")) {
+            // The URL should end with "/ws" not just "/"
+            if (!url.endsWith("ws/")) {
+                url = url.substring(0, url.length() - 1) + "ws/";
+            }
+        } else {
+            // If no trailing slash, add the "/ws/" suffix
+            url += "/ws/";
+        }
+        
+        // Add token as URL parameter instead of header
+        url = url + "?token=" + token;
+        
+        Log.d(TAG, "Connecting to WebSocket URL: " + url);
+        
+        // Create WebSocket request without auth header
+        Request request = new Request.Builder()
+                .url(url)
+                .build();
         
         // Update state
         state = WebSocketState.CONNECTING;
@@ -423,6 +435,10 @@ public class WebSocketClient {
         @Override
         public void onOpen(WebSocket webSocket, Response response) {
             Log.d(TAG, "WebSocket connection opened");
+            
+            // Server already identified the user from the token in URL
+            // No need to send an identification message
+            
             state = WebSocketState.CONNECTED;
             reconnectAttempts = 0;
             notifyStateChanged();
@@ -431,7 +447,9 @@ public class WebSocketClient {
         @Override
         public void onMessage(WebSocket webSocket, String text) {
             Log.d(TAG, "WebSocket message received: " + text);
+            
             try {
+                // Process server messages
                 notifyMessageReceived(text);
             } catch (Exception e) {
                 Log.e(TAG, "Error processing WebSocket message", e);

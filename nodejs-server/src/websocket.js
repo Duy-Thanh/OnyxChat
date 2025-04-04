@@ -175,6 +175,12 @@ const setupWebSocketServer = (wss) => {
 // Notify user's contacts about online/offline status change
 const notifyUserStatus = async (userId, isOnline) => {
   try {
+    // Skip in mock mode if Contact model doesn't exist
+    if (!db.Contact) {
+      console.log('Contact model not available, skipping status notification');
+      return;
+    }
+    
     // Find user's contacts
     const contacts = await db.Contact.findAll({
       where: { userId }

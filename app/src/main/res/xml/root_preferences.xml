@@ -26,7 +26,7 @@
             app:key="server_url"
             app:title="@string/server_url"
             app:summary="@string/server_url_description"
-            app:defaultValue="http://10.0.2.2:8082"
+            app:defaultValue="ws://10.0.2.2:8082/ws/"
             app:useSimpleSummaryProvider="true" />
     </PreferenceCategory>
 

@@ -102,9 +102,31 @@ public class MainActivity extends AppCompatActivity implements BottomNavigationV
     protected void onResume() {
         super.onResume();
         
-        // Connect to chat server
-        if (!viewModel.isChatConnected().getValue()) {
-            viewModel.connectToChat();
+        // Connect to chat server with the user ID from session manager
+        String userId = sessionManager.getUserId();
+        if (userId != null) {
+            Log.d(TAG, "Connecting to chat server with user ID: " + userId);
+            
+            // Set the user ID in the view model
+            viewModel.setUserAddress(userId);
+            
+            // Initialize connection to chat service
+            boolean connected = viewModel.connectToChat();
+            if (!connected) {
+                Log.w(TAG, "Failed to connect to chat server, scheduling retry");
+                // Schedule a retry after a delay
+                new Thread(() -> {
+                    try {
+                        Thread.sleep(2000); // Wait 2 seconds
+                        viewModel.connectToChat(); // Try again
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                }).start();
+            }
+        } else {
+            Log.e(TAG, "No user ID available from session manager");
+            Toast.makeText(this, "Login error: No user ID", Toast.LENGTH_SHORT).show();
         }
     }
     

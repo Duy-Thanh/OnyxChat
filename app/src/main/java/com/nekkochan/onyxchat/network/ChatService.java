@@ -11,6 +11,7 @@ import androidx.lifecycle.MutableLiveData;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.nekkochan.onyxchat.util.UserSessionManager;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -208,11 +209,31 @@ public class ChatService {
     /**
      * Connect to the chat server with the specified user ID
      * @param userId The user ID to connect with
-     * @return true if connection attempt started, false otherwise
+     * @return true if connection started, false otherwise
      */
     public boolean connect(String userId) {
+        if (userId == null || userId.isEmpty()) {
+            Log.e(TAG, "Cannot connect: User ID is null or empty");
+            return false;
+        }
+        
+        // Store user ID
         this.userId = userId;
+        
+        // Update connection state
         connectionState.setValue(WebSocketClient.WebSocketState.CONNECTING);
+        
+        // Get token and verify it exists
+        UserSessionManager sessionManager = new UserSessionManager(context);
+        String token = sessionManager.getAuthToken();
+        if (token == null || token.isEmpty()) {
+            Log.e(TAG, "Cannot connect: No auth token available");
+            connectionState.setValue(WebSocketClient.WebSocketState.DISCONNECTED);
+            return false;
+        }
+        
+        // Connect to WebSocket
+        Log.d(TAG, "Connecting to chat server with user ID: " + userId);
         return webSocketClient.connect(userId);
     }
     
@@ -221,7 +242,6 @@ public class ChatService {
      */
     public void disconnect() {
         webSocketClient.disconnect();
-        connectionState.setValue(WebSocketClient.WebSocketState.DISCONNECTED);
     }
     
     /**
