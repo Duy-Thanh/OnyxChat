@@ -41,6 +41,11 @@ app.use('/api/crypto', cryptoRoutes);
 
 // Add a route to handle WebSocket connections for better debugging
 app.get('/ws', (req, res) => {
+  console.log('HTTP GET request to WebSocket endpoint received');
+  console.log('Query parameters:', req.query);
+  console.log('Headers:', req.headers);
+  
+  // For non-WebSocket requests to the WebSocket endpoint
   res.status(200).send('WebSocket endpoint is available. Please use a WebSocket client to connect.');
 });
 
@@ -50,8 +55,24 @@ const server = http.createServer(app);
 // Set up WebSocket server
 const wss = new WebSocket.Server({ 
   server,
-  path: '/ws' // Explicitly set the path
+  path: '/ws', // Explicitly set the path
+  verifyClient: (info, cb) => {
+    console.log('Verifying WebSocket connection...');
+    console.log('Request URL:', info.req.url);
+    console.log('Request headers:', info.req.headers);
+    
+    // Allow all connections at this stage
+    // Authentication will be handled in the connection handler
+    cb(true);
+  }
 });
+
+// Log WebSocket server errors
+wss.on('error', (error) => {
+  console.error('WebSocket server error:', error);
+});
+
+// Setup the WebSocket server with our handlers
 setupWebSocketServer(wss);
 
 // Create test user in mock mode

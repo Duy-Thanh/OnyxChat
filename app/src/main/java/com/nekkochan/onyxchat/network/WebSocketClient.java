@@ -231,33 +231,30 @@ public class WebSocketClient {
         }
         
         // Build WebSocket URL - We need to use the correct WebSocket endpoint
-        String url = wsEndpoint;
+        String baseUrl = wsEndpoint;
         
         // Ensure we're using secure WebSocket when needed
-        if (url.startsWith("http://")) {
-            url = url.replace("http://", "ws://");
-        } else if (url.startsWith("https://")) {
-            url = url.replace("https://", "wss://");
+        if (baseUrl.startsWith("http://")) {
+            baseUrl = baseUrl.replace("http://", "ws://");
+        } else if (baseUrl.startsWith("https://")) {
+            baseUrl = baseUrl.replace("https://", "wss://");
         }
 
-        // Make sure URL is correctly formatted
-        if (url.endsWith("/")) {
-            // The URL should end with "/ws" not just "/"
-            if (!url.endsWith("ws/")) {
-                url = url.substring(0, url.length() - 1) + "ws/";
-            }
-        } else {
-            // If no trailing slash, add the "/ws/" suffix
-            url += "/ws/";
+        // Simplify URL construction
+        // Start with the base URL, and ensure it ends with a single slash
+        if (baseUrl.endsWith("/")) {
+            baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
         }
         
-        // Create WebSocket request with auth header instead of URL parameter
+        // Create the WebSocket URL with the correct path
+        String url = baseUrl + "/ws" + "?token=" + token;
+        
+        Log.d(TAG, "Connecting to WebSocket URL: " + url);
+        
+        // Create WebSocket request (no auth header needed now)
         Request request = new Request.Builder()
                 .url(url)
-                .header("Authorization", "Bearer " + token)
                 .build();
-        
-        Log.d(TAG, "Connecting to WebSocket URL: " + url + " with auth header");
         
         // Update state
         state = WebSocketState.CONNECTING;
@@ -296,30 +293,25 @@ public class WebSocketClient {
         }
         
         // Build WebSocket URL with token in URL parameter
-        String url = wsEndpoint;
+        String baseUrl = wsEndpoint;
         
         // Ensure we're using secure WebSocket when needed
-        if (url.startsWith("http://")) {
-            url = url.replace("http://", "ws://");
-        } else if (url.startsWith("https://")) {
-            url = url.replace("https://", "wss://");
+        if (baseUrl.startsWith("http://")) {
+            baseUrl = baseUrl.replace("http://", "ws://");
+        } else if (baseUrl.startsWith("https://")) {
+            baseUrl = baseUrl.replace("https://", "wss://");
         }
 
-        // Make sure URL is correctly formatted
-        if (url.endsWith("/")) {
-            // The URL should end with "/ws" not just "/"
-            if (!url.endsWith("ws/")) {
-                url = url.substring(0, url.length() - 1) + "ws/";
-            }
-        } else {
-            // If no trailing slash, add the "/ws/" suffix
-            url += "/ws/";
+        // Simplify URL construction
+        // Ensure the base URL doesn't end with a slash
+        if (baseUrl.endsWith("/")) {
+            baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
         }
         
-        // Add token as URL parameter instead of header
-        url = url + "?token=" + token;
+        // Create the WebSocket URL with the correct path
+        String url = baseUrl + "/ws" + "?token=" + token;
         
-        Log.d(TAG, "Reconnecting to WebSocket URL with token parameter: " + url);
+        Log.d(TAG, "Reconnecting with WebSocket URL: " + url);
         
         // Disconnect existing WebSocket if any
         if (webSocket != null) {
@@ -705,12 +697,30 @@ public class WebSocketClient {
         public void onFailure(WebSocket webSocket, Throwable t, Response response) {
             try {
                 int code = response != null ? response.code() : 0;
+                String responseBody = "";
+                
+                // Try to extract the response body to get more detailed error info
+                if (response != null && response.body() != null) {
+                    try {
+                        responseBody = response.body().string();
+                    } catch (IOException e) {
+                        Log.e(TAG, "Error reading response body", e);
+                    }
+                }
+                
+                // Log the complete response info
+                Log.e(TAG, "WebSocket error: " + t.getMessage() + 
+                      ", code: " + code + 
+                      ", response: " + (response != null ? response.toString() : "null") +
+                      ", body: " + responseBody, t);
+                
+                // Log detailed connection parameters for debugging
+                Log.d(TAG, "Connection details - URL: " + (response != null ? response.request().url() : "unknown") +
+                          ", Headers: " + (response != null ? response.request().headers() : "unknown"));
                 
                 // Don't log EOFException as a serious error since it's common when server closes connection
                 if (t instanceof EOFException) {
                     Log.w(TAG, "WebSocket closed by server (EOFException)");
-                } else {
-                    Log.e(TAG, "WebSocket error: " + t.getMessage() + ", code: " + code, t);
                 }
                 
                 state = WebSocketState.DISCONNECTED;
