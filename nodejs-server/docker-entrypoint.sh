@@ -1,33 +1,64 @@
 #!/bin/sh
 set -e
 
-echo "Waiting for PostgreSQL to start..."
+# Function for logging
+log() {
+    echo "[$(date +'%Y-%m-%d %H:%M:%S')] $1"
+}
+
+# Function to handle errors
+handle_error() {
+    log "ERROR: $1"
+    exit 1
+}
+
+log "Starting OnyxChat production server..."
+
+# Environment validation
+if [ -z "$JWT_SECRET" ] || [ -z "$JWT_REFRESH_SECRET" ] || [ -z "$ENCRYPTION_KEY" ]; then
+    handle_error "Security credentials are not properly set. Please define JWT_SECRET, JWT_REFRESH_SECRET and ENCRYPTION_KEY environment variables."
+fi
+
+log "Waiting for PostgreSQL to start..."
 # Use a simple approach to wait for PostgreSQL
 # Retry multiple times with longer wait between attempts
 RETRIES=30
-until [ $RETRIES -eq 0 ] || nc -z -v -w30 postgres 5432
+RETRY_COUNT=0
+until [ $RETRY_COUNT -eq $RETRIES ] || nc -z -v -w30 postgres 5432
 do
-  echo "Waiting for PostgreSQL to start... (retries left: $RETRIES)"
-  RETRIES=$((RETRIES-1))
-  sleep 3
+    RETRY_COUNT=$((RETRY_COUNT+1))
+    log "Waiting for PostgreSQL to start... (attempt $RETRY_COUNT/$RETRIES)"
+    sleep 5
 done
 
-if [ $RETRIES -eq 0 ]; then
-  echo "Error: Failed to connect to PostgreSQL after multiple attempts"
-  exit 1
+if [ $RETRY_COUNT -eq $RETRIES ]; then
+    handle_error "Failed to connect to PostgreSQL after multiple attempts"
 fi
 
-echo "PostgreSQL is up and running!"
+log "PostgreSQL is up and running!"
 
-echo "Running database migrations..."
-node src/db/migrate.js || {
-  echo "Warning: Database migration failed, but continuing..."
-}
+# Check if we need to run migrations
+if [ "${SKIP_MIGRATIONS:-false}" != "true" ]; then
+    log "Running database migrations..."
+    node src/db/migrate.js || handle_error "Database migration failed"
 
-echo "Running database seed..."
-node src/db/seed.js || {
-  echo "Warning: Database seed failed, but continuing..."
-}
+    # Only seed in specific environments if requested
+    if [ "${RUN_SEED:-false}" = "true" ]; then
+        log "Running database seed..."
+        node src/db/seed.js || handle_error "Database seed failed"
+    fi
+else
+    log "Skipping database migrations as requested"
+fi
 
-echo "Starting OnyxChat server..."
+# Set up HTTPS if enabled
+if [ "${ENABLE_HTTPS:-false}" = "true" ]; then
+    if [ ! -f "$SSL_CERT_PATH" ] || [ ! -f "$SSL_KEY_PATH" ]; then
+        handle_error "HTTPS is enabled but SSL certificate or key is missing"
+    fi
+    log "HTTPS is enabled. Using SSL certificates."
+fi
+
+# Start the server
+log "Starting OnyxChat server..."
 exec node src/server.js 
