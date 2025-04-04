@@ -2,6 +2,8 @@ package com.nekkochan.onyxchat.network;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.os.Handler;
+import android.os.Looper;
 import android.preference.PreferenceManager;
 import android.util.Log;
 
@@ -37,6 +39,7 @@ import okhttp3.Request;
 import okhttp3.Response;
 import okhttp3.WebSocket;
 import okhttp3.WebSocketListener;
+import okhttp3.ConnectionPool;
 import okio.ByteString;
 
 /**
@@ -152,11 +155,15 @@ public class WebSocketClient {
                 }
             });
             
+            // Build OkHttpClient with better connection settings
             return builder
                     .connectTimeout(10, TimeUnit.SECONDS)
-                    .readTimeout(30, TimeUnit.SECONDS)
-                    .writeTimeout(15, TimeUnit.SECONDS)
-                    .pingInterval(20, TimeUnit.SECONDS)
+                    .readTimeout(60, TimeUnit.SECONDS)  // Increase read timeout
+                    .writeTimeout(30, TimeUnit.SECONDS) // Increase write timeout
+                    .pingInterval(3, TimeUnit.SECONDS)  // More frequent protocol-level pings
+                    .retryOnConnectionFailure(true)     // Retry automatically 
+                    // Avoid connection pooling issues by using a dedicated connection
+                    .connectionPool(new okhttp3.ConnectionPool(0, 1, TimeUnit.MILLISECONDS))
                     .build();
         } catch (Exception e) {
             Log.e(TAG, "Error creating unsafe OkHttpClient", e);
@@ -164,9 +171,11 @@ public class WebSocketClient {
             // Fall back to default client without SSL customization
             return new OkHttpClient.Builder()
                     .connectTimeout(10, TimeUnit.SECONDS)
-                    .readTimeout(30, TimeUnit.SECONDS)
-                    .writeTimeout(15, TimeUnit.SECONDS)
-                    .pingInterval(20, TimeUnit.SECONDS)
+                    .readTimeout(60, TimeUnit.SECONDS) 
+                    .writeTimeout(30, TimeUnit.SECONDS)
+                    .pingInterval(3, TimeUnit.SECONDS)
+                    .retryOnConnectionFailure(true)
+                    .connectionPool(new okhttp3.ConnectionPool(0, 1, TimeUnit.MILLISECONDS))
                     .build();
         }
     }
@@ -380,7 +389,7 @@ public class WebSocketClient {
                     Log.e(TAG, "Error sending heartbeat", e);
                 }
             }
-        }, 20, 20, TimeUnit.SECONDS);
+        }, 10, 10, TimeUnit.SECONDS);
     }
     
     /**
@@ -394,7 +403,51 @@ public class WebSocketClient {
     }
     
     /**
-     * Attempt to reconnect to the WebSocket server
+     * Schedule a reconnection attempt with a delay
+     * 
+     * @param delayMs the delay in milliseconds
+     */
+    private void scheduleReconnect(final long delayMs) {
+        if (reconnecting.compareAndSet(false, true)) {
+            // Cap reconnect attempts
+            if (reconnectAttempts >= RECONNECT_ATTEMPTS) {
+                Log.w(TAG, "Maximum reconnect attempts reached (" + RECONNECT_ATTEMPTS + 
+                        "), giving up automatic reconnection");
+                reconnecting.set(false);
+                return;
+            }
+            
+            reconnectAttempts++;
+            Log.d(TAG, "Scheduling reconnect attempt " + reconnectAttempts + 
+                    " of " + RECONNECT_ATTEMPTS + " with delay " + delayMs + "ms");
+            
+            // Use a handler to schedule the reconnect on the main thread
+            new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                try {
+                    Log.d(TAG, "Executing scheduled reconnect, attempt " + reconnectAttempts);
+                    // Try to reconnect
+                    connectWithCurrentToken();
+                    
+                    // Reset the reconnecting flag
+                    reconnecting.set(false);
+                } catch (Exception e) {
+                    Log.e(TAG, "Error during scheduled reconnect", e);
+                    reconnecting.set(false);
+                    
+                    // If this attempt failed, schedule another one with increased delay
+                    if (reconnectAttempts < RECONNECT_ATTEMPTS) {
+                        long nextDelay = delayMs * 2; // Double the delay for next attempt
+                        scheduleReconnect(nextDelay);
+                    }
+                }
+            }, delayMs);
+        } else {
+            Log.d(TAG, "Reconnection already in progress, skipping");
+        }
+    }
+    
+    /**
+     * Attempt to reconnect immediately
      */
     private void attemptReconnect() {
         if (reconnecting.compareAndSet(false, true)) {
@@ -407,33 +460,21 @@ public class WebSocketClient {
                 return;
             }
             
-            // Check if we've been trying too frequently
-            long currentTime = System.currentTimeMillis();
-            if (currentTime - lastConnectAttemptTime < RECONNECT_COOLDOWN_MS) {
-                consecutiveAttempts++;
-                if (consecutiveAttempts > MAX_CONSECUTIVE_ATTEMPTS) {
-                    Log.d(TAG, "Too many connection attempts in a short period, cooling down");
-                    reconnecting.set(false);
-                    return;
-                }
-            }
+            // Increment the reconnect attempts counter
+            reconnectAttempts++;
             
-            new Thread(() -> {
+            // Try to reconnect after a short delay
+            new Handler(Looper.getMainLooper()).postDelayed(() -> {
                 try {
-                    Thread.sleep(RECONNECT_DELAY_MS);
-                    
-                    reconnectAttempts++;
-                    lastConnectAttemptTime = System.currentTimeMillis();
-                    
-                    boolean connected = startConnection();
-                    if (!connected) {
-                        reconnecting.set(false);
-                    }
-                } catch (InterruptedException e) {
-                    Log.e(TAG, "Reconnect thread interrupted", e);
-                    reconnecting.set(false);
+                    // Try to connect
+                    startConnection();
+                } catch (Exception e) {
+                    Log.e(TAG, "Error attempting reconnect", e);
                 }
-            }).start();
+                
+                // Reset reconnecting flag
+                reconnecting.set(false);
+            }, RECONNECT_DELAY_MS);
         }
     }
     
@@ -620,47 +661,20 @@ public class WebSocketClient {
     }
     
     /**
-     * Schedule a reconnection attempt
-     */
-    private void scheduleReconnect() {
-        reconnectAttempts++;
-        
-        if (reconnectAttempts > RECONNECT_ATTEMPTS) {
-            Log.d(TAG, "Maximum reconnection attempts reached");
-            return;
-        }
-        
-        long delay = RECONNECT_DELAY_MS * reconnectAttempts;
-        Log.d(TAG, "Scheduling reconnect in " + delay + "ms (attempt " + reconnectAttempts + ")");
-        
-        // Use a background thread for reconnection
-        new Thread(() -> {
-            try {
-                Thread.sleep(delay);
-                Log.d(TAG, "Attempting to reconnect now");
-                
-                if (currentUserId != null) {
-                    connect(currentUserId);
-                }
-            } catch (InterruptedException e) {
-                Log.e(TAG, "Reconnect thread interrupted", e);
-            }
-        }).start();
-    }
-    
-    /**
-     * WebSocket event handler
+     * Improved WebSocket listener implementation with better error handling
      */
     private class WebSocketListenerImpl extends WebSocketListener {
         @Override
         public void onOpen(WebSocket webSocket, Response response) {
             Log.d(TAG, "WebSocket connection opened");
             
+            // Reset reconnect attempts on successful connection
+            reconnectAttempts = 0;
+            
             // Server already identified the user from the token in URL
             // No need to send an identification message
             
             state = WebSocketState.CONNECTED;
-            reconnectAttempts = 0;
             notifyStateChanged();
         }
         
@@ -685,27 +699,29 @@ public class WebSocketClient {
         
         @Override
         public void onClosing(WebSocket webSocket, int code, String reason) {
-            Log.d(TAG, "WebSocket closing: " + code + " " + reason);
-        }
-        
-        @Override
-        public void onClosed(WebSocket webSocket, int code, String reason) {
-            Log.d(TAG, "WebSocket closed: " + code + " " + reason);
+            Log.d(TAG, "WebSocket closing gracefully: code=" + code + ", reason=" + reason);
+            
+            // Server is requesting a clean close, so close our side as well
+            webSocket.close(1000, "Client closing");
             
             state = WebSocketState.DISCONNECTED;
             notifyStateChanged();
             
-            // If closed with unauthorized code, try to reconnect using URL parameter
-            if (code == 4001 && reason.equals("Unauthorized")) {
-                Log.d(TAG, "Authentication failed with header, trying URL parameter...");
-                reconnectWithUrlToken();
-                return;
-            }
+            // Schedule a reconnection since this might be server restart or maintenance
+            scheduleReconnect(RECONNECT_DELAY_MS);
+        }
+        
+        @Override
+        public void onClosed(WebSocket webSocket, int code, String reason) {
+            Log.d(TAG, "WebSocket closed gracefully: code=" + code + ", reason=" + reason);
             
-            // Attempt reconnect (if code indicates a temporary failure)
-            if ((code == 1001 || code == 1006 || code == 1012 || code == 1013) &&
-                reconnectAttempts < RECONNECT_ATTEMPTS) {
-                attemptReconnect();
+            state = WebSocketState.DISCONNECTED;
+            notifyStateChanged();
+            
+            // Clean close, but we still might want to reconnect after some delay
+            // if this was an intentional close due to server maintenance, etc.
+            if (code != 1000 && code != 1001) { // Not normal closure or going away
+                scheduleReconnect(RECONNECT_DELAY_MS);
             }
         }
         
@@ -724,27 +740,36 @@ public class WebSocketClient {
                     }
                 }
                 
-                // Log the complete response info
-                Log.e(TAG, "WebSocket error: " + t.getMessage() + 
-                      ", code: " + code + 
-                      ", response: " + (response != null ? response.toString() : "null") +
-                      ", body: " + responseBody, t);
+                // Get detailed connection information
+                String url = response != null ? response.request().url().toString() : "unknown";
+                String headers = response != null ? response.request().headers().toString() : "unknown";
                 
-                // Log detailed connection parameters for debugging
-                Log.d(TAG, "Connection details - URL: " + (response != null ? response.request().url() : "unknown") +
-                          ", Headers: " + (response != null ? response.request().headers() : "unknown"));
-                
-                // Don't log EOFException as a serious error since it's common when server closes connection
+                // Log the complete response info and full stack trace
                 if (t instanceof EOFException) {
-                    Log.w(TAG, "WebSocket closed by server (EOFException)");
+                    // EOFException typically means the connection was closed from the other side
+                    Log.w(TAG, "WebSocket connection closed unexpectedly (EOFException)" +
+                          "\nURL: " + url +
+                          "\nHeaders: " + headers +
+                          "\nStack trace:", t);
+                } else {
+                    // For other errors, log as errors
+                    Log.e(TAG, "WebSocket error: " + t.getMessage() + 
+                          ", code: " + code + 
+                          ", response: " + (response != null ? response.toString() : "null") +
+                          ", body: " + responseBody +
+                          "\nURL: " + url +
+                          "\nHeaders: " + headers, t);
                 }
                 
                 state = WebSocketState.DISCONNECTED;
                 notifyStateChanged();
+                notifyError(t.getMessage());
                 
-                // Attempt reconnect for connection failures
-                if (t instanceof IOException || t instanceof SocketException) {
-                    attemptReconnect();
+                // Attempt reconnect with backoff strategy for most connection failures
+                if (t instanceof IOException || t instanceof SocketException || t instanceof EOFException) {
+                    // Calculate delay with exponential backoff
+                    long delay = RECONNECT_DELAY_MS * (long)Math.pow(1.5, reconnectAttempts);
+                    scheduleReconnect(delay);
                 }
             } catch (Exception e) {
                 Log.e(TAG, "Error handling WebSocket failure", e);

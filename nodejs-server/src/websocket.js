@@ -227,6 +227,7 @@ const setupWebSocketServer = (wss) => {
   setInterval(() => {
     wss.clients.forEach((ws) => {
       if (ws.isAlive === false) {
+        console.log(`Terminating inactive WebSocket connection: ${ws.connectionId || 'unknown'} for user: ${ws.userId || 'unknown'} - No pong received`);
         return ws.terminate();
       }
       
@@ -244,6 +245,13 @@ const setupAuthenticatedConnection = (ws, userId, connectionId) => {
   clients.set(userId, ws);
   ws.userId = userId;
   ws.connectionId = connectionId;
+  ws.isAlive = true; // Initialize isAlive flag
+  
+  // Handle pong messages
+  ws.on('pong', () => {
+    ws.isAlive = true; // Reset the isAlive flag when pong is received
+    console.log(`Received pong from user: ${userId}, connection: ${connectionId}`);
+  });
   
   // Update user as online
   db.User.update({ isActive: true, lastActiveAt: new Date() }, { where: { id: userId } })
