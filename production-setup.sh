@@ -75,6 +75,9 @@ fi
 log "Creating required directories..."
 mkdir -p certs
 mkdir -p logs
+mkdir -p backups
+mkdir -p error_pages
+mkdir -p static
 mkdir -p nodejs-server/src/db
 
 # Check for SSL certificates if HTTPS is enabled
@@ -128,18 +131,25 @@ if [ "$DB_PASSWORD" = "postgres" ]; then
     fi
 fi
 
+# Create .env file for docker-compose to use
+log "Creating environment file for Docker Compose..."
+# Extract all variables from .env.production to be used by docker-compose
+set -a
+source .env.production
+set +a
+
 # Stop any existing containers
 log "Stopping any existing OnyxChat containers..."
-docker-compose -f docker-compose.yml down || true
+docker-compose -f docker-compose.prod.yml down || true
 
 # Build and start production containers
 log "Building and starting OnyxChat production containers..."
-docker-compose -f docker-compose.yml up -d --build
+docker-compose -f docker-compose.prod.yml up -d --build
 
 # Check container status
 log "Checking container status..."
 sleep 5
-docker-compose -f docker-compose.yml ps
+docker-compose -f docker-compose.prod.yml ps
 
 # Output success message
 log "Setup completed successfully!"
@@ -156,6 +166,6 @@ fi
 echo ""
 echo -e "${BLUE}For Android development, use '10.0.2.2:$SERVER_PORT' as the server address in the emulator.${NC}" 
 echo ""
-echo -e "${YELLOW}To stop the server:${NC} docker-compose -f docker-compose.yml down"
-echo -e "${YELLOW}To view logs:${NC} docker-compose -f docker-compose.yml logs -f"
-echo -e "${YELLOW}To restart the server:${NC} docker-compose -f docker-compose.yml restart" 
+echo -e "${YELLOW}To stop the server:${NC} docker-compose -f docker-compose.prod.yml down"
+echo -e "${YELLOW}To view logs:${NC} docker-compose -f docker-compose.prod.yml logs -f"
+echo -e "${YELLOW}To restart the server:${NC} docker-compose -f docker-compose.prod.yml restart" 

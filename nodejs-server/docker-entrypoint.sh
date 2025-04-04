@@ -14,10 +14,24 @@ handle_error() {
 
 log "Starting OnyxChat production server..."
 
-# Environment validation
-if [ -z "$JWT_SECRET" ] || [ -z "$JWT_REFRESH_SECRET" ] || [ -z "$ENCRYPTION_KEY" ]; then
-    handle_error "Security credentials are not properly set. Please define JWT_SECRET, JWT_REFRESH_SECRET and ENCRYPTION_KEY environment variables."
+# Environment validation with better error messages
+if [ -z "$JWT_SECRET" ]; then
+    handle_error "JWT_SECRET environment variable is not set. Please define it in your .env file or Docker environment."
 fi
+
+if [ -z "$JWT_REFRESH_SECRET" ]; then
+    handle_error "JWT_REFRESH_SECRET environment variable is not set. Please define it in your .env file or Docker environment."
+fi
+
+if [ -z "$ENCRYPTION_KEY" ]; then
+    handle_error "ENCRYPTION_KEY environment variable is not set. Please define it in your .env file or Docker environment."
+fi
+
+# Debug output for troubleshooting (removed in final version)
+log "Environment variables:"
+log "JWT_SECRET length: ${#JWT_SECRET} characters"
+log "JWT_REFRESH_SECRET length: ${#JWT_REFRESH_SECRET} characters"
+log "ENCRYPTION_KEY length: ${#ENCRYPTION_KEY} characters"
 
 log "Waiting for PostgreSQL to start..."
 # Use a simple approach to wait for PostgreSQL
