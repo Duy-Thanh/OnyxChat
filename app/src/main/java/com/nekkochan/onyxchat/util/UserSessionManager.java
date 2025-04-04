@@ -167,7 +167,7 @@ public class UserSessionManager {
             serverUrl += "/";
         }
         
-        final String apiUrl = serverUrl + "api/auth/refresh-token";
+        final String apiUrl = serverUrl + "api/auth/refresh";
         Log.d(TAG, "Refreshing token using URL: " + apiUrl);
         
         // Execute network request in background

@@ -21,6 +21,14 @@ const authenticateWsConnection = (token) => {
     return decoded.sub; // User ID from token
   } catch (error) {
     console.error('WebSocket authentication error:', error);
+    
+    // Check if this is a token expiration error
+    if (error.name === 'TokenExpiredError') {
+      // Instead of returning null, return a special string indicating token expired
+      console.log('Token expired, client should refresh token');
+      return 'TOKEN_EXPIRED';
+    }
+    
     return null;
   }
 };
@@ -217,6 +225,22 @@ const setupWebSocketServer = (wss) => {
       // Close connection if authentication fails
       console.log('WebSocket authentication failed, closing connection');
       ws.close(4001, 'Unauthorized');
+      return;
+    } else if (userId === 'TOKEN_EXPIRED') {
+      // Send token refresh request instead of closing connection
+      console.log('Sending token refresh request to client');
+      ws.send(JSON.stringify({
+        type: 'TOKEN_REFRESH_REQUIRED',
+        data: {
+          message: 'Your authentication token has expired. Please refresh your token and reconnect.'
+        }
+      }));
+      
+      // Add a short timeout before closing to allow client to receive the message
+      setTimeout(() => {
+        ws.close(4003, 'Token expired');
+      }, 1000);
+      
       return;
     }
     

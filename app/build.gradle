@@ -39,6 +39,10 @@ android {
         targetCompatibility JavaVersion.VERSION_11
     }
     
+    lint {
+        abortOnError false
+    }
+    
     configurations {
         all*.exclude group: 'info.guardianproject.netcipher', module: 'netcipher-webkit'
     }

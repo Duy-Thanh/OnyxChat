@@ -2,6 +2,7 @@ package com.nekkochan.onyxchat.ui.auth;
 
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.os.Build;
 import android.os.Bundle;
 import android.text.TextUtils;
 import android.util.Log;
@@ -19,6 +20,7 @@ import com.nekkochan.onyxchat.MainActivity;
 import com.nekkochan.onyxchat.R;
 import com.nekkochan.onyxchat.databinding.ActivityLoginBinding;
 import com.nekkochan.onyxchat.network.ApiClient;
+import com.nekkochan.onyxchat.service.ChatNotificationService;
 import com.nekkochan.onyxchat.util.UserSessionManager;
 
 /**
@@ -116,6 +118,9 @@ public class LoginActivity extends AppCompatActivity {
             public void onSuccess(ApiClient.AuthResponse response) {
                 Log.d(TAG, "Login successful: " + response.data.user.username);
                 
+                // Start the notification service
+                startChatNotificationService();
+                
                 // Hide progress
                 binding.loginProgress.setVisibility(View.GONE);
                 binding.loginButton.setEnabled(true);
@@ -136,6 +141,23 @@ public class LoginActivity extends AppCompatActivity {
                 Toast.makeText(LoginActivity.this, errorMessage, Toast.LENGTH_LONG).show();
             }
         });
+    }
+    
+    /**
+     * Start the chat notification service
+     */
+    private void startChatNotificationService() {
+        Log.d(TAG, "Starting chat notification service");
+        
+        Intent serviceIntent = new Intent(this, ChatNotificationService.class);
+        serviceIntent.setAction(ChatNotificationService.ACTION_START_SERVICE);
+        
+        // For Android O and above, we need to start as a foreground service
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(serviceIntent);
+        } else {
+            startService(serviceIntent);
+        }
     }
     
     /**

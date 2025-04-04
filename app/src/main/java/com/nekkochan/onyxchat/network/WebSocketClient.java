@@ -52,8 +52,8 @@ public class WebSocketClient {
     private static final String DEFAULT_WS_ENDPOINT = "wss://10.0.2.2:443/ws/";
     
     // Connection parameters
-    private static final int RECONNECT_ATTEMPTS = 3;
-    private static final long RECONNECT_DELAY_MS = 2000; // 2 seconds
+    private static final int MAX_BACKOFF_SECONDS = 300; // Max backoff of 5 minutes
+    private static final long RECONNECT_DELAY_MS = 2000; // Start with 2 seconds
     
     private final OkHttpClient client;
     private final String wsEndpoint;
@@ -409,38 +409,39 @@ public class WebSocketClient {
      */
     private void scheduleReconnect(final long delayMs) {
         if (reconnecting.compareAndSet(false, true)) {
-            // Cap reconnect attempts
-            if (reconnectAttempts >= RECONNECT_ATTEMPTS) {
-                Log.w(TAG, "Maximum reconnect attempts reached (" + RECONNECT_ATTEMPTS + 
-                        "), giving up automatic reconnection");
-                reconnecting.set(false);
-                return;
-            }
-            
+            // Calculate backoff time - increase with each attempt but cap at MAX_BACKOFF_SECONDS
+            // Use exponential backoff with a maximum delay
+            long delay = Math.min(delayMs, MAX_BACKOFF_SECONDS * 1000);
             reconnectAttempts++;
+            
             Log.d(TAG, "Scheduling reconnect attempt " + reconnectAttempts + 
-                    " of " + RECONNECT_ATTEMPTS + " with delay " + delayMs + "ms");
+                    " with delay " + delay + "ms");
             
             // Use a handler to schedule the reconnect on the main thread
             new Handler(Looper.getMainLooper()).postDelayed(() -> {
                 try {
                     Log.d(TAG, "Executing scheduled reconnect, attempt " + reconnectAttempts);
                     // Try to reconnect
-                    connectWithCurrentToken();
+                    boolean success = connectWithCurrentToken();
                     
                     // Reset the reconnecting flag
                     reconnecting.set(false);
+                    
+                    // If this attempt failed, schedule another one with increased delay
+                    if (!success) {
+                        // Double the delay for next attempt, up to the maximum
+                        long nextDelay = Math.min(delay * 2, MAX_BACKOFF_SECONDS * 1000);
+                        scheduleReconnect(nextDelay);
+                    }
                 } catch (Exception e) {
                     Log.e(TAG, "Error during scheduled reconnect", e);
                     reconnecting.set(false);
                     
-                    // If this attempt failed, schedule another one with increased delay
-                    if (reconnectAttempts < RECONNECT_ATTEMPTS) {
-                        long nextDelay = delayMs * 2; // Double the delay for next attempt
-                        scheduleReconnect(nextDelay);
-                    }
+                    // Even if there was an exception, try again with increased delay
+                    long nextDelay = Math.min(delay * 2, MAX_BACKOFF_SECONDS * 1000);
+                    scheduleReconnect(nextDelay);
                 }
-            }, delayMs);
+            }, delay);
         } else {
             Log.d(TAG, "Reconnection already in progress, skipping");
         }
@@ -453,13 +454,6 @@ public class WebSocketClient {
         if (reconnecting.compareAndSet(false, true)) {
             Log.d(TAG, "Attempting reconnect, attempt " + (reconnectAttempts + 1));
             
-            // Check if we've exceeded reconnect attempts
-            if (reconnectAttempts >= RECONNECT_ATTEMPTS) {
-                Log.d(TAG, "Max reconnect attempts reached");
-                reconnecting.set(false);
-                return;
-            }
-            
             // Increment the reconnect attempts counter
             reconnectAttempts++;
             
@@ -467,13 +461,31 @@ public class WebSocketClient {
             new Handler(Looper.getMainLooper()).postDelayed(() -> {
                 try {
                     // Try to connect
-                    startConnection();
+                    boolean success = startConnection();
+                    
+                    // Reset reconnecting flag
+                    reconnecting.set(false);
+                    
+                    // If connection failed, schedule another attempt with backoff
+                    if (!success) {
+                        // Calculate next delay using exponential backoff
+                        long nextDelay = Math.min(
+                            RECONNECT_DELAY_MS * (long)Math.pow(1.5, Math.min(reconnectAttempts, 10)),
+                            MAX_BACKOFF_SECONDS * 1000
+                        );
+                        scheduleReconnect(nextDelay);
+                    }
                 } catch (Exception e) {
                     Log.e(TAG, "Error attempting reconnect", e);
+                    reconnecting.set(false);
+                    
+                    // Schedule another attempt even after an exception
+                    long nextDelay = Math.min(
+                        RECONNECT_DELAY_MS * 2,
+                        MAX_BACKOFF_SECONDS * 1000
+                    );
+                    scheduleReconnect(nextDelay);
                 }
-                
-                // Reset reconnecting flag
-                reconnecting.set(false);
             }, RECONNECT_DELAY_MS);
         }
     }
@@ -661,7 +673,7 @@ public class WebSocketClient {
     }
     
     /**
-     * Improved WebSocket listener implementation with better error handling
+     * WebSocket event listener implementation
      */
     private class WebSocketListenerImpl extends WebSocketListener {
         @Override
@@ -680,15 +692,30 @@ public class WebSocketClient {
         
         @Override
         public void onMessage(WebSocket webSocket, String text) {
+            Log.d(TAG, "WebSocket message received: " + text);
+            
             try {
-                Log.d(TAG, "WebSocket message received: " + text);
+                // Parse the message to check for token refresh requests
+                JsonObject jsonMessage = JsonParser.parseString(text).getAsJsonObject();
+                if (jsonMessage.has("type") && "TOKEN_REFRESH_REQUIRED".equals(jsonMessage.get("type").getAsString())) {
+                    Log.d(TAG, "Received token refresh request from server");
+                    
+                    // Handle token refresh
+                    handleTokenRefresh();
+                    return;
+                }
                 
-                // Notify listeners
+                // Notify listeners for normal messages
                 for (MessageListener listener : listeners) {
                     listener.onMessageReceived(text);
                 }
             } catch (Exception e) {
                 Log.e(TAG, "Error processing WebSocket message", e);
+                
+                // If the message couldn't be parsed as JSON, just pass it through
+                for (MessageListener listener : listeners) {
+                    listener.onMessageReceived(text);
+                }
             }
         }
         
@@ -767,13 +794,50 @@ public class WebSocketClient {
                 
                 // Attempt reconnect with backoff strategy for most connection failures
                 if (t instanceof IOException || t instanceof SocketException || t instanceof EOFException) {
-                    // Calculate delay with exponential backoff
-                    long delay = RECONNECT_DELAY_MS * (long)Math.pow(1.5, reconnectAttempts);
+                    // Calculate delay with exponential backoff, but don't give up
+                    long delay = RECONNECT_DELAY_MS * (long)Math.min(Math.pow(1.5, Math.min(reconnectAttempts, 10)), MAX_BACKOFF_SECONDS / 2);
                     scheduleReconnect(delay);
                 }
             } catch (Exception e) {
                 Log.e(TAG, "Error handling WebSocket failure", e);
             }
         }
+    }
+    
+    /**
+     * Handle token refresh request from server
+     */
+    private void handleTokenRefresh() {
+        Log.d(TAG, "Handling token refresh request");
+        
+        // First disconnect the current WebSocket
+        if (webSocket != null) {
+            webSocket.close(1000, "Token refresh required");
+            webSocket = null;
+        }
+        
+        // Update state
+        state = WebSocketState.DISCONNECTED;
+        notifyStateChanged();
+        
+        // Refresh the token
+        sessionManager.refreshToken().thenAccept(refreshSuccess -> {
+            if (refreshSuccess) {
+                Log.d(TAG, "Token refreshed successfully, reconnecting");
+                
+                // Reconnect with new token
+                new Handler(Looper.getMainLooper()).post(() -> {
+                    reconnectAttempts = 0; // Reset counter since this is a fresh start with new token
+                    connectWithCurrentToken();
+                });
+            } else {
+                Log.e(TAG, "Failed to refresh token");
+                
+                // Notify listeners about the error
+                for (MessageListener listener : listeners) {
+                    listener.onError("Failed to refresh authentication token");
+                }
+            }
+        });
     }
 }

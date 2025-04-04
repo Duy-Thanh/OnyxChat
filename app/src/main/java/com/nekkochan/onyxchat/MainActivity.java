@@ -1,12 +1,14 @@
 package com.nekkochan.onyxchat;
 
 import android.content.Intent;
+import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.widget.Toast;
 
+import androidx.activity.result.ActivityResultLauncher;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
@@ -16,12 +18,14 @@ import androidx.lifecycle.ViewModelProvider;
 
 import com.google.android.material.bottomnavigation.BottomNavigationView;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
+import com.nekkochan.onyxchat.service.ChatNotificationService;
 import com.nekkochan.onyxchat.ui.ContactsFragment;
 import com.nekkochan.onyxchat.ui.ConversationListFragment;
 import com.nekkochan.onyxchat.ui.ProfileFragment;
 import com.nekkochan.onyxchat.ui.SettingsActivity;
 import com.nekkochan.onyxchat.ui.auth.LoginActivity;
 import com.nekkochan.onyxchat.ui.viewmodel.MainViewModel;
+import com.nekkochan.onyxchat.util.NotificationPermissionHelper;
 import com.nekkochan.onyxchat.util.UserSessionManager;
 
 /**
@@ -35,6 +39,9 @@ public class MainActivity extends AppCompatActivity implements BottomNavigationV
     
     private BottomNavigationView bottomNavigation;
     private FloatingActionButton fab;
+    
+    // Permission request launcher
+    private ActivityResultLauncher<String> notificationPermissionLauncher;
     
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -51,6 +58,20 @@ public class MainActivity extends AppCompatActivity implements BottomNavigationV
         // Initialize session manager
         sessionManager = new UserSessionManager(this);
         
+        // Register for notification permission results
+        notificationPermissionLauncher = NotificationPermissionHelper.registerForPermissionResult(
+                this, isGranted -> {
+                    if (isGranted) {
+                        // Permission granted, start service
+                        startChatNotificationService();
+                    } else {
+                        // Permission denied, show toast
+                        Toast.makeText(this, 
+                                "Notification permission denied. You won't receive chat notifications.", 
+                                Toast.LENGTH_LONG).show();
+                    }
+                });
+        
         // Check if user is logged in
         if (!sessionManager.isLoggedIn()) {
             // Redirect to login
@@ -66,6 +87,13 @@ public class MainActivity extends AppCompatActivity implements BottomNavigationV
             Log.d(TAG, "User ID from session: " + userId);
             // Set the user ID in the view model
             viewModel.setUserAddress(userId);
+            
+            // Request notification permission if needed
+            if (NotificationPermissionHelper.requestNotificationPermissionIfNeeded(
+                    this, notificationPermissionLauncher)) {
+                // Permission already granted or not needed
+                startChatNotificationService();
+            }
         }
         
         // Set up toolbar
@@ -216,11 +244,42 @@ public class MainActivity extends AppCompatActivity implements BottomNavigationV
     }
     
     /**
+     * Start the chat notification service
+     */
+    private void startChatNotificationService() {
+        Log.d(TAG, "Ensuring chat notification service is running");
+        
+        Intent serviceIntent = new Intent(this, ChatNotificationService.class);
+        serviceIntent.setAction(ChatNotificationService.ACTION_START_SERVICE);
+        
+        // For Android O and above, we need to start as a foreground service
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(serviceIntent);
+        } else {
+            startService(serviceIntent);
+        }
+    }
+    
+    /**
+     * Stop the chat notification service
+     */
+    private void stopChatNotificationService() {
+        Log.d(TAG, "Stopping chat notification service");
+        
+        Intent serviceIntent = new Intent(this, ChatNotificationService.class);
+        serviceIntent.setAction(ChatNotificationService.ACTION_STOP_SERVICE);
+        startService(serviceIntent);
+    }
+    
+    /**
      * Log out the user and return to login screen
      */
     public void logOut() {
         // Disconnect from chat
         viewModel.disconnectFromChat();
+        
+        // Stop notification service
+        stopChatNotificationService();
         
         // Clear session
         sessionManager.logout();
