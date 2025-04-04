@@ -29,7 +29,7 @@ public class WebSocketClient {
     private static final String TAG = "WebSocketClient";
     
     // Default WebSocket endpoint
-    private static final String DEFAULT_WS_ENDPOINT = "ws://10.0.2.2:8081/ws/";
+    private static final String DEFAULT_WS_ENDPOINT = "ws://10.0.2.2:8082/ws/";
     
     // Connection parameters
     private static final int RECONNECT_ATTEMPTS = 3;

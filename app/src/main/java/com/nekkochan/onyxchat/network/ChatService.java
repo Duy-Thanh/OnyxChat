@@ -23,7 +23,7 @@ import java.util.Map;
 public class ChatService {
     private static final String TAG = "ChatService";
     private static final String PREF_SERVER_URL = "chat_server_url";
-    private static final String DEFAULT_SERVER_URL = "ws://10.0.2.2:8081/ws/"; // localhost for emulator
+    private static final String DEFAULT_SERVER_URL = "ws://10.0.2.2:8082/ws/"; // localhost for emulator
     
     private static ChatService instance;
     

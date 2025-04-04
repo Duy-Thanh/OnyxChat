@@ -34,7 +34,7 @@ public class ApiClient {
     private static final String TAG = "ApiClient";
     
     // Default server URL - for testing using Android emulator
-    private static final String DEFAULT_API_URL = "http://10.0.2.2:8081/";
+    private static final String DEFAULT_API_URL = "http://10.0.2.2:8082/";
     
     // Singleton instance
     private static ApiClient instance;

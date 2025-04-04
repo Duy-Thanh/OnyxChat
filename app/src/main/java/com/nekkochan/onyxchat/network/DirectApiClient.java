@@ -28,7 +28,7 @@ public class DirectApiClient {
     private static final MediaType JSON = MediaType.parse("application/json; charset=utf-8");
     
     // Default server endpoint
-    private static final String DEFAULT_API_ENDPOINT = "https://api.onyxchat.com";
+    private static final String DEFAULT_API_ENDPOINT = "http://10.0.2.2:8082";
     
     private final OkHttpClient httpClient;
     private final ExecutorService executor;
