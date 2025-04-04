@@ -24,7 +24,6 @@ if (isMockMode) {
   db.Sequelize = Sequelize;
 } else {
   console.log('Connecting to PostgreSQL database');
-  console.log(`Host: ${process.env.DB_HOST}, Port: ${process.env.DB_PORT}, Database: ${process.env.DB_NAME}`);
   
   // Only create Sequelize instance if not in mock mode
   const sequelize = new Sequelize(
@@ -41,18 +40,6 @@ if (isMockMode) {
         min: 0,
         acquire: 30000,
         idle: 10000
-      },
-      retry: {
-        max: 10,
-        match: [
-          /ConnectionRefusedError/,
-          /SequelizeConnectionRefusedError/,
-          /SequelizeConnectionError/,
-          /ECONNREFUSED/,
-          /ETIMEDOUT/,
-        ],
-        backoffBase: 1000,
-        backoffExponent: 1.5,
       }
     }
   );

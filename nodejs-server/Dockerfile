@@ -1,28 +1,28 @@
-FROM node:18-alpine
+FROM node:20-alpine
 
 WORKDIR /app
 
-# Install necessary tools including Python and build tools for bcrypt
-RUN apk add --no-cache bash curl python3 make g++ gcc
+# Install netcat to check if PostgreSQL is ready
+RUN apk add --no-cache netcat-openbsd
 
-# Copy package files
+# Copy package.json and package-lock.json
 COPY package*.json ./
 
 # Install dependencies
 RUN npm install
 
-# Copy application code
+# Copy the rest of the application
 COPY . .
 
-# Create a healthcheck script
-RUN echo '#!/bin/sh\n\
-curl -f http://localhost:8081/api/health || exit 1' > /app/healthcheck.sh && \
-    chmod +x /app/healthcheck.sh
+# Create a directory for the database scripts
+RUN mkdir -p /app/src/db
 
-# Define healthcheck
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 CMD /app/healthcheck.sh
-
+# Expose the port the app will run on
 EXPOSE 8081
 
-# Use our initialization script
-CMD ["node", "src/init-and-start.js"] 
+# Add a startup script to wait for PostgreSQL and then run migrations
+COPY docker-entrypoint.sh /
+RUN chmod +x /docker-entrypoint.sh
+
+# Set the entrypoint
+ENTRYPOINT ["/docker-entrypoint.sh"] 
