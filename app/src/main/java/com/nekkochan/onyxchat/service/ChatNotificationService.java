@@ -9,7 +9,9 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ServiceInfo;
 import android.os.Build;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 import android.util.Log;
 
 import androidx.annotation.Nullable;
@@ -39,10 +41,16 @@ public class ChatNotificationService extends Service {
     // Service actions
     public static final String ACTION_START_SERVICE = "com.nekkochan.onyxchat.START_NOTIFICATION_SERVICE";
     public static final String ACTION_STOP_SERVICE = "com.nekkochan.onyxchat.STOP_NOTIFICATION_SERVICE";
+    public static final String ACTION_START_FROM_BOOT = "com.nekkochan.onyxchat.START_FROM_BOOT";
+    
+    // Delay before promoting to foreground after boot (in milliseconds)
+    private static final long BOOT_TO_FOREGROUND_DELAY = 30000; // 30 seconds
     
     private ChatService chatService;
     private UserSessionManager sessionManager;
     private int nextNotificationId = MESSAGE_NOTIFICATION_START_ID;
+    private Handler mainHandler;
+    private boolean isRunningAsForeground = false;
     
     @Override
     public void onCreate() {
@@ -57,6 +65,9 @@ public class ChatNotificationService extends Service {
         
         // Initialize chat service
         chatService = ChatService.getInstance(this);
+        
+        // Initialize handler for delayed tasks
+        mainHandler = new Handler(Looper.getMainLooper());
     }
     
     @Override
@@ -65,22 +76,22 @@ public class ChatNotificationService extends Service {
         
         if (intent != null) {
             String action = intent.getAction();
+            Log.d(TAG, "Service action: " + action);
+            
             if (ACTION_STOP_SERVICE.equals(action)) {
                 Log.d(TAG, "Stopping service per request");
                 stopSelf();
                 return START_NOT_STICKY;
+            } else if (ACTION_START_FROM_BOOT.equals(action)) {
+                // When starting from boot, we first connect as a background service
+                Log.d(TAG, "Starting from boot completed broadcast");
+                handleStartFromBoot();
+                return START_STICKY;
             }
         }
         
-        // Start as a foreground service
-        Notification notification = createForegroundNotification();
-        
-        // For Android 14+ (API 34+), we need to specify a foreground service type
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(FOREGROUND_NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
-        } else {
-            startForeground(FOREGROUND_NOTIFICATION_ID, notification);
-        }
+        // For regular starts (not from boot), start as foreground immediately
+        startServiceAsForeground();
         
         // Connect to the chat service if we have a valid user
         String userId = sessionManager.getUserId();
@@ -92,6 +103,49 @@ public class ChatNotificationService extends Service {
         
         // If this service is killed, restart it
         return START_STICKY;
+    }
+    
+    /**
+     * Handle a start request coming from boot completed
+     */
+    private void handleStartFromBoot() {
+        // Connect to chat service immediately in the background
+        String userId = sessionManager.getUserId();
+        if (userId != null && !userId.isEmpty()) {
+            connectToChatService(userId);
+        }
+        
+        // Schedule promotion to foreground after a delay
+        Log.d(TAG, "Scheduling promotion to foreground in " + BOOT_TO_FOREGROUND_DELAY + "ms");
+        mainHandler.postDelayed(() -> {
+            Log.d(TAG, "Promoting service to foreground after boot delay");
+            startServiceAsForeground();
+        }, BOOT_TO_FOREGROUND_DELAY);
+    }
+    
+    /**
+     * Start the service as a foreground service with proper notification
+     */
+    private void startServiceAsForeground() {
+        if (isRunningAsForeground) {
+            Log.d(TAG, "Service is already running as foreground, no need to promote");
+            return;
+        }
+        
+        Log.d(TAG, "Starting as foreground service");
+        Notification notification = createForegroundNotification();
+        
+        try {
+            // For Android 14+ (API 34+), specify a foreground service type
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(FOREGROUND_NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE);
+            } else {
+                startForeground(FOREGROUND_NOTIFICATION_ID, notification);
+            }
+            isRunningAsForeground = true;
+        } catch (Exception e) {
+            Log.e(TAG, "Error starting foreground service", e);
+        }
     }
     
     /**
