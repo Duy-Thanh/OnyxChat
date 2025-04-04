@@ -3,10 +3,11 @@ use std::convert::Infallible;
 use axum::{
     async_trait,
     extract::{FromRef, FromRequestParts, State},
-    http::{request::Parts, StatusCode},
+    http::{request::Parts, StatusCode, Request},
     response::{IntoResponse, Response},
     headers::{authorization::Bearer, Authorization},
     TypedHeader,
+    middleware::Next,
 };
 use jsonwebtoken::{decode, DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
@@ -14,7 +15,8 @@ use thiserror::Error;
 
 use crate::{
     error::AppError,
-    models::{auth::AuthService, AppState},
+    models::auth::AuthService,
+    AppState,
     config::AppConfig,
 };
 
@@ -32,23 +34,10 @@ pub enum AuthError {
     
     #[error("Unauthorized")]
     Unauthorized,
+    
+    #[error("Expired token")]
+    ExpiredToken,
 }
-
-// Implementation for displaying auth errors
-impl std::fmt::Display for AuthError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let message = match self {
-            AuthError::InvalidToken => "Invalid token",
-            AuthError::TokenExpired => "Token has expired",
-            AuthError::InvalidPassword => "Invalid password",
-            AuthError::Unauthorized => "Unauthorized",
-        };
-        write!(f, "{}", message)
-    }
-}
-
-// Implement std::error::Error for AuthError
-impl std::error::Error for AuthError {}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
@@ -179,24 +168,4 @@ pub async fn auth_middleware<B>(
     
     // No token provided
     Err(AppError::auth("Authentication required"))
-}
-
-// Extractor for the current user
-#[axum::async_trait]
-impl<S> axum::extract::FromRequestParts<S> for CurrentUser 
-where
-    S: Send + Sync,
-{
-    type Rejection = AppError;
-    
-    async fn from_request_parts(
-        parts: &mut axum::http::request::Parts,
-        _state: &S,
-    ) -> Result<Self, Self::Rejection> {
-        parts
-            .extensions
-            .get::<CurrentUser>()
-            .cloned()
-            .ok_or_else(|| AppError::auth("Unauthorized: Missing authentication"))
-    }
 } 

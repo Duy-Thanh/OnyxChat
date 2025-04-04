@@ -5,7 +5,9 @@ use axum::{
     Router,
     TypedHeader,
     http::StatusCode,
+    headers::Authorization,
 };
+use axum::headers::authorization::Bearer;
 use futures::{sink::SinkExt, stream::StreamExt};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -15,7 +17,7 @@ use std::{
 use tokio::sync::broadcast;
 use tracing::{error, info};
 use uuid::Uuid;
-use tokio::{sync::mpsc, task::JoinHandle};
+use tokio::{sync::mpsc};
 use tokio::net::TcpStream;
 use futures::stream::{SplitSink, SplitStream};
 use crate::{
@@ -156,10 +158,10 @@ pub async fn ws_handler(
     ws: WebSocketUpgrade,
     Path(user_id): Path<String>,
     State(state): State<AppState>,
-    TypedHeader(auth_header): Option<TypedHeader<Authorization<Bearer>>>,
+    auth_header: Option<TypedHeader<Authorization<Bearer>>>,
 ) -> impl IntoResponse {
     // Extract and validate the token if present
-    let is_authenticated = if let Some(Authorization(bearer)) = auth_header {
+    let is_authenticated = if let Some(TypedHeader(bearer)) = auth_header {
         match AuthService::validate_token(bearer.token()) {
             Ok(claims) => {
                 // Verify that the user ID in the path matches the one in the token

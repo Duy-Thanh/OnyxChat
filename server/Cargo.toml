@@ -20,43 +20,44 @@ path = "src/bin/ws-demo.rs"
 
 [dependencies]
 # Web framework
-axum = { version = "0.6.20", features = ["headers", "json", "ws"] }
-axum-extra = { version = "0.7.2", features = ["cookie"] }
-tower-http = { version = "0.4.0", features = ["cors"] }
-tokio = { version = "1.33.0", features = ["full"] }
+axum = { version = "0.6.20", features = ["headers", "ws"] }
+axum-extra = { version = "0.7.7" }
+tower-http = { version = "0.4.4", features = ["cors"] }
+tokio = { version = "1.28.0", features = ["full"] }
 
 # Database
-sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "json"] }
+sqlx = { version = "0.7.1", features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "json"] }
 
 # Configuration
 dotenv = "0.15.0"
 
 # Serialization
-serde = { version = "1.0.192", features = ["derive"] }
-serde_json = "1.0.108"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 
 # Utilities
-uuid = { version = "1.5.0", features = ["v4", "serde"] }
+uuid = { version = "1.4.1", features = ["v4", "serde"] }
 chrono = { version = "0.4.31", features = ["serde"] }
 
 # Logging
-tracing = "0.1.40"
-tracing-subscriber = "0.3.17"
+tracing = "0.1.37"
+tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 log = "0.4"
 env_logger = "0.10"
 
 # Authentication & security
-jsonwebtoken = "8.3.0"
-argon2 = "0.5.2"
+jsonwebtoken = "9.1.0"
+bcrypt = "0.15.0"
+validator = { version = "0.16.0", features = ["derive"] }
+argon2 = "0.5.0"
+sha2 = "0.10.7"
+thiserror = "1.0.40"
 rand = "0.8.5"
-once_cell = "1.18.0"
 
 # WebSockets
-futures = "0.3.28"
-
-# Validation
-validator = { version = "0.16", features = ["derive"] }
+futures = "0.3.30"
 
 [features]
-default = []
+default = ["mock_db"]
 mock = []
+mock_db = []

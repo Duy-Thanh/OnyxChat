@@ -9,14 +9,17 @@ use serde::{Deserialize, Serialize};
 use sqlx::types::uuid::Uuid;
 use validator::Validate;
 use log::info;
+use std::collections::HashMap;
 
 use crate::{
     error::{AppError, Result},
     models::{
-        auth::{AuthResponse, AuthService, LoginRequest, TokenRefreshRequest},
+        auth::{
+            AuthService, LoginRequest, AuthResponse, TokenRefreshRequest
+        },
         user::{CreateUserRequest, User, UserProfile},
-        AppState,
     },
+    AppState,
 };
 
 pub async fn register(
@@ -63,82 +66,91 @@ pub async fn register(
 
 pub async fn login(
     State(state): State<AppState>,
-    Json(req): Json<LoginRequest>,
-) -> Result<impl IntoResponse> {
-    // Validate request
-    req.validate()?;
-
+    Json(payload): Json<LoginRequest>,
+) -> Result<(StatusCode, Json<AuthResponse>)> {
+    // Validate input
+    payload.validate()?;
+    
+    // Find user by username
     if let Some(db) = &state.db {
-        // Find user by username
-        let user = User::find_by_username(db, &req.username).await
-            .map_err(|_| AppError::auth("Invalid username or password"))?;
-
+        let user = User::find_by_username(&state.db, &payload.username).await?;
+        
         // Verify password
-        let is_valid = AuthService::verify_password(&req.password, &user.password_hash)?;
-        if !is_valid {
+        if !AuthService::verify_password(&payload.password, &user.password_hash)? {
             return Err(AppError::auth("Invalid username or password"));
         }
-
-        // Update last active timestamp
-        User::update_last_active(db, user.id.to_string()).await?;
-
+        
         // Generate JWT token
         let token = AuthService::create_token(&user.id, &user.username)?;
-
-        // Return auth response
+        
+        // Generate refresh token
+        let refresh_token = uuid::Uuid::new_v4().to_string();
+        
+        // Create response
         let auth_response = AuthResponse {
             token,
-            user: user.to_profile(),
+            refresh_token,
             token_type: "Bearer".to_string(),
-            expires_in: 86400, // 24 hours in seconds
+            expires_in: 86400, // 24 hours
         };
-
+        
         Ok((StatusCode::OK, Json(auth_response)))
     } else {
-        Err(AppError::internal("Database connection not available"))
+        Err(AppError::internal("Database not available"))
     }
 }
 
 pub async fn refresh_token(
     State(state): State<AppState>,
     Json(req): Json<TokenRefreshRequest>,
-) -> Result<impl IntoResponse> {
-    // Validate refresh token
-    let token_data = AuthService::validate_refresh_token(&state.db, &req.refresh_token).await?;
+) -> Result<(StatusCode, Json<AuthResponse>)> {
+    // Validate the refresh token
+    if let Some(db) = &state.db {
+        let token_data = AuthService::validate_token(req.refresh_token.as_str())?;
+        
+        // Get the user
+        let user = User::find_by_id(&state.db, &token_data.sub).await?;
+        
+        // Generate a new access token
+        let token = AuthService::create_token(&user.id, &user.username)?;
+        
+        // Return new token
+        let auth_response = AuthResponse {
+            token,
+            refresh_token: req.refresh_token,
+            token_type: "Bearer".to_string(),
+            expires_in: 86400, // 24 hours
+        };
+        
+        Ok((StatusCode::OK, Json(auth_response)))
+    } else {
+        Err(AppError::internal("Database not available"))
+    }
+}
 
-    // Find user
-    let user = User::find_by_id(&state.db, token_data.user_id).await?;
-
-    // Generate new JWT token
-    let token = AuthService::create_token(&user.id.to_string(), &user.username)?;
-
-    // Create new refresh token
-    let refresh_token = AuthService::create_refresh_token(&state.db, uuid::Uuid::parse_str(&user.id)?).await?;
-
-    // Revoke old refresh token
-    AuthService::revoke_refresh_token(&state.db, &req.refresh_token).await?;
-
-    let auth_response = AuthResponse {
-        token,
-        refresh_token,
-        expires_in: state.config.jwt_expiration as u64,
-        token_type: "Bearer".to_string(),
-    };
-
-    Ok((StatusCode::OK, Json(auth_response)))
+pub async fn verify_token(
+    TypedHeader(auth): TypedHeader<Authorization<Bearer>>,
+    State(state): State<AppState>,
+) -> Result<Json<HashMap<String, bool>>> {
+    // Just validate the token, return true if valid
+    let claims = AuthService::validate_token(auth.token())?;
+    
+    let mut response = HashMap::new();
+    response.insert("valid".to_string(), true);
+    
+    Ok(Json(response))
 }
 
 pub async fn logout(
-    State(state): State<AppState>,
     TypedHeader(auth): TypedHeader<Authorization<Bearer>>,
-) -> Result<impl IntoResponse> {
+    State(state): State<AppState>,
+) -> Result<StatusCode> {
     // Validate token
-    let claims = AuthService::validate_token(&state.config, auth.token())?;
-
-    // Revoke all refresh tokens for user
-    AuthService::revoke_all_user_tokens(&state.db, claims.sub.parse()?).await?;
-
-    Ok(StatusCode::NO_CONTENT)
+    let _claims = AuthService::validate_token(auth.token())?;
+    
+    // In a real implementation, you would invalidate the token in a blacklist
+    
+    Ok(StatusCode::OK)
 }
 
 pub async fn validate_token(

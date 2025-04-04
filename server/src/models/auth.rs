@@ -45,14 +45,14 @@ pub struct LoginRequest {
 #[derive(Debug, Serialize)]
 pub struct AuthResponse {
     pub token: String,
-    pub user: UserProfile,
+    pub refresh_token: String,
     pub token_type: String,
     pub expires_in: u64,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct TokenRefreshRequest {
-    pub token: String,
+    pub refresh_token: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

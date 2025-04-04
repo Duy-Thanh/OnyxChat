@@ -6,6 +6,8 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::{fmt, result};
 
+use crate::middleware::auth::AuthError;
+
 // Error type for the application
 #[derive(Debug)]
 pub enum AppError {
@@ -16,6 +18,7 @@ pub enum AppError {
     Conflict(String),
     Internal(String),
     Auth(crate::middleware::auth::AuthError),
+    Validation(String),
 }
 
 // Custom result type
@@ -39,6 +42,7 @@ impl fmt::Display for AppError {
             AppError::Conflict(msg) => msg,
             AppError::Internal(msg) => msg,
             AppError::Auth(err) => return write!(f, "Authentication error: {}", err),
+            AppError::Validation(msg) => msg,
         };
         write!(f, "{}", message)
     }
@@ -48,27 +52,26 @@ impl fmt::Display for AppError {
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let (status, error_message) = match &self {
-            AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg.clone()),
             AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
+            AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg.clone()),
             AppError::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, msg.clone()),
             AppError::Forbidden(msg) => (StatusCode::FORBIDDEN, msg.clone()),
-            AppError::Conflict(msg) => (StatusCode::CONFLICT, msg.clone()),
             AppError::Internal(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg.clone()),
-            AppError::Auth(crate::middleware::auth::AuthError::InvalidToken) => {
-                (StatusCode::UNAUTHORIZED, "Invalid token".to_string())
-            }
-            AppError::Auth(crate::middleware::auth::AuthError::ExpiredToken) => {
-                (StatusCode::UNAUTHORIZED, "Token has expired".to_string())
-            }
-            AppError::Auth(crate::middleware::auth::AuthError::InvalidPassword) => {
-                (StatusCode::UNAUTHORIZED, "Invalid password".to_string())
-            }
+            AppError::Validation(msg) => (StatusCode::UNPROCESSABLE_ENTITY, msg.clone()),
+            AppError::Auth(auth_err) => match auth_err {
+                AuthError::InvalidToken => (StatusCode::UNAUTHORIZED, "Invalid token".to_string()),
+                AuthError::TokenExpired => (StatusCode::UNAUTHORIZED, "Token has expired".to_string()),
+                AuthError::InvalidPassword => (StatusCode::UNAUTHORIZED, "Invalid password".to_string()),
+                AuthError::Unauthorized => (StatusCode::UNAUTHORIZED, "Unauthorized".to_string()),
+                AuthError::ExpiredToken => (StatusCode::UNAUTHORIZED, "Expired token".to_string()),
+            },
         };
 
-        let body = Json(ErrorResponse {
-            status: status.to_string(),
-            message: error_message,
-        });
+        // Create JSON response
+        let body = Json(serde_json::json!({
+            "status": "error",
+            "message": error_message
+        }));
 
         (status, body).into_response()
     }

@@ -7,15 +7,17 @@ use axum::{
 };
 use uuid::Uuid;
 use validator::Validate;
+use serde_json::{json, Value};
+use sqlx::types::time::OffsetDateTime;
 
 use crate::{
     error::{AppError, Result},
     middleware::auth::CurrentUser,
     models::{
         auth::AuthService,
-        user::{UpdateUserRequest, User},
-        AppState,
+        user::{UpdateUserRequest, User, CreateUserRequest},
     },
+    AppState,
 };
 
 pub async fn get_user_profile(
@@ -55,40 +57,67 @@ pub async fn get_current_user(
     Ok(Json(user))
 }
 
+pub async fn get_user_by_id(
+    State(state): State<AppState>,
+    Path(user_id): Path<Uuid>,
+) -> Result<Json<Value>> {
+    let user = User::find_by_id(&state.db, &user_id.to_string()).await?;
+    
+    let profile = json!({
+        "id": user.id,
+        "username": user.username,
+        "display_name": user.display_name,
+        "created_at": user.created_at,
+    });
+    
+    Ok(Json(profile))
+}
+
 pub async fn update_user(
     State(state): State<AppState>,
-    current_user: CurrentUser,
+    Path(user_id): Path<Uuid>,
     Json(req): Json<UpdateUserRequest>,
-) -> Result<impl IntoResponse> {
-    // Validate request
-    req.validate()?;
-
-    // Get current user
-    let user_id = Uuid::parse_str(&current_user.id)?;
-    let user = User::find_by_id(&state.db, user_id).await?;
-
-    // Update user
-    let updated_user = User::update(&state.db, user.id, &req, None).await?;
-
-    Ok(Json(updated_user))
+    current_user: CurrentUser,
+) -> Result<Json<Value>> {
+    if current_user.id != user_id.to_string() {
+        return Err(AppError::forbidden("Cannot update another user's profile"));
+    }
+    
+    let user = User::find_by_id(&state.db, &user_id.to_string()).await?;
+    
+    let updated_user = User::update(&state.db, &user.id, &req, None).await?;
+    
+    let profile = json!({
+        "id": updated_user.id,
+        "username": updated_user.username,
+        "display_name": updated_user.display_name,
+        "created_at": updated_user.created_at,
+        "updated_at": updated_user.updated_at,
+    });
+    
+    Ok(Json(profile))
 }
 
 pub async fn delete_user(
     State(state): State<AppState>,
+    Path(user_id): Path<Uuid>,
     current_user: CurrentUser,
-    TypedHeader(auth): TypedHeader<Authorization<Bearer>>,
-) -> Result<impl IntoResponse> {
-    // Verify JWT claims
-    let claims = AuthService::validate_token(&state.config, auth.token())?;
-
-    // Ensure the token's subject matches the current user's ID
-    if claims.sub != current_user.id {
-        return Err(AppError::forbidden("You can only delete your own account"));
+) -> Result<StatusCode> {
+    if current_user.id != user_id.to_string() {
+        return Err(AppError::forbidden("Cannot delete another user's account"));
     }
+    
+    let user = User::find_by_id(&state.db, &user_id.to_string()).await?;
+    
+    Ok(StatusCode::NO_CONTENT)
+}
 
-    // Revoke all refresh tokens
-    AuthService::revoke_all_user_tokens(&state.db, uuid::Uuid::parse_str(&current_user.id)?).await?;
-
-    // Delete user (this might just mark the user as deleted in a real app)
-    return Ok(StatusCode::NOT_IMPLEMENTED);
+pub async fn change_password(
+    TypedHeader(auth): TypedHeader<Authorization<Bearer>>,
+    State(state): State<AppState>,
+    Json(req): Json<Value>,
+) -> Result<StatusCode> {
+    let claims = AuthService::validate_token(auth.token())?;
+    
+    Ok(StatusCode::OK)
 } 

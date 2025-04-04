@@ -7,12 +7,12 @@ use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::{
-    error::Result,
+    error::{AppError, Result},
     middleware::auth::CurrentUser,
     models::{
         message::{Message, SendMessageRequest},
-        AppState,
     },
+    AppState,
 };
 
 #[derive(Debug, Deserialize)]
