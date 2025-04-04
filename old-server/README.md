@@ -1,4 +1,4 @@
-# OnyxChat Server
+# OnyxChat Server (Abandoned)
 
 A secure messaging server with End-to-End Encryption (E2EE) support, built with Rust and Axum.
 
