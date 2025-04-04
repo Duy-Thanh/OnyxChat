@@ -230,7 +230,7 @@ public class WebSocketClient {
             Log.d(TAG, "Auth token starts with: " + token.substring(0, 10) + "...");
         }
         
-        // Build WebSocket URL - We need to use the correct WebSocket endpoint
+        // Build WebSocket URL with normalized path
         String baseUrl = wsEndpoint;
         
         // Ensure we're using secure WebSocket when needed
@@ -240,20 +240,28 @@ public class WebSocketClient {
             baseUrl = baseUrl.replace("https://", "wss://");
         }
 
-        // Simplify URL construction
-        // Start with the base URL, and ensure it ends with a single slash
-        if (baseUrl.endsWith("/")) {
-            baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
+        // Fix any duplicate '/ws' paths and ensure proper URL formatting
+        if (baseUrl.contains("/ws")) {
+            // The URL already contains "/ws", so remove any trailing slashes
+            while (baseUrl.endsWith("/")) {
+                baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
+            }
+            // Add the query parameter directly
+            baseUrl = baseUrl + "?token=" + token;
+        } else {
+            // The URL doesn't contain "/ws", so ensure it ends with exactly one slash
+            while (baseUrl.endsWith("/")) {
+                baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
+            }
+            // Add the "/ws" path and query parameter
+            baseUrl = baseUrl + "/ws?token=" + token;
         }
         
-        // Create the WebSocket URL with the correct path
-        String url = baseUrl + "/ws" + "?token=" + token;
+        Log.d(TAG, "Connecting to WebSocket URL: " + baseUrl);
         
-        Log.d(TAG, "Connecting to WebSocket URL: " + url);
-        
-        // Create WebSocket request (no auth header needed now)
+        // Create WebSocket request
         Request request = new Request.Builder()
-                .url(url)
+                .url(baseUrl)
                 .build();
         
         // Update state
@@ -292,7 +300,7 @@ public class WebSocketClient {
             return false;
         }
         
-        // Build WebSocket URL with token in URL parameter
+        // Build WebSocket URL with normalized path
         String baseUrl = wsEndpoint;
         
         // Ensure we're using secure WebSocket when needed
@@ -302,16 +310,24 @@ public class WebSocketClient {
             baseUrl = baseUrl.replace("https://", "wss://");
         }
 
-        // Simplify URL construction
-        // Ensure the base URL doesn't end with a slash
-        if (baseUrl.endsWith("/")) {
-            baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
+        // Fix any duplicate '/ws' paths and ensure proper URL formatting
+        if (baseUrl.contains("/ws")) {
+            // The URL already contains "/ws", so remove any trailing slashes
+            while (baseUrl.endsWith("/")) {
+                baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
+            }
+            // Add the query parameter directly
+            baseUrl = baseUrl + "?token=" + token;
+        } else {
+            // The URL doesn't contain "/ws", so ensure it ends with exactly one slash
+            while (baseUrl.endsWith("/")) {
+                baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
+            }
+            // Add the "/ws" path and query parameter
+            baseUrl = baseUrl + "/ws?token=" + token;
         }
         
-        // Create the WebSocket URL with the correct path
-        String url = baseUrl + "/ws" + "?token=" + token;
-        
-        Log.d(TAG, "Reconnecting with WebSocket URL: " + url);
+        Log.d(TAG, "Reconnecting with WebSocket URL: " + baseUrl);
         
         // Disconnect existing WebSocket if any
         if (webSocket != null) {
@@ -326,7 +342,7 @@ public class WebSocketClient {
         try {
             // Attempt connection
             Request request = new Request.Builder()
-                    .url(url)
+                    .url(baseUrl)
                     .build();
             webSocket = client.newWebSocket(request, new WebSocketListenerImpl());
             
