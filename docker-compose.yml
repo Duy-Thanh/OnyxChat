@@ -3,7 +3,7 @@ name: onyxchat-production
 
 services:
   postgres:
-    image: postgres:14
+    image: postgres:17.4-alpine3.21
     container_name: onyxchat-postgres
     ports:
       - "5432:5432"

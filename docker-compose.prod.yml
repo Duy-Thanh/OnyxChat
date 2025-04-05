@@ -1,13 +1,14 @@
-version: '3.8'
+# version: '3.8'  # REMOVED (obsolete)
 name: onyxchat-production
 
 services:
   postgres:
-    image: postgres:14-alpine
+    image: postgres:17.4-alpine3.21
     container_name: onyxchat-postgres
+    user: postgres
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+      - postgres_data_new:/var/lib/postgresql/data
+      # - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro  # Removed problematic mount
       - ./backups:/backups
     environment:
       POSTGRES_USER: ${DB_USER:-postgres}
@@ -31,7 +32,7 @@ services:
       - "5432"
 
   redis:
-    image: redis:7-alpine
+    image: redis:8.0-M04-alpine3.21
     container_name: onyxchat-redis
     command: redis-server --requirepass ${REDIS_PASSWORD:-redis} --appendonly yes
     volumes:
@@ -118,7 +119,7 @@ services:
           memory: 512M
 
   backup:
-    image: postgres:14-alpine
+    image: postgres:17.4-alpine3.21
     container_name: onyxchat-backup
     user: "root" # Run as root to avoid permission issues
     volumes:
@@ -168,5 +169,5 @@ networks:
     driver: bridge
 
 volumes:
-  postgres_data:
+  postgres_data_new:
   redis_data:
