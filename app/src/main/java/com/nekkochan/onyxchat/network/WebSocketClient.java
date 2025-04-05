@@ -196,10 +196,26 @@ public class WebSocketClient {
         // Update state
         disconnectRequested = false;
         
-        // Check if we're already connected or connecting
-        if (state == WebSocketState.CONNECTED || state == WebSocketState.CONNECTING) {
-            Log.d(TAG, "Already connected or connecting, no need to reconnect");
+        // Check if we're already connected
+        if (state == WebSocketState.CONNECTED) {
+            Log.d(TAG, "Already connected, no need to reconnect");
             return true;
+        }
+        
+        // Check if we're in CONNECTING state
+        if (state == WebSocketState.CONNECTING) {
+            Log.d(TAG, "Already connecting - forcing connection reset");
+            // Close any existing connection and reset state to try connection again
+            if (webSocket != null) {
+                try {
+                    webSocket.cancel();
+                    webSocket = null;
+                } catch (Exception e) {
+                    Log.e(TAG, "Error canceling existing websocket", e);
+                }
+            }
+            state = WebSocketState.DISCONNECTED;
+            notifyStateChanged();
         }
         
         // Rate limit connect attempts
