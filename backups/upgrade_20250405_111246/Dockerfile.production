@@ -1,0 +1,58 @@
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+# Install build dependencies
+RUN apk add --no-cache python3 make g++
+
+# Copy package.json and package-lock.json
+COPY package*.json ./
+
+# Install dependencies
+RUN npm ci --only=production && \
+    npm cache clean --force
+
+# Copy the rest of the application
+COPY . .
+
+# Build the application if needed (uncomment if you have a build step)
+# RUN npm run build
+
+# Create a smaller production image
+FROM node:20-alpine
+
+# Set node environment
+ENV NODE_ENV=production
+
+# Create a non-root user
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S -u 1001 -G nodejs nodejs && \
+    apk add --no-cache netcat-openbsd dumb-init
+
+# Set working directory
+WORKDIR /app
+
+# Copy from builder
+COPY --from=builder --chown=nodejs:nodejs /app/node_modules ./node_modules
+COPY --from=builder --chown=nodejs:nodejs /app/src ./src
+COPY --from=builder --chown=nodejs:nodejs /app/package*.json ./
+
+# Create app directories with proper permissions
+RUN mkdir -p /app/logs /app/uploads && \
+    chown -R nodejs:nodejs /app
+
+# Copy entrypoint script
+COPY --chown=nodejs:nodejs docker-entrypoint.sh /
+RUN chmod +x /docker-entrypoint.sh
+
+# Expose the port the app will run on
+EXPOSE 8081
+
+# Switch to non-root user
+USER nodejs
+
+# Use dumb-init as the entrypoint to properly handle signals
+ENTRYPOINT ["/usr/bin/dumb-init", "--"]
+
+# Start the application
+CMD ["/docker-entrypoint.sh"] 

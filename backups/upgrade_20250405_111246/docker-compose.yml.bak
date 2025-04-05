@@ -1,0 +1,74 @@
+name: onyxchat-production
+
+services:
+  postgres:
+    image: postgres:14
+    container_name: onyxchat-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_NAME:-onyxchat}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    restart: always
+    networks:
+      - onyxchat-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+
+  server:
+    build:
+      context: ./nodejs-server
+      dockerfile: Dockerfile.production
+    container_name: onyxchat-server
+    ports:
+      - "${SERVER_PORT:-8082}:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - NODE_ENV=production
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=${DB_NAME:-onyxchat}
+      - DB_USER=${DB_USER:-postgres}
+      - DB_PASSWORD=${DB_PASSWORD:-postgres}
+      - PORT=8081
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
+      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-1h}
+      - JWT_REFRESH_EXPIRES_IN=${JWT_REFRESH_EXPIRES_IN:-7d}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - ENABLE_HTTPS=${ENABLE_HTTPS:-false}
+      - SSL_CERT_PATH=${SSL_CERT_PATH:-/certs/server.crt}
+      - SSL_KEY_PATH=${SSL_KEY_PATH:-/certs/server.key}
+    volumes:
+      - ./certs:/certs
+      - ./logs:/app/logs
+    restart: always
+    networks:
+      - onyxchat-network
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+      replicas: ${SERVER_REPLICAS:-1}
+
+networks:
+  onyxchat-network:
+    driver: bridge
+
+volumes:
+  postgres_data: 
