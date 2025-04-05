@@ -13,14 +13,18 @@ import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.appcompat.widget.Toolbar;
+import androidx.core.content.ContextCompat;
 import androidx.lifecycle.ViewModelProvider;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.google.android.material.chip.Chip;
+import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.nekkochan.onyxchat.R;
 import com.nekkochan.onyxchat.ui.adapters.ChatMessageAdapter;
 import com.nekkochan.onyxchat.ui.viewmodel.ChatViewModel;
+
+import de.hdodenhof.circleimageview.CircleImageView;
 
 public class ChatActivity extends AppCompatActivity {
     
@@ -31,71 +35,146 @@ public class ChatActivity extends AppCompatActivity {
     private ChatViewModel viewModel;
     private RecyclerView recyclerView;
     private EditText messageInput;
-    private ImageButton sendButton;
-    private TextView statusTextView;
+    private FloatingActionButton sendButton;
+    private Chip statusChip;
     private ChatMessageAdapter adapter;
     private String contactId;
     private String contactName;
+    private ImageButton backButton;
+    private TextView contactNameText;
+    private CircleImageView contactAvatar;
+    private FloatingActionButton scrollDownButton;
+    private ImageButton attachButton;
+    private ImageButton emojiButton;
+    private ImageButton voiceCallButton;
+    private ImageButton videoCallButton;
+    private ImageButton chatSettingsButton;
     
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        
+        // Make status bar transparent and draw behind it
+        getWindow().setStatusBarColor(android.graphics.Color.TRANSPARENT);
+        getWindow().getDecorView().setSystemUiVisibility(
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN);
+        
         setContentView(R.layout.activity_chat);
         
-        // Get contact information from intent
+        // Get contact ID and name from intent
         contactId = getIntent().getStringExtra(EXTRA_CONTACT_ID);
         contactName = getIntent().getStringExtra(EXTRA_CONTACT_NAME);
         
         if (contactId == null) {
-            Toast.makeText(this, "Error: No contact specified", Toast.LENGTH_SHORT).show();
+            Log.e(TAG, "No contact ID provided");
             finish();
             return;
         }
         
-        // Initialize view model
+        // Get view model
         viewModel = new ViewModelProvider(this).get(ChatViewModel.class);
         viewModel.setCurrentRecipient(contactId);
-        
-        // Set up toolbar
-        Toolbar toolbar = findViewById(R.id.toolbar);
-        setSupportActionBar(toolbar);
-        
-        if (getSupportActionBar() != null) {
-            getSupportActionBar().setDisplayHomeAsUpEnabled(true);
-            getSupportActionBar().setTitle(contactName != null ? contactName : contactId);
-        }
         
         // Initialize views
         recyclerView = findViewById(R.id.messagesRecyclerView);
         messageInput = findViewById(R.id.messageInput);
         sendButton = findViewById(R.id.sendButton);
-        statusTextView = findViewById(R.id.chatStatusText);
+        statusChip = findViewById(R.id.chatStatusChip);
+        backButton = findViewById(R.id.backButton);
+        contactNameText = findViewById(R.id.contactNameText);
+        contactAvatar = findViewById(R.id.contactAvatar);
+        scrollDownButton = findViewById(R.id.scrollDownButton);
+        attachButton = findViewById(R.id.attachButton);
+        emojiButton = findViewById(R.id.emojiButton);
+        voiceCallButton = findViewById(R.id.voiceCallButton);
+        videoCallButton = findViewById(R.id.videoCallButton);
+        chatSettingsButton = findViewById(R.id.chatSettingsButton);
         
-        // Setup recycler view
+        // Set up contact info
+        contactNameText.setText(contactName != null ? contactName : contactId);
+        
+        // Set up back button
+        backButton.setOnClickListener(v -> finish());
+        
+        // Set up RecyclerView
         LinearLayoutManager layoutManager = new LinearLayoutManager(this);
         layoutManager.setStackFromEnd(true);
         recyclerView.setLayoutManager(layoutManager);
         
-        // Create adapter for messages
+        // Create and set adapter with the required userId parameter
         adapter = new ChatMessageAdapter(viewModel.getUserId());
         recyclerView.setAdapter(adapter);
         
-        // Set up message input
-        messageInput.addTextChangedListener(new TextWatcher() {
-            @Override
-            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
-
-            @Override
-            public void onTextChanged(CharSequence s, int start, int before, int count) {}
-
-            @Override
-            public void afterTextChanged(Editable s) {
-                sendButton.setEnabled(s.length() > 0 && viewModel.isChatConnected().getValue() == Boolean.TRUE);
+        // Set up scroll button
+        scrollDownButton.setOnClickListener(v -> {
+            if (adapter.getItemCount() > 0) {
+                recyclerView.smoothScrollToPosition(adapter.getItemCount() - 1);
+                scrollDownButton.setVisibility(View.GONE);
             }
+        });
+        
+        // Watch for scrolling to show/hide scroll button
+        recyclerView.addOnScrollListener(new RecyclerView.OnScrollListener() {
+            @Override
+            public void onScrollStateChanged(@NonNull RecyclerView recyclerView, int newState) {
+                super.onScrollStateChanged(recyclerView, newState);
+                
+                if (newState == RecyclerView.SCROLL_STATE_IDLE) {
+                    LinearLayoutManager layoutManager = (LinearLayoutManager) recyclerView.getLayoutManager();
+                    if (layoutManager != null) {
+                        int lastVisiblePosition = layoutManager.findLastVisibleItemPosition();
+                        int lastItem = adapter.getItemCount() - 1;
+                        
+                        // Show button if not at bottom
+                        scrollDownButton.setVisibility(lastVisiblePosition < lastItem - 2 ? View.VISIBLE : View.GONE);
+                    }
+                }
+            }
+        });
+        
+        // Set up attachment button
+        attachButton.setOnClickListener(v -> {
+            Toast.makeText(this, "Attachment feature coming soon", Toast.LENGTH_SHORT).show();
+        });
+        
+        // Set up emoji button
+        emojiButton.setOnClickListener(v -> {
+            Toast.makeText(this, "Emoji picker coming soon", Toast.LENGTH_SHORT).show();
+        });
+        
+        // Set up voice call button
+        voiceCallButton.setOnClickListener(v -> {
+            Toast.makeText(this, "Voice call feature coming soon", Toast.LENGTH_SHORT).show();
+        });
+        
+        // Set up video call button
+        videoCallButton.setOnClickListener(v -> {
+            Toast.makeText(this, "Video call feature coming soon", Toast.LENGTH_SHORT).show();
+        });
+        
+        // Set up chat settings button
+        chatSettingsButton.setOnClickListener(v -> {
+            Toast.makeText(this, "Chat settings coming soon", Toast.LENGTH_SHORT).show();
         });
         
         // Set up send button
         sendButton.setOnClickListener(v -> sendMessage());
+        
+        // Monitor text input to enable/disable send button
+        messageInput.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            
+            @Override
+            public void afterTextChanged(Editable s) {
+                // Only enable send button if we have text AND are connected
+                boolean connected = viewModel.isChatConnected().getValue() == Boolean.TRUE;
+                sendButton.setEnabled(connected && s.length() > 0);
+            }
+        });
         
         // Update connection status immediately
         updateConnectionStatus(viewModel.isChatConnected().getValue() == Boolean.TRUE);
@@ -107,33 +186,23 @@ public class ChatActivity extends AppCompatActivity {
         viewModel.getChatMessages().observe(this, chatMessages -> {
             if (chatMessages != null && !chatMessages.isEmpty()) {
                 adapter.submitList(chatMessages);
-                recyclerView.scrollToPosition(chatMessages.size() - 1);
+                
+                // Only auto-scroll if already at bottom
+                LinearLayoutManager messageLayoutManager = (LinearLayoutManager) recyclerView.getLayoutManager();
+                if (messageLayoutManager != null) {
+                    int lastVisiblePosition = messageLayoutManager.findLastVisibleItemPosition();
+                    int lastItem = adapter.getItemCount() - 1;
+                    
+                    if (lastVisiblePosition >= lastItem - 2) {
+                        recyclerView.scrollToPosition(chatMessages.size() - 1);
+                    } else {
+                        scrollDownButton.setVisibility(View.VISIBLE);
+                    }
+                }
             }
         });
         
         // Connect to chat service if not connected
-        if (viewModel.isChatConnected().getValue() != Boolean.TRUE) {
-            viewModel.connectToChat();
-        }
-    }
-    
-    @Override
-    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
-        if (item.getItemId() == android.R.id.home) {
-            finish();
-            return true;
-        }
-        return super.onOptionsItemSelected(item);
-    }
-    
-    @Override
-    protected void onResume() {
-        super.onResume();
-        
-        // Force UI update on resume
-        updateConnectionStatus(viewModel.isChatConnected().getValue() == Boolean.TRUE);
-        
-        // Only try to reconnect if disconnected
         if (viewModel.isChatConnected().getValue() != Boolean.TRUE) {
             viewModel.connectToChat();
         }
@@ -144,12 +213,12 @@ public class ChatActivity extends AppCompatActivity {
      */
     private void updateConnectionStatus(boolean isConnected) {
         if (isConnected) {
-            statusTextView.setText(R.string.status_connected);
-            statusTextView.setTextColor(getResources().getColor(R.color.success_green, null));
+            statusChip.setText(R.string.status_connected);
+            statusChip.setChipBackgroundColor(ContextCompat.getColorStateList(this, R.color.status_online));
             sendButton.setEnabled(messageInput.getText().length() > 0);
         } else {
-            statusTextView.setText(R.string.status_disconnected);
-            statusTextView.setTextColor(getResources().getColor(R.color.error_red, null));
+            statusChip.setText(R.string.status_disconnected);
+            statusChip.setChipBackgroundColor(ContextCompat.getColorStateList(this, R.color.error_red));
             sendButton.setEnabled(false);
         }
     }

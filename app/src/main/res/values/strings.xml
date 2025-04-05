@@ -137,4 +137,12 @@
     <string name="contacts_permission_required">Contact permission is required for synchronization</string>
     <string name="delete_contact">Delete Contact</string>
     <string name="confirm_delete_contact">Are you sure you want to delete %1$s? This action cannot be undone.</string>
+    
+    <!-- Enhanced Chat UI -->
+    <string name="attach">Attach</string>
+    <string name="emoji">Emoji</string>
+    <string name="scroll_down">Scroll to bottom</string>
+    <string name="voice_call">Voice Call</string>
+    <string name="video_call">Video Call</string>
+    <string name="chat_settings">Chat Settings</string>
 </resources>

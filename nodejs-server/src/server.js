@@ -12,6 +12,7 @@ const authRoutes = require('./routes/auth.routes');
 const userRoutes = require('./routes/user.routes');
 const messageRoutes = require('./routes/message.routes');
 const cryptoRoutes = require('./routes/crypto.routes');
+const contactsRoutes = require('./routes/contacts.routes');
 
 // Initialize express app
 const app = express();
@@ -38,6 +39,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/crypto', cryptoRoutes);
+app.use('/api/contacts', contactsRoutes);
 
 // Add a route to handle WebSocket connections for better debugging
 app.get('/ws', (req, res) => {

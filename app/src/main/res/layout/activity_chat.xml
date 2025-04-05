@@ -7,90 +7,259 @@
     android:layout_height="match_parent"
     android:animateLayoutChanges="true"
     android:background="@color/background_dark"
+    android:fitsSystemWindows="true"
     tools:context=".ui.chat.ChatActivity">
 
-    <com.google.android.material.appbar.AppBarLayout
-        android:id="@+id/appBarLayout"
+    <!-- Custom toolbar with profile/contact info -->
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/chatToolbar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="@color/background_dark"
+        android:paddingTop="8dp"
+        android:paddingBottom="8dp"
+        android:background="@drawable/bg_chat_header"
+        android:elevation="4dp"
         app:layout_constraintTop_toTopOf="parent">
 
-        <androidx.appcompat.widget.Toolbar
-            android:id="@+id/toolbar"
-            android:layout_width="match_parent"
-            android:layout_height="?attr/actionBarSize"
-            app:titleTextColor="@color/text_primary_dark"
-            app:titleTextAppearance="@style/TextAppearance.App.Headline" />
+        <ImageButton
+            android:id="@+id/backButton"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_marginStart="4dp"
+            android:layout_marginTop="0dp"
+            android:layout_marginBottom="0dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/back"
+            android:padding="10dp"
+            android:src="@drawable/ic_back"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:tint="@color/white" />
 
-    </com.google.android.material.appbar.AppBarLayout>
+        <de.hdodenhof.circleimageview.CircleImageView
+            android:id="@+id/contactAvatar"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_marginStart="8dp"
+            android:src="@drawable/default_avatar"
+            app:civ_border_color="@color/white"
+            app:civ_border_width="1dp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toEndOf="@id/backButton"
+            app:layout_constraintTop_toTopOf="parent" />
 
-    <TextView
-        android:id="@+id/chatStatusText"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:layout_marginStart="8dp"
-        android:padding="4dp"
-        android:text="@string/status_disconnected"
-        android:textColor="@color/error_red"
-        android:textSize="14sp"
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:layout_marginEnd="8dp"
+            android:orientation="vertical"
+            android:layout_marginTop="0dp"
+            android:layout_marginBottom="0dp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toStartOf="@id/headerActionButtons"
+            app:layout_constraintStart_toEndOf="@id/contactAvatar"
+            app:layout_constraintTop_toTopOf="parent">
+
+            <TextView
+                android:id="@+id/contactNameText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="@color/white"
+                android:textSize="15sp"
+                android:textStyle="bold"
+                tools:text="Contact Name" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chatStatusChip"
+                android:layout_width="wrap_content"
+                android:layout_height="20dp"
+                android:text="@string/status_connected"
+                android:textColor="@color/white"
+                android:textSize="10sp"
+                app:chipBackgroundColor="@color/status_online"
+                app:chipMinHeight="20dp"
+                app:chipMinTouchTargetSize="20dp" />
+        </LinearLayout>
+
+        <!-- Header action buttons -->
+        <LinearLayout
+            android:id="@+id/headerActionButtons"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="4dp"
+            android:orientation="horizontal"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="parent">
+
+            <ImageButton
+                android:id="@+id/voiceCallButton"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/voice_call"
+                android:padding="6dp"
+                android:src="@drawable/ic_call"
+                app:tint="@color/white" />
+
+            <ImageButton
+                android:id="@+id/videoCallButton"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/video_call"
+                android:padding="6dp"
+                android:src="@drawable/ic_video_call"
+                app:tint="@color/white" />
+
+            <ImageButton
+                android:id="@+id/chatSettingsButton"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/chat_settings"
+                android:padding="6dp"
+                android:src="@drawable/ic_settings"
+                app:tint="@color/white" />
+        </LinearLayout>
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <!-- Chat content area with background pattern -->
+    <View
+        android:id="@+id/chatBackground"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:background="@drawable/bg_chat_background"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/appBarLayout" />
+        app:layout_constraintTop_toBottomOf="@id/chatToolbar" />
 
+    <!-- Messages list with improved styling -->
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/messagesRecyclerView"
         android:layout_width="0dp"
         android:layout_height="0dp"
         android:clipToPadding="false"
-        android:paddingTop="8dp"
-        android:paddingBottom="8dp"
-        app:layout_constraintBottom_toTopOf="@id/messageInputContainer"
+        android:paddingTop="16dp"
+        android:paddingBottom="16dp"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp"
+        app:layout_constraintBottom_toTopOf="@id/composerContainer"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/chatStatusText" />
+        app:layout_constraintTop_toBottomOf="@id/chatToolbar" />
 
-    <androidx.cardview.widget.CardView
-        android:id="@+id/messageInputContainer"
+    <!-- New message indicator -->
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/scrollDownButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="16dp"
+        android:alpha="0.9"
+        android:visibility="gone"
+        app:backgroundTint="#2C3C52"
+        app:elevation="4dp"
+        app:fabSize="mini"
+        app:layout_constraintBottom_toTopOf="@id/composerContainer"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:srcCompat="@drawable/ic_arrow_down"
+        app:tint="@color/white"
+        tools:visibility="visible" />
+
+    <!-- Redesigned message input area with attachments -->
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/composerContainer"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginHorizontal="8dp"
-        android:layout_marginBottom="8dp"
-        app:cardCornerRadius="24dp"
-        app:cardElevation="2dp"
+        android:background="@drawable/bg_message_composer"
+        android:paddingHorizontal="8dp"
+        android:paddingVertical="12dp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent">
 
-        <LinearLayout
-            android:layout_width="match_parent"
+        <ImageButton
+            android:id="@+id/attachButton"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/attach"
+            android:padding="8dp"
+            android:src="@drawable/ic_attach"
+            app:layout_constraintBottom_toBottomOf="@id/messageInputCard"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="@id/messageInputCard"
+            app:tint="@color/text_secondary_dark" />
+
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/messageInputCard"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:padding="8dp">
+            android:layout_marginStart="8dp"
+            android:layout_marginEnd="8dp"
+            app:cardBackgroundColor="#1A2130"
+            app:cardCornerRadius="24dp"
+            app:cardElevation="0dp"
+            app:strokeWidth="0dp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toStartOf="@id/sendButton"
+            app:layout_constraintStart_toEndOf="@id/attachButton"
+            app:layout_constraintTop_toTopOf="parent">
 
-            <EditText
-                android:id="@+id/messageInput"
-                android:layout_width="0dp"
+            <LinearLayout
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:background="@null"
-                android:hint="@string/message_hint"
-                android:importantForAutofill="no"
-                android:inputType="textMultiLine"
-                android:maxLines="4"
-                android:minHeight="36dp"
-                android:paddingStart="8dp"
-                android:paddingEnd="8dp" />
+                android:orientation="horizontal">
 
-            <ImageButton
-                android:id="@+id/sendButton"
-                android:layout_width="36dp"
-                android:layout_height="36dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="@string/send"
-                android:enabled="false"
-                android:src="@drawable/ic_send" />
-        </LinearLayout>
-    </androidx.cardview.widget.CardView>
+                <EditText
+                    android:id="@+id/messageInput"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:background="@null"
+                    android:hint="@string/message_hint"
+                    android:importantForAutofill="no"
+                    android:inputType="textMultiLine"
+                    android:maxLines="5"
+                    android:minHeight="48dp"
+                    android:paddingHorizontal="16dp"
+                    android:paddingVertical="10dp"
+                    android:textColor="@color/white"
+                    android:textColorHint="#80FFFFFF"
+                    android:textSize="16sp" />
+
+                <ImageButton
+                    android:id="@+id/emojiButton"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:layout_gravity="bottom"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="@string/emoji"
+                    android:padding="8dp"
+                    android:src="@drawable/ic_emoji"
+                    app:tint="@color/text_secondary_dark" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <com.google.android.material.floatingactionbutton.FloatingActionButton
+            android:id="@+id/sendButton"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:contentDescription="@string/send"
+            android:enabled="false"
+            app:backgroundTint="@color/primary"
+            app:fabCustomSize="48dp"
+            app:layout_constraintBottom_toBottomOf="@id/messageInputCard"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="@id/messageInputCard"
+            app:srcCompat="@drawable/ic_send"
+            app:tint="@color/white" />
+    </androidx.constraintlayout.widget.ConstraintLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout> 
