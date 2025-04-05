@@ -145,4 +145,21 @@
     <string name="voice_call">Voice Call</string>
     <string name="video_call">Video Call</string>
     <string name="chat_settings">Chat Settings</string>
+    
+    <!-- Chat Settings Screen -->
+    <string name="contact_info">Contact Information</string>
+    <string name="media">Media</string>
+    <string name="search">Search</string>
+    <string name="notifications">Notifications</string>
+    <string name="customize_notifications">Customize Notifications</string>
+    <string name="privacy">Privacy</string>
+    <string name="verify_security_keys">Verify security keys</string>
+    <string name="disappearing_messages">Disappearing Messages</string>
+    <string name="off">Off</string>
+    <string name="media_and_storage">Media &amp; Storage</string>
+    <string name="auto_download_media">Auto-download Media</string>
+    <string name="storage_usage">Storage Usage</string>
+    <string name="danger_zone">Danger Zone</string>
+    <string name="clear_chat">Clear Chat History</string>
+    <string name="block_contact">Block Contact</string>
 </resources>

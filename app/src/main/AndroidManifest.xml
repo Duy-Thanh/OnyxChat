@@ -123,6 +123,13 @@
             android:parentActivityName=".MainActivity"
             android:theme="@style/AppTheme" />
         
+        <!-- Chat Settings Activity -->
+        <activity
+            android:name=".ui.chat.ChatSettingsActivity"
+            android:exported="false"
+            android:parentActivityName=".ui.chat.ChatActivity"
+            android:theme="@style/AppTheme" />
+        
         <!-- Media Processing Activity -->
         <activity
             android:name=".ui.MediaProcessingActivity"

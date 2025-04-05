@@ -1,5 +1,6 @@
 package com.nekkochan.onyxchat.ui.chat;
 
+import android.content.Intent;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.TextWatcher;
@@ -154,7 +155,10 @@ public class ChatActivity extends AppCompatActivity {
         
         // Set up chat settings button
         chatSettingsButton.setOnClickListener(v -> {
-            Toast.makeText(this, "Chat settings coming soon", Toast.LENGTH_SHORT).show();
+            Intent intent = new Intent(this, ChatSettingsActivity.class);
+            intent.putExtra(ChatSettingsActivity.EXTRA_CONTACT_ID, contactId);
+            intent.putExtra(ChatSettingsActivity.EXTRA_CONTACT_NAME, contactName);
+            startActivity(intent);
         });
         
         // Set up send button
