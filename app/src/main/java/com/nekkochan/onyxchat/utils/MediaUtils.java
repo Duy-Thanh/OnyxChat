@@ -34,7 +34,7 @@ public class MediaUtils {
     public static void compressVideo(Context context, Uri inputUri, MediaProcessCallback callback) {
         try {
             // Get real file path
-            String inputPath = FileUtils.getPathFromUri(context, inputUri);
+            String inputPath = FileUtils.getPath(context, inputUri);
             if (inputPath == null) {
                 callback.onError("Could not resolve file path from URI");
                 return;
@@ -82,7 +82,7 @@ public class MediaUtils {
     public static void convertAudio(Context context, Uri inputUri, MediaProcessCallback callback) {
         try {
             // Get real file path
-            String inputPath = FileUtils.getPathFromUri(context, inputUri);
+            String inputPath = FileUtils.getPath(context, inputUri);
             if (inputPath == null) {
                 callback.onError("Could not resolve file path from URI");
                 return;
@@ -125,7 +125,7 @@ public class MediaUtils {
     public static void compressImage(Context context, Uri inputUri, MediaProcessCallback callback) {
         try {
             // Get real file path
-            String inputPath = FileUtils.getPathFromUri(context, inputUri);
+            String inputPath = FileUtils.getPath(context, inputUri);
             if (inputPath == null) {
                 callback.onError("Could not resolve file path from URI");
                 return;
@@ -168,7 +168,7 @@ public class MediaUtils {
     public static void createVideoThumbnail(Context context, Uri videoUri, MediaProcessCallback callback) {
         try {
             // Get real file path
-            String videoPath = FileUtils.getPathFromUri(context, videoUri);
+            String videoPath = FileUtils.getPath(context, videoUri);
             if (videoPath == null) {
                 callback.onError("Could not resolve file path from URI");
                 return;
@@ -212,7 +212,7 @@ public class MediaUtils {
     public static void extractAudioFromVideo(Context context, Uri videoUri, MediaProcessCallback callback) {
         try {
             // Get real file path
-            String videoPath = FileUtils.getPathFromUri(context, videoUri);
+            String videoPath = FileUtils.getPath(context, videoUri);
             if (videoPath == null) {
                 callback.onError("Could not resolve file path from URI");
                 return;
@@ -255,7 +255,7 @@ public class MediaUtils {
      */
     public static String getMediaInfo(Context context, Uri mediaUri) {
         try {
-            String mediaPath = FileUtils.getPathFromUri(context, mediaUri);
+            String mediaPath = FileUtils.getPath(context, mediaUri);
             if (mediaPath == null) {
                 return null;
             }

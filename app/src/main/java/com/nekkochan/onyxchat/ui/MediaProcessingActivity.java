@@ -2,28 +2,36 @@ package com.nekkochan.onyxchat.ui;
 
 import android.app.ProgressDialog;
 import android.content.Intent;
+import android.graphics.Color;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.provider.MediaStore;
 import android.util.Log;
 import android.view.View;
+import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.ImageView;
+import android.widget.TextView;
 import android.widget.Toast;
 import android.widget.VideoView;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
 
+import com.arthenica.ffmpegkit.FFmpegKit;
+import com.arthenica.ffmpegkit.ReturnCode;
 import com.nekkochan.onyxchat.R;
+import com.nekkochan.onyxchat.utils.FileUtils;
 import com.nekkochan.onyxchat.utils.MediaUtils;
+import com.nekkochan.onyxchat.utils.MimeTypeUtils;
 
 import java.io.File;
 import java.io.IOException;
-import java.text.SimpleDateFormat;
-import java.util.Date;
-import java.util.Locale;
 
 /**
  * Activity for demonstrating media processing capabilities using FFmpeg
@@ -31,293 +39,457 @@ import java.util.Locale;
 public class MediaProcessingActivity extends AppCompatActivity {
     private static final String TAG = "MediaProcessingActivity";
     
-    private static final int REQUEST_VIDEO_CAPTURE = 100;
-    private static final int REQUEST_IMAGE_CAPTURE = 101;
-    private static final int REQUEST_VIDEO_PICK = 102;
-    private static final int REQUEST_AUDIO_PICK = 103;
-    private static final int REQUEST_IMAGE_PICK = 104;
-    
-    private ImageView imagePreview;
+    // UI elements
+    private Button captureVideoButton, captureImageButton;
+    private Button selectVideoButton, selectAudioButton, selectImageButton;
+    private Button processButton, sendButton;
     private VideoView videoPreview;
-    private Button processButton;
+    private ImageView imagePreview;
+    private TextView previewPlaceholder;
     
+    // Media data
     private Uri currentMediaUri;
     private String mediaType;
+    private File tempCameraFile;
     private ProgressDialog progressDialog;
+    
+    // Activity result launchers
+    private ActivityResultLauncher<Intent> pickMediaLauncher;
+    private ActivityResultLauncher<Intent> takePictureLauncher;
+    private ActivityResultLauncher<Intent> recordVideoLauncher;
     
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        
+        // Fix status bar overlap
+        setStatusBarTransparent();
+        
         setContentView(R.layout.activity_media_processing);
         
-        imagePreview = findViewById(R.id.image_preview);
-        videoPreview = findViewById(R.id.video_preview);
+        // Initialize views and callbacks
+        initViews();
+        setupActivityResultLaunchers();
+        setupClickListeners();
+    }
+    
+    /**
+     * Set up transparent status bar
+     */
+    private void setStatusBarTransparent() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            getWindow().setStatusBarColor(Color.TRANSPARENT);
+            getWindow().setNavigationBarColor(ContextCompat.getColor(this, R.color.black));
+            getWindow().setDecorFitsSystemWindows(true);
+        } else {
+            getWindow().setStatusBarColor(Color.TRANSPARENT);
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS);
+            getWindow().clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_NAVIGATION);
+            getWindow().setNavigationBarColor(ContextCompat.getColor(this, R.color.black));
+        }
+    }
+    
+    /**
+     * Initialize UI elements
+     */
+    private void initViews() {
+        captureVideoButton = findViewById(R.id.capture_video_button);
+        captureImageButton = findViewById(R.id.capture_image_button);
+        selectVideoButton = findViewById(R.id.select_video_button);
+        selectAudioButton = findViewById(R.id.select_audio_button);
+        selectImageButton = findViewById(R.id.select_image_button);
         processButton = findViewById(R.id.process_button);
+        sendButton = findViewById(R.id.send_button);
+        videoPreview = findViewById(R.id.video_preview);
+        imagePreview = findViewById(R.id.image_preview);
+        previewPlaceholder = findViewById(R.id.preview_placeholder);
         
-        Button captureVideoButton = findViewById(R.id.capture_video_button);
-        Button captureImageButton = findViewById(R.id.capture_image_button);
-        Button selectVideoButton = findViewById(R.id.select_video_button);
-        Button selectAudioButton = findViewById(R.id.select_audio_button);
-        Button selectImageButton = findViewById(R.id.select_image_button);
-        
-        captureVideoButton.setOnClickListener(v -> captureVideo());
-        captureImageButton.setOnClickListener(v -> captureImage());
-        selectVideoButton.setOnClickListener(v -> selectVideo());
-        selectAudioButton.setOnClickListener(v -> selectAudio());
-        selectImageButton.setOnClickListener(v -> selectImage());
-        
-        processButton.setOnClickListener(v -> processMedia());
+        // Initially disable process button
         processButton.setEnabled(false);
     }
     
-    private void captureVideo() {
-        Intent takeVideoIntent = new Intent(MediaStore.ACTION_VIDEO_CAPTURE);
-        if (takeVideoIntent.resolveActivity(getPackageManager()) != null) {
-            startActivityForResult(takeVideoIntent, REQUEST_VIDEO_CAPTURE);
-        } else {
-            Toast.makeText(this, "No camera app available", Toast.LENGTH_SHORT).show();
-        }
-    }
-    
-    private void captureImage() {
-        Intent takePictureIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
-        if (takePictureIntent.resolveActivity(getPackageManager()) != null) {
-            startActivityForResult(takePictureIntent, REQUEST_IMAGE_CAPTURE);
-        } else {
-            Toast.makeText(this, "No camera app available", Toast.LENGTH_SHORT).show();
-        }
-    }
-    
-    private void selectVideo() {
-        Intent intent = new Intent(Intent.ACTION_PICK, MediaStore.Video.Media.EXTERNAL_CONTENT_URI);
-        startActivityForResult(intent, REQUEST_VIDEO_PICK);
-    }
-    
-    private void selectAudio() {
-        Intent intent = new Intent(Intent.ACTION_PICK, MediaStore.Audio.Media.EXTERNAL_CONTENT_URI);
-        startActivityForResult(intent, REQUEST_AUDIO_PICK);
-    }
-    
-    private void selectImage() {
-        Intent intent = new Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
-        startActivityForResult(intent, REQUEST_IMAGE_PICK);
-    }
-    
-    @Override
-    protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
+    /**
+     * Set up Activity Result API launchers for media selection
+     */
+    private void setupActivityResultLaunchers() {
+        // For picking media files
+        pickMediaLauncher = registerForActivityResult(
+                new ActivityResultContracts.StartActivityForResult(),
+                result -> {
+                    if (result.getResultCode() == RESULT_OK && result.getData() != null) {
+                        Uri mediaUri = result.getData().getData();
+                        if (mediaUri != null) {
+                            currentMediaUri = mediaUri;
+                            showMediaPreview();
+                            processButton.setEnabled(true);
+                        }
+                    }
+                });
         
-        if (resultCode == RESULT_OK && data != null) {
-            switch (requestCode) {
-                case REQUEST_VIDEO_CAPTURE:
-                case REQUEST_VIDEO_PICK:
-                    handleVideoResult(data.getData());
-                    break;
-                case REQUEST_IMAGE_CAPTURE:
-                case REQUEST_IMAGE_PICK:
-                    handleImageResult(data.getData());
-                    break;
-                case REQUEST_AUDIO_PICK:
-                    handleAudioResult(data.getData());
-                    break;
-            }
-        }
+        // For capturing images
+        takePictureLauncher = registerForActivityResult(
+                new ActivityResultContracts.StartActivityForResult(),
+                result -> {
+                    if (result.getResultCode() == RESULT_OK) {
+                        if (tempCameraFile != null && tempCameraFile.exists()) {
+                            currentMediaUri = FileProvider.getUriForFile(
+                                    this,
+                                    getApplicationContext().getPackageName() + ".provider",
+                                    tempCameraFile);
+                            mediaType = "image";
+                            showMediaPreview();
+                            processButton.setEnabled(true);
+                        }
+                    }
+                });
+        
+        // For recording videos
+        recordVideoLauncher = registerForActivityResult(
+                new ActivityResultContracts.StartActivityForResult(),
+                result -> {
+                    if (result.getResultCode() == RESULT_OK) {
+                        if (tempCameraFile != null && tempCameraFile.exists()) {
+                            currentMediaUri = FileProvider.getUriForFile(
+                                    this,
+                                    getApplicationContext().getPackageName() + ".provider",
+                                    tempCameraFile);
+                            mediaType = "video";
+                            showMediaPreview();
+                            processButton.setEnabled(true);
+                        }
+                    }
+                });
     }
     
-    private void handleVideoResult(Uri videoUri) {
-        if (videoUri != null) {
-            currentMediaUri = videoUri;
+    /**
+     * Set up click listeners for all UI buttons
+     */
+    private void setupClickListeners() {
+        // Media selection buttons
+        selectVideoButton.setOnClickListener(v -> {
+            Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+            intent.setType("video/*");
             mediaType = "video";
-            
-            videoPreview.setVisibility(View.VISIBLE);
-            imagePreview.setVisibility(View.GONE);
-            
-            videoPreview.setVideoURI(videoUri);
-            videoPreview.start();
-            
-            processButton.setEnabled(true);
-            processButton.setText("Compress Video");
-        }
-    }
-    
-    private void handleImageResult(Uri imageUri) {
-        if (imageUri != null) {
-            currentMediaUri = imageUri;
-            mediaType = "image";
-            
-            imagePreview.setVisibility(View.VISIBLE);
-            videoPreview.setVisibility(View.GONE);
-            
-            imagePreview.setImageURI(imageUri);
-            
-            processButton.setEnabled(true);
-            processButton.setText("Compress Image");
-        }
-    }
-    
-    private void handleAudioResult(Uri audioUri) {
-        if (audioUri != null) {
-            currentMediaUri = audioUri;
+            pickMediaLauncher.launch(intent);
+        });
+        
+        selectAudioButton.setOnClickListener(v -> {
+            Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+            intent.setType("audio/*");
             mediaType = "audio";
-            
-            imagePreview.setVisibility(View.GONE);
+            pickMediaLauncher.launch(intent);
+        });
+        
+        selectImageButton.setOnClickListener(v -> {
+            Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+            intent.setType("image/*");
+            mediaType = "image";
+            pickMediaLauncher.launch(intent);
+        });
+        
+        // Camera capture buttons
+        captureImageButton.setOnClickListener(v -> {
+            Intent intent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+            if (intent.resolveActivity(getPackageManager()) != null) {
+                try {
+                    // Create temp file for the image
+                    File storageDir = getExternalFilesDir("camera");
+                    tempCameraFile = File.createTempFile(
+                            "IMG_" + System.currentTimeMillis(),
+                            ".jpg",
+                            storageDir
+                    );
+                    
+                    Uri photoURI = FileProvider.getUriForFile(
+                            this,
+                            getApplicationContext().getPackageName() + ".provider",
+                            tempCameraFile);
+                    intent.putExtra(MediaStore.EXTRA_OUTPUT, photoURI);
+                    takePictureLauncher.launch(intent);
+                } catch (IOException e) {
+                    Toast.makeText(this, "Error creating image file", Toast.LENGTH_SHORT).show();
+                    Log.e(TAG, "Error creating temp file", e);
+                }
+            } else {
+                Toast.makeText(this, "No camera app available", Toast.LENGTH_SHORT).show();
+            }
+        });
+        
+        captureVideoButton.setOnClickListener(v -> {
+            Intent intent = new Intent(MediaStore.ACTION_VIDEO_CAPTURE);
+            if (intent.resolveActivity(getPackageManager()) != null) {
+                try {
+                    // Create temp file for the video
+                    File storageDir = getExternalFilesDir("camera");
+                    tempCameraFile = File.createTempFile(
+                            "VID_" + System.currentTimeMillis(),
+                            ".mp4",
+                            storageDir
+                    );
+                    
+                    Uri videoURI = FileProvider.getUriForFile(
+                            this,
+                            getApplicationContext().getPackageName() + ".provider",
+                            tempCameraFile);
+                    intent.putExtra(MediaStore.EXTRA_OUTPUT, videoURI);
+                    recordVideoLauncher.launch(intent);
+                } catch (IOException e) {
+                    Toast.makeText(this, "Error creating video file", Toast.LENGTH_SHORT).show();
+                    Log.e(TAG, "Error creating temp file", e);
+                }
+            } else {
+                Toast.makeText(this, "No camera app available", Toast.LENGTH_SHORT).show();
+            }
+        });
+        
+        // Processing button
+        processButton.setOnClickListener(v -> processMedia());
+        
+        // Send button
+        sendButton.setOnClickListener(v -> {
+            if (currentMediaUri != null) {
+                // Return the processed media URI to the calling activity
+                Intent resultIntent = new Intent();
+                resultIntent.setData(currentMediaUri);
+                setResult(RESULT_OK, resultIntent);
+                finish();
+            }
+        });
+    }
+    
+    /**
+     * Show media preview based on type
+     */
+    private void showMediaPreview() {
+        if (currentMediaUri == null) {
+            previewPlaceholder.setVisibility(View.VISIBLE);
             videoPreview.setVisibility(View.GONE);
-            
-            Toast.makeText(this, "Audio file selected", Toast.LENGTH_SHORT).show();
-            
-            processButton.setEnabled(true);
-            processButton.setText("Convert Audio");
+            imagePreview.setVisibility(View.GONE);
+            return;
+        }
+
+        previewPlaceholder.setVisibility(View.GONE);
+        
+        // Set up the preview based on media type
+        try {
+            if ("video".equals(mediaType)) {
+                // Show video preview
+                imagePreview.setVisibility(View.GONE);
+                videoPreview.setVisibility(View.VISIBLE);
+                videoPreview.setVideoURI(currentMediaUri);
+                videoPreview.setOnPreparedListener(mp -> {
+                    mp.setLooping(true);
+                    videoPreview.start();
+                });
+            } else if ("audio".equals(mediaType)) {
+                // For audio, show a default image
+                videoPreview.setVisibility(View.GONE);
+                imagePreview.setVisibility(View.VISIBLE);
+                imagePreview.setImageResource(R.drawable.ic_audio_file);
+            } else if ("image".equals(mediaType)) {
+                // Show image preview
+                videoPreview.setVisibility(View.GONE);
+                imagePreview.setVisibility(View.VISIBLE);
+                imagePreview.setImageURI(currentMediaUri);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error displaying preview", e);
+            Toast.makeText(this, "Error displaying preview: " + e.getMessage(), 
+                    Toast.LENGTH_SHORT).show();
+            previewPlaceholder.setVisibility(View.VISIBLE);
         }
     }
     
+    /**
+     * Process the selected media
+     */
     private void processMedia() {
-        if (currentMediaUri == null || mediaType == null) {
+        if (currentMediaUri == null) {
             Toast.makeText(this, "No media selected", Toast.LENGTH_SHORT).show();
             return;
         }
         
-        showProgressDialog("Processing...");
+        // Show progress dialog
+        progressDialog = new ProgressDialog(this);
+        progressDialog.setTitle("Processing Media");
+        progressDialog.setMessage("Please wait while we optimize your media...");
+        progressDialog.setCancelable(false);
+        progressDialog.show();
         
-        switch (mediaType) {
-            case "video":
-                processVideo();
-                break;
-            case "image":
-                processImage();
-                break;
-            case "audio":
-                processAudio();
-                break;
+        // Process based on media type
+        try {
+            if ("video".equals(mediaType)) {
+                processVideo(currentMediaUri);
+            } else if ("audio".equals(mediaType)) {
+                processAudio(currentMediaUri);
+            } else if ("image".equals(mediaType)) {
+                processImage(currentMediaUri);
+            } else {
+                handleProcessingFailure("Unknown media type");
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Processing error", e);
+            handleProcessingFailure("Error: " + e.getMessage());
         }
     }
     
-    private void processVideo() {
-        MediaUtils.compressVideo(this, currentMediaUri, new MediaUtils.MediaProcessCallback() {
-            @Override
-            public void onSuccess(Uri outputUri) {
-                hideProgressDialog();
-                showResult("Video compressed successfully", outputUri);
+    /**
+     * Process video using FFmpeg
+     */
+    private void processVideo(Uri videoUri) {
+        try {
+            File outputDir = getExternalFilesDir("processed");
+            if (!outputDir.exists()) {
+                outputDir.mkdirs();
+            }
+            
+            File outputFile = new File(outputDir, "compressed_" + System.currentTimeMillis() + ".mp4");
+            String inputPath = FileUtils.getPath(this, videoUri);
+            String outputPath = outputFile.getAbsolutePath();
+            
+            // Build FFmpeg command for video compression
+            String[] command = {
+                "-i", inputPath,
+                "-c:v", "libx264",
+                "-crf", "28",
+                "-preset", "fast",
+                "-c:a", "aac",
+                "-b:a", "128k",
+                "-movflags", "+faststart",
+                outputPath
+            };
+            
+            executeFFmpegCommand(command, outputFile);
+        } catch (Exception e) {
+            Log.e(TAG, "Error processing video", e);
+            handleProcessingFailure("Video processing error: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Process audio using FFmpeg
+     */
+    private void processAudio(Uri audioUri) {
+        try {
+            File outputDir = getExternalFilesDir("processed");
+            if (!outputDir.exists()) {
+                outputDir.mkdirs();
+            }
+            
+            File outputFile = new File(outputDir, "converted_" + System.currentTimeMillis() + ".mp3");
+            String inputPath = FileUtils.getPath(this, audioUri);
+            String outputPath = outputFile.getAbsolutePath();
+            
+            // Build FFmpeg command for audio conversion
+            String[] command = {
+                "-i", inputPath,
+                "-c:a", "libmp3lame",
+                "-b:a", "192k",
+                outputPath
+            };
+            
+            executeFFmpegCommand(command, outputFile);
+        } catch (Exception e) {
+            Log.e(TAG, "Error processing audio", e);
+            handleProcessingFailure("Audio processing error: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Process image using FFmpeg
+     */
+    private void processImage(Uri imageUri) {
+        try {
+            File outputDir = getExternalFilesDir("processed");
+            if (!outputDir.exists()) {
+                outputDir.mkdirs();
+            }
+            
+            File outputFile = new File(outputDir, "optimized_" + System.currentTimeMillis() + ".jpg");
+            String inputPath = FileUtils.getPath(this, imageUri);
+            String outputPath = outputFile.getAbsolutePath();
+            
+            // Build FFmpeg command for image optimization
+            String[] command = {
+                "-i", inputPath,
+                "-q:v", "2",  // Quality level (1-31, 1 is best)
+                outputPath
+            };
+            
+            executeFFmpegCommand(command, outputFile);
+        } catch (Exception e) {
+            Log.e(TAG, "Error processing image", e);
+            handleProcessingFailure("Image processing error: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Execute FFmpeg command and handle result
+     */
+    private void executeFFmpegCommand(String[] command, File outputFile) {
+        try {
+            // Join the command array into a single string
+            StringBuilder sb = new StringBuilder();
+            for (String part : command) {
+                sb.append(part).append(" ");
+            }
+            String commandString = sb.toString().trim();
+            
+            // Execute FFmpeg command asynchronously
+            FFmpegKit.executeAsync(commandString, session -> {
+                ReturnCode returnCode = session.getReturnCode();
                 
-                // Create a thumbnail
-                createVideoThumbnail(outputUri);
-            }
-            
-            @Override
-            public void onError(String errorMessage) {
-                hideProgressDialog();
-                showError(errorMessage);
-            }
-        });
-    }
-    
-    private void createVideoThumbnail(Uri videoUri) {
-        showProgressDialog("Creating thumbnail...");
-        
-        MediaUtils.createVideoThumbnail(this, videoUri, new MediaUtils.MediaProcessCallback() {
-            @Override
-            public void onSuccess(Uri outputUri) {
-                hideProgressDialog();
-                
-                runOnUiThread(() -> {
-                    imagePreview.setVisibility(View.VISIBLE);
-                    videoPreview.setVisibility(View.GONE);
-                    imagePreview.setImageURI(outputUri);
-                    
-                    Toast.makeText(MediaProcessingActivity.this, 
-                            "Thumbnail created", Toast.LENGTH_SHORT).show();
-                });
-            }
-            
-            @Override
-            public void onError(String errorMessage) {
-                hideProgressDialog();
-                showError("Thumbnail error: " + errorMessage);
-            }
-        });
-    }
-    
-    private void processImage() {
-        MediaUtils.compressImage(this, currentMediaUri, new MediaUtils.MediaProcessCallback() {
-            @Override
-            public void onSuccess(Uri outputUri) {
-                hideProgressDialog();
-                showResult("Image compressed successfully", outputUri);
-                
-                runOnUiThread(() -> {
-                    imagePreview.setImageURI(outputUri);
-                });
-            }
-            
-            @Override
-            public void onError(String errorMessage) {
-                hideProgressDialog();
-                showError(errorMessage);
-            }
-        });
-    }
-    
-    private void processAudio() {
-        MediaUtils.convertAudio(this, currentMediaUri, new MediaUtils.MediaProcessCallback() {
-            @Override
-            public void onSuccess(Uri outputUri) {
-                hideProgressDialog();
-                showResult("Audio converted successfully", outputUri);
-            }
-            
-            @Override
-            public void onError(String errorMessage) {
-                hideProgressDialog();
-                showError(errorMessage);
-            }
-        });
-    }
-    
-    private void showProgressDialog(String message) {
-        runOnUiThread(() -> {
-            if (progressDialog != null) {
-                progressDialog.dismiss();
-            }
-            
-            progressDialog = new ProgressDialog(this);
-            progressDialog.setMessage(message);
-            progressDialog.setIndeterminate(true);
-            progressDialog.setCancelable(false);
-            progressDialog.show();
-        });
-    }
-    
-    private void hideProgressDialog() {
-        runOnUiThread(() -> {
-            if (progressDialog != null) {
-                progressDialog.dismiss();
-                progressDialog = null;
-            }
-        });
-    }
-    
-    private void showResult(String message, Uri fileUri) {
-        runOnUiThread(() -> {
-            Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
-            
-            // Show file info
-            Log.d(TAG, "Processed file: " + fileUri.toString());
-            String mediaInfo = MediaUtils.getMediaInfo(this, fileUri);
-            Log.d(TAG, "Media info: " + mediaInfo);
-            
-            // Enable sending this processed file
-            Button sendButton = findViewById(R.id.send_button);
-            sendButton.setVisibility(View.VISIBLE);
-            sendButton.setOnClickListener(v -> {
-                // Simulate sending the processed file to a chat
-                Toast.makeText(this, "Media ready to send in chat", Toast.LENGTH_SHORT).show();
+                if (returnCode.isValueSuccess()) {
+                    // Success
+                    Uri outputUri = Uri.fromFile(outputFile);
+                    runOnUiThread(() -> handleProcessingSuccess(outputUri));
+                } else {
+                    // Failure
+                    String errorMessage = session.getFailStackTrace();
+                    runOnUiThread(() -> handleProcessingFailure("FFmpeg error: " + errorMessage));
+                }
             });
-        });
+        } catch (Exception e) {
+            Log.e(TAG, "Error executing FFmpeg command", e);
+            handleProcessingFailure("Error: " + e.getMessage());
+        }
     }
     
-    private void showError(String errorMessage) {
-        runOnUiThread(() -> {
-            Toast.makeText(this, "Error: " + errorMessage, Toast.LENGTH_LONG).show();
-            Log.e(TAG, "Processing error: " + errorMessage);
-        });
+    /**
+     * Handle successful media processing
+     */
+    private void handleProcessingSuccess(Uri outputUri) {
+        if (progressDialog != null && progressDialog.isShowing()) {
+            progressDialog.dismiss();
+        }
+        
+        currentMediaUri = outputUri;
+        showMediaPreview();
+        
+        // Show the send button
+        sendButton.setVisibility(View.VISIBLE);
+        
+        Toast.makeText(this, "Media processed successfully", Toast.LENGTH_SHORT).show();
+    }
+    
+    /**
+     * Handle failed media processing
+     */
+    private void handleProcessingFailure(String errorMessage) {
+        if (progressDialog != null && progressDialog.isShowing()) {
+            progressDialog.dismiss();
+        }
+        
+        Toast.makeText(this, errorMessage, Toast.LENGTH_LONG).show();
+        Log.e(TAG, "Processing failure: " + errorMessage);
+    }
+    
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        // Clean up resources
+        if (progressDialog != null && progressDialog.isShowing()) {
+            progressDialog.dismiss();
+        }
     }
 } 
