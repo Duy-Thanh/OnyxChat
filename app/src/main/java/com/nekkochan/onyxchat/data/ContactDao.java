@@ -49,4 +49,10 @@ public interface ContactDao {
     
     @Query("SELECT EXISTS(SELECT 1 FROM contacts WHERE ownerAddress = :ownerAddress AND contactAddress = :contactAddress LIMIT 1)")
     boolean contactExists(String ownerAddress, String contactAddress);
+    
+    @Query("SELECT * FROM contacts WHERE ownerAddress = :ownerAddress AND contactAddress = :contactAddress LIMIT 1")
+    Contact getContactByAddresses(String ownerAddress, String contactAddress);
+    
+    @Query("SELECT * FROM contacts WHERE ownerAddress = :ownerAddress")
+    List<Contact> getAllContactsForOwner(String ownerAddress);
 } 

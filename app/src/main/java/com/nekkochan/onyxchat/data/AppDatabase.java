@@ -12,7 +12,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase;
 /**
  * Main database for the SecureComm app
  */
-@Database(entities = {User.class, Message.class, Contact.class}, version = 1, exportSchema = true)
+@Database(entities = {User.class, Message.class, Contact.class}, version = 2, exportSchema = true)
 public abstract class AppDatabase extends RoomDatabase {
     
     private static volatile AppDatabase INSTANCE;
@@ -20,6 +20,17 @@ public abstract class AppDatabase extends RoomDatabase {
     public abstract UserDao userDao();
     public abstract MessageDao messageDao();
     public abstract ContactDao contactDao();
+    
+    /**
+     * Migration from version 1 to 2 - adding isAppUser field to Contact
+     */
+    private static final Migration MIGRATION_1_2 = new Migration(1, 2) {
+        @Override
+        public void migrate(@NonNull SupportSQLiteDatabase database) {
+            // Add the isAppUser column to the contacts table with default value of 0 (false)
+            database.execSQL("ALTER TABLE contacts ADD COLUMN isAppUser INTEGER NOT NULL DEFAULT 0");
+        }
+    };
     
     public static AppDatabase getInstance(final Context context) {
         if (INSTANCE == null) {
@@ -37,7 +48,10 @@ public abstract class AppDatabase extends RoomDatabase {
                             "securecomm_db")
                             // Encrypt the database using SQLCipher with context
                             .openHelperFactory(new SafeHelperFactory("YOUR_ENCRYPTION_KEY".toCharArray(), appContext))
-                            .fallbackToDestructiveMigration() // For simplicity in development
+                            // Add the migration
+                            .addMigrations(MIGRATION_1_2)
+                            // Fallback only as last resort
+                            .fallbackToDestructiveMigration()
                             .build();
                 }
             }

@@ -38,6 +38,7 @@ import java.security.SecureRandom;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
@@ -387,6 +388,64 @@ public class ApiClient {
     }
     
     /**
+     * Sync contacts with server to find which ones are app users
+     * @param contactAddresses List of contact addresses to check
+     * @param callback Callback for the response
+     */
+    public void syncContacts(List<String> contactAddresses, final ApiCallback<ContactSyncResponse> callback) {
+        // Create sync request
+        ContactSyncRequest request = new ContactSyncRequest(contactAddresses);
+        
+        // Make API call
+        apiService.syncContacts(request).enqueue(new Callback<ContactSyncResponse>() {
+            @Override
+            public void onResponse(Call<ContactSyncResponse> call, retrofit2.Response<ContactSyncResponse> response) {
+                if (response.isSuccessful() && response.body() != null && "success".equals(response.body().status)) {
+                    // Notify callback of success
+                    callback.onSuccess(response.body());
+                } else {
+                    // Parse error message
+                    String errorMsg = "Contact sync failed";
+                    
+                    // Check if we have a body with an error message
+                    if (response.body() != null && response.body().message != null) {
+                        errorMsg = response.body().message;
+                    }
+                    // Otherwise try to parse the error body
+                    else if (response.errorBody() != null) {
+                        try {
+                            String errorBody = response.errorBody().string();
+                            // Try to extract the message from error body if it's in JSON format
+                            if (errorBody.contains("\"message\"")) {
+                                Gson gson = new Gson();
+                                try {
+                                    ErrorResponse error = gson.fromJson(errorBody, ErrorResponse.class);
+                                    if (error != null && error.message != null) {
+                                        errorMsg = error.message;
+                                    }
+                                } catch (Exception e) {
+                                    Log.e(TAG, "Error parsing JSON error response", e);
+                                }
+                            } else {
+                                errorMsg = errorBody;
+                            }
+                        } catch (IOException e) {
+                            Log.e(TAG, "Error parsing error response", e);
+                        }
+                    }
+                    
+                    callback.onFailure(errorMsg);
+                }
+            }
+            
+            @Override
+            public void onFailure(Call<ContactSyncResponse> call, Throwable t) {
+                callback.onFailure("Network error: " + t.getMessage());
+            }
+        });
+    }
+    
+    /**
      * API callback interface
      */
     public interface ApiCallback<T> {
@@ -403,6 +462,9 @@ public class ApiClient {
         
         @POST("api/auth/login")
         Call<AuthResponse> login(@Body LoginRequest request);
+        
+        @POST("api/contacts/sync")
+        Call<ContactSyncResponse> syncContacts(@Body ContactSyncRequest request);
     }
     
     /**
@@ -501,5 +563,36 @@ public class ApiClient {
         
         @SerializedName("message")
         public String message;
+    }
+    
+    /**
+     * Contact sync request model
+     */
+    private static class ContactSyncRequest {
+        @SerializedName("contacts")
+        private final List<String> contactAddresses;
+        
+        public ContactSyncRequest(List<String> contactAddresses) {
+            this.contactAddresses = contactAddresses;
+        }
+    }
+    
+    /**
+     * Contact sync response model
+     */
+    public static class ContactSyncResponse {
+        @SerializedName("status")
+        public String status;
+        
+        @SerializedName("message")
+        public String message;
+        
+        @SerializedName("data")
+        public ContactSyncData data;
+        
+        public static class ContactSyncData {
+            @SerializedName("appUsers")
+            public List<String> appUsers;
+        }
     }
 } 

@@ -50,6 +50,8 @@ public class Contact {
     private long createdAt; // When contact was added
     
     private long lastInteractionTime; // Last time user interacted with this contact
+    
+    private boolean isAppUser; // Whether the contact is also an OnyxChat user
 
     // Default constructor required by Room
     public Contact() {
@@ -62,6 +64,7 @@ public class Contact {
         this.nickName = nickName;
         this.isBlocked = false;
         this.isVerified = false;
+        this.isAppUser = false;
         this.createdAt = System.currentTimeMillis();
         this.lastInteractionTime = System.currentTimeMillis();
     }
@@ -130,5 +133,13 @@ public class Contact {
 
     public void setLastInteractionTime(long lastInteractionTime) {
         this.lastInteractionTime = lastInteractionTime;
+    }
+
+    public boolean isAppUser() {
+        return isAppUser;
+    }
+
+    public void setAppUser(boolean appUser) {
+        isAppUser = appUser;
     }
 } 

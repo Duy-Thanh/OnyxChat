@@ -74,6 +74,17 @@
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintTop_toTopOf="parent" />
 
+        <ImageView
+            android:id="@+id/appUserIcon"
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:layout_marginEnd="8dp"
+            android:contentDescription="App user"
+            android:src="@android:drawable/ic_menu_send"
+            android:visibility="gone"
+            app:layout_constraintEnd_toStartOf="@+id/verifiedIcon"
+            app:layout_constraintTop_toTopOf="parent" />
+
         <TextView
             android:id="@+id/unreadCount"
             android:layout_width="24dp"

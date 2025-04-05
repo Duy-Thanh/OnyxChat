@@ -3,6 +3,7 @@ package com.nekkochan.onyxchat.data;
 import android.app.Application;
 import android.os.AsyncTask;
 import android.content.Context;
+import android.util.Log;
 
 import androidx.lifecycle.LiveData;
 
@@ -10,6 +11,10 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.ArrayList;
+import java.util.function.Consumer;
+
+import com.nekkochan.onyxchat.network.ApiClient;
 
 /**
  * Repository to manage data operations and provide a clean API for data access
@@ -19,18 +24,21 @@ public class Repository {
     private final MessageDao messageDao;
     private final ContactDao contactDao;
     private final ExecutorService executorService;
+    private final AppDatabase appDatabase;
+    private final Context appContext;
 
     /**
      * Constructor to initialize the repository with DAOs
      */
     public Repository(Context context) {
-        // Initialize SQLCipher before database access
+        // Initialize SQLCipher for database encryption
         SafeHelperFactory.initSQLCipher(context.getApplicationContext());
         
-        AppDatabase db = AppDatabase.getInstance(context);
-        userDao = db.userDao();
-        messageDao = db.messageDao();
-        contactDao = db.contactDao();
+        appContext = context.getApplicationContext();
+        appDatabase = AppDatabase.getInstance(context);
+        userDao = appDatabase.userDao();
+        messageDao = appDatabase.messageDao();
+        contactDao = appDatabase.contactDao();
         executorService = Executors.newFixedThreadPool(4);
     }
 
@@ -118,8 +126,85 @@ public class Repository {
     }
 
     public void updateContactInteractionTime(String ownerAddress, String contactAddress) {
-        executorService.execute(() -> 
-            contactDao.updateLastInteractionTime(ownerAddress, contactAddress, System.currentTimeMillis()));
+        executorService.execute(() -> {
+            Contact contact = contactDao.getContactByAddresses(ownerAddress, contactAddress);
+            if (contact != null) {
+                contact.setLastInteractionTime(System.currentTimeMillis());
+                contactDao.update(contact);
+            }
+        });
+    }
+
+    /**
+     * Update the app user status of a contact
+     */
+    public void updateContactAppUserStatus(String ownerAddress, String contactAddress, boolean isAppUser) {
+        executorService.execute(() -> {
+            Contact contact = contactDao.getContactByAddresses(ownerAddress, contactAddress);
+            if (contact != null) {
+                contact.setAppUser(isAppUser);
+                contactDao.update(contact);
+            }
+        });
+    }
+    
+    /**
+     * Sync contacts with server to find which ones are app users
+     */
+    public void syncContactsWithServer(String ownerAddress, Consumer<Boolean> completionCallback) {
+        // Create a ApiClient instance
+        ApiClient apiClient = ApiClient.getInstance(appContext);
+        
+        // Get all contacts for the owner
+        executorService.execute(() -> {
+            List<Contact> contacts = contactDao.getAllContactsForOwner(ownerAddress);
+            if (contacts == null || contacts.isEmpty()) {
+                // No contacts to sync
+                if (completionCallback != null) {
+                    completionCallback.accept(true);
+                }
+                return;
+            }
+            
+            // Extract contact addresses
+            List<String> contactAddresses = new ArrayList<>();
+            for (Contact contact : contacts) {
+                contactAddresses.add(contact.getContactAddress());
+            }
+            
+            // Call API to sync contacts
+            apiClient.syncContacts(contactAddresses, new ApiClient.ApiCallback<ApiClient.ContactSyncResponse>() {
+                @Override
+                public void onSuccess(ApiClient.ContactSyncResponse response) {
+                    if (response.data != null && response.data.appUsers != null) {
+                        // Update contacts in database
+                        executorService.execute(() -> {
+                            for (Contact contact : contacts) {
+                                boolean isAppUser = response.data.appUsers.contains(contact.getContactAddress());
+                                contact.setAppUser(isAppUser);
+                                contactDao.update(contact);
+                            }
+                            
+                            if (completionCallback != null) {
+                                completionCallback.accept(true);
+                            }
+                        });
+                    } else {
+                        if (completionCallback != null) {
+                            completionCallback.accept(false);
+                        }
+                    }
+                }
+                
+                @Override
+                public void onFailure(String errorMessage) {
+                    Log.e("Repository", "Failed to sync contacts: " + errorMessage);
+                    if (completionCallback != null) {
+                        completionCallback.accept(false);
+                    }
+                }
+            });
+        });
     }
 
     // Helper methods

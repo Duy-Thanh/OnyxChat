@@ -3,6 +3,9 @@ package com.nekkochan.onyxchat.ui;
 import android.app.AlertDialog;
 import android.os.Bundle;
 import android.view.LayoutInflater;
+import android.view.Menu;
+import android.view.MenuInflater;
+import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.EditText;
@@ -39,6 +42,33 @@ public class ContactsFragment extends Fragment implements ContactAdapter.OnConta
         super.onCreate(savedInstanceState);
         viewModel = new ViewModelProvider(requireActivity()).get(MainViewModel.class);
         adapter = new ContactAdapter(this);
+        setHasOptionsMenu(true); // Enable options menu
+    }
+    
+    @Override
+    public void onResume() {
+        super.onResume();
+        // Sync contacts with server when fragment is resumed
+        syncContacts();
+    }
+    
+    @Override
+    public void onCreateOptionsMenu(@NonNull Menu menu, @NonNull MenuInflater inflater) {
+        inflater.inflate(R.menu.contacts_menu, menu);
+        super.onCreateOptionsMenu(menu, inflater);
+    }
+    
+    @Override
+    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
+        int id = item.getItemId();
+        if (id == R.id.action_refresh_contacts) {
+            syncContacts();
+            return true;
+        } else if (id == R.id.action_add_contact) {
+            showAddContactDialog();
+            return true;
+        }
+        return super.onOptionsItemSelected(item);
     }
     
     @Nullable
@@ -183,5 +213,13 @@ public class ContactsFragment extends Fragment implements ContactAdapter.OnConta
     private void showEncryptionInfo(Contact contact) {
         // TODO: Implement showing encryption details
         Snackbar.make(requireView(), "Encryption info not implemented yet", Snackbar.LENGTH_SHORT).show();
+    }
+    
+    /**
+     * Sync contacts with server
+     */
+    private void syncContacts() {
+        viewModel.syncContacts();
+        Snackbar.make(requireView(), "Syncing contacts...", Snackbar.LENGTH_SHORT).show();
     }
 } 

@@ -256,6 +256,31 @@ public class MainViewModel extends AndroidViewModel {
     public void setContactVerified(Contact contact, boolean verified) {
         repository.setContactVerified(contact.getOwnerAddress(), contact.getContactAddress(), verified);
     }
+    
+    /**
+     * Sync contacts with server to find out which contacts are also app users
+     */
+    public void syncContacts() {
+        if (currentUser == null) {
+            errorMessage.setValue("No current user");
+            return;
+        }
+        
+        isLoading.setValue(true);
+        repository.syncContactsWithServer(currentUser.getAddress(), success -> {
+            isLoading.postValue(false);
+            if (!success) {
+                errorMessage.postValue("Failed to sync contacts with server");
+            } else {
+                Log.d(TAG, "Contacts synced successfully");
+                
+                // Re-fetch the contacts list to update the UI with new app user statuses
+                if (activeContacts == null) {
+                    activeContacts = repository.getActiveContacts(currentUser.getAddress());
+                }
+            }
+        });
+    }
 
     /**
      * Get the current network connection state

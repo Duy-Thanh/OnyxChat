@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 1,
-    "identityHash": "84198959fc6019b87c30acb5c41eaf28",
+    "identityHash": "87b82cca5f2f0a2604ac27b7852097c7",
     "entities": [
       {
         "tableName": "users",
@@ -188,7 +188,7 @@
       },
       {
         "tableName": "contacts",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `ownerAddress` TEXT NOT NULL, `contactAddress` TEXT NOT NULL, `nickName` TEXT, `isBlocked` INTEGER NOT NULL, `isVerified` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `lastInteractionTime` INTEGER NOT NULL, FOREIGN KEY(`contactAddress`) REFERENCES `users`(`address`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`ownerAddress`) REFERENCES `users`(`address`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `ownerAddress` TEXT NOT NULL, `contactAddress` TEXT NOT NULL, `nickName` TEXT, `isBlocked` INTEGER NOT NULL, `isVerified` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `lastInteractionTime` INTEGER NOT NULL, `isAppUser` INTEGER NOT NULL, FOREIGN KEY(`contactAddress`) REFERENCES `users`(`address`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`ownerAddress`) REFERENCES `users`(`address`) ON UPDATE NO ACTION ON DELETE CASCADE )",
         "fields": [
           {
             "fieldPath": "id",
@@ -235,6 +235,12 @@
           {
             "fieldPath": "lastInteractionTime",
             "columnName": "lastInteractionTime",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isAppUser",
+            "columnName": "isAppUser",
             "affinity": "INTEGER",
             "notNull": true
           }
@@ -294,7 +300,7 @@
     "views": [],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '84198959fc6019b87c30acb5c41eaf28')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '87b82cca5f2f0a2604ac27b7852097c7')"
     ]
   }
 }

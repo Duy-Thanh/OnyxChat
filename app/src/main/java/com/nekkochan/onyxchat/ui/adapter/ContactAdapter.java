@@ -70,6 +70,7 @@ public class ContactAdapter extends ListAdapter<Contact, ContactAdapter.ContactV
         private final TextView lastMessageTimeView;
         private final ImageView contactAvatarView;
         private final ImageView verifiedIconView;
+        private final ImageView appUserIconView;
         private final TextView unreadCountView;
         
         ContactViewHolder(@NonNull View itemView, OnContactClickListener listener) {
@@ -80,6 +81,7 @@ public class ContactAdapter extends ListAdapter<Contact, ContactAdapter.ContactV
             lastMessageTimeView = itemView.findViewById(R.id.lastMessageTime);
             contactAvatarView = itemView.findViewById(R.id.contactAvatar);
             verifiedIconView = itemView.findViewById(R.id.verifiedIcon);
+            appUserIconView = itemView.findViewById(R.id.appUserIcon);
             unreadCountView = itemView.findViewById(R.id.unreadCount);
             
             // Set click listeners
@@ -112,6 +114,16 @@ public class ContactAdapter extends ListAdapter<Contact, ContactAdapter.ContactV
             
             // Set verification status
             verifiedIconView.setVisibility(contact.isVerified() ? View.VISIBLE : View.GONE);
+            
+            // Show app user indicator if the contact is an app user
+            if (contact.isAppUser()) {
+                appUserIconView.setVisibility(View.VISIBLE);
+                // Highlight the contact name for app users
+                contactNameView.setTextColor(itemView.getContext().getResources().getColor(R.color.colorPrimary, null));
+            } else {
+                appUserIconView.setVisibility(View.GONE);
+                contactNameView.setTextColor(itemView.getContext().getResources().getColor(android.R.color.primary_text_light, null));
+            }
             
             // Last interaction time
             lastMessageTimeView.setText(timeFormat.format(new Date(contact.getLastInteractionTime())));
@@ -152,6 +164,7 @@ public class ContactAdapter extends ListAdapter<Contact, ContactAdapter.ContactV
             return oldItem.getLastInteractionTime() == newItem.getLastInteractionTime() &&
                    oldItem.isVerified() == newItem.isVerified() &&
                    oldItem.isBlocked() == newItem.isBlocked() && 
+                   oldItem.isAppUser() == newItem.isAppUser() &&
                    ((oldItem.getNickName() == null && newItem.getNickName() == null) ||
                     (oldItem.getNickName() != null && oldItem.getNickName().equals(newItem.getNickName())));
         }
