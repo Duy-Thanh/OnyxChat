@@ -21,6 +21,8 @@ import androidx.recyclerview.widget.DividerItemDecoration;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.google.android.material.floatingactionbutton.FloatingActionButton;
+import com.google.android.material.snackbar.BaseTransientBottomBar;
 import com.google.android.material.snackbar.Snackbar;
 import com.nekkochan.onyxchat.R;
 import com.nekkochan.onyxchat.data.Contact;
@@ -85,6 +87,14 @@ public class ContactsFragment extends Fragment implements ContactAdapter.OnConta
         recyclerView = view.findViewById(R.id.contactsRecyclerView);
         emptyView = view.findViewById(R.id.emptyContactsText);
         
+        // Setup SwipeRefreshLayout
+        androidx.swiperefreshlayout.widget.SwipeRefreshLayout swipeRefreshLayout = 
+                view.findViewById(R.id.swipeRefreshLayout);
+        swipeRefreshLayout.setOnRefreshListener(() -> {
+            syncContacts();
+            swipeRefreshLayout.setRefreshing(false);
+        });
+        
         // Setup recycler view
         recyclerView.setLayoutManager(new LinearLayoutManager(getContext()));
         recyclerView.addItemDecoration(new DividerItemDecoration(requireContext(), DividerItemDecoration.VERTICAL));
@@ -99,7 +109,7 @@ public class ContactsFragment extends Fragment implements ContactAdapter.OnConta
         // Observe error messages
         viewModel.getErrorMessage().observe(getViewLifecycleOwner(), error -> {
             if (error != null && !error.isEmpty()) {
-                Snackbar.make(view, error, Snackbar.LENGTH_LONG).show();
+                createSnackbar(view, error, Snackbar.LENGTH_LONG).show();
                 viewModel.clearErrorMessage();
             }
         });
@@ -151,11 +161,43 @@ public class ContactsFragment extends Fragment implements ContactAdapter.OnConta
                 .show();
     }
     
+    /**
+     * Create a properly positioned Snackbar that won't overlap with bottom navigation
+     * @param view The parent view
+     * @param message The message to show
+     * @param duration The duration (LENGTH_SHORT or LENGTH_LONG)
+     * @return The created Snackbar
+     */
+    private Snackbar createSnackbar(View view, String message, int duration) {
+        Snackbar snackbar = Snackbar.make(view, message, duration);
+        
+        // Get the root CoordinatorLayout for proper Snackbar behavior
+        View coordinator = requireActivity().findViewById(android.R.id.content);
+        
+        // Apply special margins to position above navigation bar
+        View snackbarView = snackbar.getView();
+        ViewGroup.MarginLayoutParams params = (ViewGroup.MarginLayoutParams) snackbarView.getLayoutParams();
+        
+        // Add extra margin at the bottom to ensure it's above the navigation bar
+        params.bottomMargin = params.bottomMargin + 72;
+        snackbarView.setLayoutParams(params);
+        
+        // Force Snackbar to appear higher up
+        snackbar.setBehavior(new BaseTransientBottomBar.Behavior() {
+            @Override
+            public boolean canSwipeDismissView(View child) {
+                return true; // Allow swipe dismiss
+            }
+        });
+        
+        return snackbar;
+    }
+    
     @Override
     public void onContactClick(Contact contact) {
         // Open chat with this contact
         // TODO: Implement navigation to chat fragment with this contact
-        Snackbar.make(requireView(), "Chat with " + contact.getContactAddress(), Snackbar.LENGTH_SHORT).show();
+        createSnackbar(requireView(), "Chat with " + contact.getContactAddress(), Snackbar.LENGTH_SHORT).show();
     }
     
     @Override
@@ -212,7 +254,7 @@ public class ContactsFragment extends Fragment implements ContactAdapter.OnConta
      */
     private void showEncryptionInfo(Contact contact) {
         // TODO: Implement showing encryption details
-        Snackbar.make(requireView(), "Encryption info not implemented yet", Snackbar.LENGTH_SHORT).show();
+        createSnackbar(requireView(), "Encryption info not implemented yet", Snackbar.LENGTH_SHORT).show();
     }
     
     /**
@@ -220,6 +262,6 @@ public class ContactsFragment extends Fragment implements ContactAdapter.OnConta
      */
     private void syncContacts() {
         viewModel.syncContacts();
-        Snackbar.make(requireView(), "Syncing contacts...", Snackbar.LENGTH_SHORT).show();
+        createSnackbar(requireView(), "Syncing contacts...", Snackbar.LENGTH_SHORT).show();
     }
 } 
