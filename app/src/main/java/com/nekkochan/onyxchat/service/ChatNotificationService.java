@@ -44,7 +44,7 @@ public class ChatNotificationService extends Service {
     public static final String ACTION_START_FROM_BOOT = "com.nekkochan.onyxchat.START_FROM_BOOT";
     
     // Delay before promoting to foreground after boot (in milliseconds)
-    private static final long BOOT_TO_FOREGROUND_DELAY = 30000; // 30 seconds
+    private static final long BOOT_TO_FOREGROUND_DELAY = 3000; // 3 seconds (reduced from 30 seconds)
     
     private ChatService chatService;
     private UserSessionManager sessionManager;
@@ -109,18 +109,14 @@ public class ChatNotificationService extends Service {
      * Handle a start request coming from boot completed
      */
     private void handleStartFromBoot() {
-        // Connect to chat service immediately in the background
+        // Start as foreground IMMEDIATELY to avoid system killing service
+        startServiceAsForeground();
+        
+        // Connect to chat service in the background
         String userId = sessionManager.getUserId();
         if (userId != null && !userId.isEmpty()) {
             connectToChatService(userId);
         }
-        
-        // Schedule promotion to foreground after a delay
-        Log.d(TAG, "Scheduling promotion to foreground in " + BOOT_TO_FOREGROUND_DELAY + "ms");
-        mainHandler.postDelayed(() -> {
-            Log.d(TAG, "Promoting service to foreground after boot delay");
-            startServiceAsForeground();
-        }, BOOT_TO_FOREGROUND_DELAY);
     }
     
     /**

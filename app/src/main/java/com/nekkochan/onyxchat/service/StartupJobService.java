@@ -17,21 +17,35 @@ public class StartupJobService extends JobService {
     public boolean onStartJob(JobParameters params) {
         Log.d(TAG, "Chat service startup job started");
         
-        // Start the service from the job
-        Intent serviceIntent = new Intent(this, ChatNotificationService.class);
-        serviceIntent.setAction(ChatNotificationService.ACTION_START_FROM_BOOT);
-        
-        // The service will handle the foreground promotion internally
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(serviceIntent);
-        } else {
-            startService(serviceIntent);
+        try {
+            // Start the service from the job
+            Intent serviceIntent = new Intent(this, ChatNotificationService.class);
+            serviceIntent.setAction(ChatNotificationService.ACTION_START_FROM_BOOT);
+            
+            // The service will handle the foreground promotion internally
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                Log.d(TAG, "Starting foreground service from job service");
+                startForegroundService(serviceIntent);
+            } else {
+                Log.d(TAG, "Starting regular service from job service");
+                startService(serviceIntent);
+            }
+            
+            // Wait a moment to ensure service starts properly
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                Log.e(TAG, "Sleep interrupted", e);
+            }
+            
+            // Job is complete
+            jobFinished(params, false);
+            return false;
+        } catch (Exception e) {
+            Log.e(TAG, "Error starting service from job", e);
+            jobFinished(params, true); // Request retry
+            return false;
         }
-        
-        // Return false since we don't need to do any background processing
-        // The job is complete once the service is started
-        jobFinished(params, false);
-        return false;
     }
 
     @Override
