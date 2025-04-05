@@ -65,10 +65,28 @@ public class DirectApiClient {
         // Get API URL from preferences or use default
         SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(context);
         String apiUrl = sharedPreferences.getString("server_url", DEFAULT_API_ENDPOINT);
+        
+        // Convert WebSocket URLs to HTTP/HTTPS for REST API calls
+        if (apiUrl.startsWith("ws://")) {
+            apiUrl = apiUrl.replace("ws://", "http://");
+            Log.d(TAG, "Converting WebSocket URL to HTTP: " + apiUrl);
+        } else if (apiUrl.startsWith("wss://")) {
+            apiUrl = apiUrl.replace("wss://", "https://");
+            Log.d(TAG, "Converting WebSocket URL to HTTPS: " + apiUrl);
+        }
+        
+        // Remove WebSocket path if present
         if (apiUrl.endsWith("/ws") || apiUrl.endsWith("/ws/")) {
             // If the URL points to a WebSocket endpoint, strip the /ws
             apiUrl = apiUrl.replace("/ws/", "/").replace("/ws", "/");
         }
+        
+        // Ensure URL ends with a slash for easier endpoint concatenation
+        if (!apiUrl.endsWith("/")) {
+            apiUrl = apiUrl + "/";
+        }
+        
+        Log.d(TAG, "Using API URL: " + apiUrl);
         this.apiBaseUrl = apiUrl;
         
         // Configure OkHttpClient with SSL trust for development

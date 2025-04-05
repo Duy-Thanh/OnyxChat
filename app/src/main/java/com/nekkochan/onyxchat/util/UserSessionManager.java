@@ -18,6 +18,22 @@ import java.net.URL;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.security.cert.CertificateException;
+import java.security.cert.X509Certificate;
+
+import javax.net.ssl.HostnameVerifier;
+import javax.net.ssl.HttpsURLConnection;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSession;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
+
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
+
+import java.util.concurrent.TimeUnit;
 
 /**
  * Session manager to store and manage user session data.
@@ -51,6 +67,52 @@ public class UserSessionManager {
         pref = context.getSharedPreferences(PREF_NAME, PRIVATE_MODE);
         editor = pref.edit();
         executor = Executors.newSingleThreadExecutor();
+        
+        // Initialize SSL trust for development
+        setupUnsafeSSL();
+    }
+    
+    /**
+     * Set up unsafe SSL configuration for development (DO NOT USE IN PRODUCTION)
+     */
+    private void setupUnsafeSSL() {
+        try {
+            TrustManager[] trustAllCerts = new TrustManager[] {
+                new X509TrustManager() {
+                    public X509Certificate[] getAcceptedIssuers() {
+                        return new X509Certificate[0];
+                    }
+                    
+                    @Override
+                    public void checkClientTrusted(X509Certificate[] chain, String authType) throws CertificateException {
+                    }
+                    
+                    @Override
+                    public void checkServerTrusted(X509Certificate[] chain, String authType) throws CertificateException {
+                    }
+                }
+            };
+            
+            // Install the all-trusting trust manager
+            SSLContext sc = SSLContext.getInstance("TLS");
+            sc.init(null, trustAllCerts, new java.security.SecureRandom());
+            HttpsURLConnection.setDefaultSSLSocketFactory(sc.getSocketFactory());
+            
+            // Create all-trusting host name verifier
+            HostnameVerifier allHostsValid = new HostnameVerifier() {
+                @Override
+                public boolean verify(String hostname, SSLSession session) {
+                    return true;
+                }
+            };
+            
+            // Install the all-trusting host verifier
+            HttpsURLConnection.setDefaultHostnameVerifier(allHostsValid);
+            
+            Log.d(TAG, "Set up unsafe SSL for development");
+        } catch (Exception e) {
+            Log.e(TAG, "Error setting up unsafe SSL", e);
+        }
     }
     
     /**
@@ -148,25 +210,26 @@ public class UserSessionManager {
     }
     
     /**
-     * Refresh the auth token using refresh token
-     * Returns a CompletableFuture that resolves to true if successful, false otherwise
+     * Refresh auth token using refresh token
+     * @return CompletableFuture with success/failure result
      */
     public CompletableFuture<Boolean> refreshToken() {
         CompletableFuture<Boolean> future = new CompletableFuture<>();
         
-        // Get refresh token
+        // Check if refresh token is available
         String refreshToken = getRefreshToken();
         if (refreshToken == null || refreshToken.isEmpty()) {
-            Log.e(TAG, "Cannot refresh: no refresh token available");
+            Log.e(TAG, "Cannot refresh token: No refresh token available");
             future.complete(false);
             return future;
         }
         
-        // Get saved server URL from shared preferences
+        // Get server URL from shared preferences
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
         String serverUrl = prefs.getString("server_url", "https://10.0.2.2:443");
+        
+        // Fix /ws/ in URL if present
         if (serverUrl.endsWith("/ws") || serverUrl.endsWith("/ws/")) {
-            // If the URL points to a WebSocket endpoint, strip the /ws
             serverUrl = serverUrl.replace("/ws/", "/").replace("/ws", "/");
         }
         
@@ -176,45 +239,45 @@ public class UserSessionManager {
         }
         
         final String apiUrl = serverUrl + "api/auth/refresh";
-        Log.d(TAG, "Refreshing token using URL: " + apiUrl);
+        Log.d(TAG, "Refreshing token from: " + apiUrl);
         
-        // Execute network request in background
+        // Use OkHttpClient for better handling of SSL
         executor.execute(() -> {
-            HttpURLConnection connection = null;
             try {
-                // Create connection
-                URL url = new URL(apiUrl);
-                connection = (HttpURLConnection) url.openConnection();
-                connection.setRequestMethod("POST");
-                connection.setRequestProperty("Content-Type", "application/json");
-                connection.setRequestProperty("Accept", "application/json");
-                connection.setDoOutput(true);
+                // Create OkHttpClient with proper SSL handling
+                OkHttpClient client = new OkHttpClient.Builder()
+                    .connectTimeout(30, TimeUnit.SECONDS)
+                    .readTimeout(30, TimeUnit.SECONDS)
+                    .writeTimeout(30, TimeUnit.SECONDS)
+                    // For development only - allow self-signed certs
+                    .hostnameVerifier((hostname, session) -> true)
+                    .sslSocketFactory(getUnsafeSSLSocketFactory(), getUnsafeTrustManager())
+                    .build();
                 
-                // Create request body with refresh token
+                // Create request body
                 JSONObject requestBody = new JSONObject();
                 requestBody.put("refreshToken", refreshToken);
                 
-                // Write request body
-                try (OutputStream os = connection.getOutputStream()) {
-                    byte[] input = requestBody.toString().getBytes("utf-8");
-                    os.write(input, 0, input.length);
-                }
+                // Build request
+                RequestBody body = RequestBody.create(
+                    okhttp3.MediaType.parse("application/json"), 
+                    requestBody.toString()
+                );
                 
-                // Get response
-                int responseCode = connection.getResponseCode();
-                if (responseCode >= 200 && responseCode < 300) {
-                    // Read response
-                    StringBuilder response = new StringBuilder();
-                    try (BufferedReader br = new BufferedReader(
-                            new InputStreamReader(connection.getInputStream(), "utf-8"))) {
-                        String responseLine;
-                        while ((responseLine = br.readLine()) != null) {
-                            response.append(responseLine.trim());
-                        }
-                    }
-                    
-                    // Parse response
-                    JSONObject jsonResponse = new JSONObject(response.toString());
+                Request request = new Request.Builder()
+                    .url(apiUrl)
+                    .post(body)
+                    .addHeader("Content-Type", "application/json")
+                    .addHeader("Accept", "application/json")
+                    .build();
+                
+                // Execute request
+                Response response = client.newCall(request).execute();
+                
+                // Process response
+                if (response.isSuccessful() && response.body() != null) {
+                    String responseString = response.body().string();
+                    JSONObject jsonResponse = new JSONObject(responseString);
                     JSONObject data = jsonResponse.getJSONObject("data");
                     JSONObject tokens = data.getJSONObject("tokens");
                     
@@ -227,24 +290,59 @@ public class UserSessionManager {
                     editor.putString(KEY_REFRESH_TOKEN, newRefreshToken);
                     editor.apply();
                     
-                    Log.d(TAG, "Token refreshed successfully");
+                    Log.d(TAG, "Token refreshed successfully with OkHttpClient");
                     future.complete(true);
                 } else {
-                    // Handle error response
-                    Log.e(TAG, "Failed to refresh token: HTTP " + responseCode);
+                    int code = response.code();
+                    Log.e(TAG, "Failed to refresh token: HTTP " + code);
+                    
+                    // If unauthorized, clear tokens
+                    if (code == 401) {
+                        editor.remove(KEY_AUTH_TOKEN);
+                        editor.remove(KEY_REFRESH_TOKEN);
+                        editor.apply();
+                    }
+                    
                     future.complete(false);
                 }
             } catch (Exception e) {
-                Log.e(TAG, "Error refreshing token", e);
+                Log.e(TAG, "Error refreshing token with OkHttpClient", e);
                 future.complete(false);
-            } finally {
-                if (connection != null) {
-                    connection.disconnect();
-                }
             }
         });
         
         return future;
+    }
+    
+    /**
+     * Get an SSL socket factory that trusts all certificates
+     * Only for development!
+     */
+    private javax.net.ssl.SSLSocketFactory getUnsafeSSLSocketFactory() throws Exception {
+        javax.net.ssl.SSLContext sslContext = javax.net.ssl.SSLContext.getInstance("TLS");
+        sslContext.init(null, new javax.net.ssl.TrustManager[]{getUnsafeTrustManager()}, new java.security.SecureRandom());
+        return sslContext.getSocketFactory();
+    }
+    
+    /**
+     * Get a trust manager that trusts all certificates
+     * Only for development!
+     */
+    private javax.net.ssl.X509TrustManager getUnsafeTrustManager() {
+        return new javax.net.ssl.X509TrustManager() {
+            @Override
+            public void checkClientTrusted(java.security.cert.X509Certificate[] chain, String authType) {
+            }
+            
+            @Override
+            public void checkServerTrusted(java.security.cert.X509Certificate[] chain, String authType) {
+            }
+            
+            @Override
+            public java.security.cert.X509Certificate[] getAcceptedIssuers() {
+                return new java.security.cert.X509Certificate[]{};
+            }
+        };
     }
     
     /**

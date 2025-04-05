@@ -1,17 +1,22 @@
 package com.nekkochan.onyxchat.service;
 
+import android.app.AlarmManager;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.ServiceInfo;
 import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.os.PowerManager;
+import android.os.SystemClock;
 import android.util.Log;
 
 import androidx.annotation.Nullable;
@@ -42,6 +47,21 @@ public class ChatNotificationService extends Service {
     public static final String ACTION_START_SERVICE = "com.nekkochan.onyxchat.START_NOTIFICATION_SERVICE";
     public static final String ACTION_STOP_SERVICE = "com.nekkochan.onyxchat.STOP_NOTIFICATION_SERVICE";
     public static final String ACTION_START_FROM_BOOT = "com.nekkochan.onyxchat.START_FROM_BOOT";
+    public static final String ACTION_RESTART_SERVICE = "com.nekkochan.onyxchat.RESTART_SERVICE";
+    public static final String ACTION_ALARM_PING = "com.nekkochan.onyxchat.ALARM_PING";
+    
+    // Alarm constants
+    private static final int ALARM_ID = 12345;
+    private static final long ALARM_INTERVAL = 60 * 1000; // 1 minute
+    
+    // WakeLock for keeping service alive
+    private PowerManager.WakeLock wakeLock;
+    
+    // Alarm manager for periodic wake up
+    private AlarmManager alarmManager;
+    
+    // Alarm ping receiver
+    private BroadcastReceiver alarmReceiver;
     
     // Delay before promoting to foreground after boot (in milliseconds)
     private static final long BOOT_TO_FOREGROUND_DELAY = 3000; // 3 seconds (reduced from 30 seconds)
@@ -75,6 +95,139 @@ public class ChatNotificationService extends Service {
         
         // Set up periodic memory cleanup
         setupMemoryCleanup();
+        
+        // Set up the alarm manager for periodic wake-up
+        setupAlarmManager();
+        
+        // Set up the wake lock
+        setupWakeLock();
+        
+        // Register alarm receiver
+        registerAlarmReceiver();
+    }
+    
+    /**
+     * Set up the wake lock to keep service alive
+     */
+    private void setupWakeLock() {
+        PowerManager powerManager = (PowerManager) getSystemService(POWER_SERVICE);
+        wakeLock = powerManager.newWakeLock(
+                PowerManager.PARTIAL_WAKE_LOCK,
+                "OnyxChat:ChatServiceWakeLock");
+        wakeLock.setReferenceCounted(false);
+    }
+    
+    /**
+     * Set up alarm manager for periodic wake-up
+     */
+    private void setupAlarmManager() {
+        alarmManager = (AlarmManager) getSystemService(ALARM_SERVICE);
+        
+        // Start periodic alarm
+        startAlarm();
+    }
+    
+    /**
+     * Register the alarm receiver
+     */
+    private void registerAlarmReceiver() {
+        alarmReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                if (ACTION_ALARM_PING.equals(intent.getAction())) {
+                    Log.d(TAG, "Received alarm ping to keep service alive");
+                    
+                    // Check connection and reconnect if needed
+                    String userId = sessionManager.getUserId();
+                    if (userId != null && !userId.isEmpty()) {
+                        // Check WebSocket status
+                        if (chatService != null) {
+                            if (!chatService.checkConnectionStatus()) {
+                                Log.d(TAG, "Connection needs to be reestablished");
+                                chatService.connect(userId);
+                            } else {
+                                Log.d(TAG, "Connection is still active");
+                            }
+                        }
+                    }
+                    
+                    // Ensure the service is still in foreground
+                    if (!isRunningAsForeground) {
+                        startServiceAsForeground();
+                    }
+                }
+            }
+        };
+        
+        // Register for alarm pings
+        registerReceiver(alarmReceiver, new IntentFilter(ACTION_ALARM_PING), RECEIVER_EXPORTED);
+    }
+    
+    /**
+     * Start the alarm for periodic wake-up
+     */
+    private void startAlarm() {
+        Intent intent = new Intent(this, ChatNotificationService.class);
+        intent.setAction(ACTION_ALARM_PING);
+        
+        PendingIntent pendingIntent = PendingIntent.getBroadcast(
+                this,
+                ALARM_ID,
+                new Intent(ACTION_ALARM_PING),
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        );
+        
+        try {
+            // Schedule repeating alarm
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                // Use setExactAndAllowWhileIdle for newer Android versions
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    // Android 12 (API 31) and above requires SCHEDULE_EXACT_ALARM permission
+                    if (alarmManager.canScheduleExactAlarms()) {
+                        alarmManager.setExactAndAllowWhileIdle(
+                                AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                                SystemClock.elapsedRealtime() + ALARM_INTERVAL,
+                                pendingIntent
+                        );
+                        Log.d(TAG, "Scheduled exact alarm successfully");
+                    } else {
+                        // Fall back to inexact alarm if we don't have permission
+                        Log.w(TAG, "No permission for exact alarms, using inexact alarm instead");
+                        alarmManager.set(
+                                AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                                SystemClock.elapsedRealtime() + ALARM_INTERVAL,
+                                pendingIntent
+                        );
+                    }
+                } else {
+                    // For Android versions < 12
+                    alarmManager.setExactAndAllowWhileIdle(
+                            AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                            SystemClock.elapsedRealtime() + ALARM_INTERVAL,
+                            pendingIntent
+                    );
+                }
+            } else {
+                // Use setExact for older Android versions
+                alarmManager.setExact(
+                        AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                        SystemClock.elapsedRealtime() + ALARM_INTERVAL,
+                        pendingIntent
+                );
+            }
+            
+            Log.d(TAG, "Alarm scheduled to wake up service every " + (ALARM_INTERVAL / 1000) + " seconds");
+        } catch (SecurityException e) {
+            // Handle the case where we don't have permission to set exact alarms
+            Log.e(TAG, "No permission to set exact alarms, falling back to inexact alarm", e);
+            
+            // Fall back to using an inexact alarm
+            alarmManager.set(
+                    AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                    SystemClock.elapsedRealtime() + ALARM_INTERVAL,
+                    pendingIntent
+            );
+        }
     }
     
     /**
@@ -125,6 +278,18 @@ public class ChatNotificationService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         Log.d(TAG, "Starting Chat Notification Service");
         
+        // Acquire wake lock to keep service alive
+        try {
+            if (wakeLock != null && !wakeLock.isHeld()) {
+                wakeLock.acquire(10 * 60 * 1000L); // 10 minutes max
+                Log.d(TAG, "WakeLock acquired");
+            }
+        } catch (SecurityException e) {
+            // WAKE_LOCK permission not granted
+            Log.e(TAG, "Failed to acquire wake lock: " + e.getMessage());
+            // Continue without wake lock
+        }
+        
         if (intent != null) {
             String action = intent.getAction();
             Log.d(TAG, "Service action: " + action);
@@ -137,6 +302,18 @@ public class ChatNotificationService extends Service {
                 // When starting from boot, we first connect as a background service
                 Log.d(TAG, "Starting from boot completed broadcast");
                 handleStartFromBoot();
+                return START_STICKY;
+            } else if (ACTION_RESTART_SERVICE.equals(action)) {
+                Log.d(TAG, "Restarting service");
+                // Handle restart specially
+                startServiceAsForeground();
+                return START_STICKY;
+            } else if (ACTION_ALARM_PING.equals(action)) {
+                Log.d(TAG, "Received alarm ping in onStartCommand");
+                
+                // Schedule next alarm
+                startAlarm();
+                
                 return START_STICKY;
             }
         }
@@ -185,13 +362,20 @@ public class ChatNotificationService extends Service {
         try {
             // For Android 14+ (API 34+), specify a foreground service type
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                startForeground(FOREGROUND_NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE);
+                startForeground(FOREGROUND_NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
             } else {
                 startForeground(FOREGROUND_NOTIFICATION_ID, notification);
             }
             isRunningAsForeground = true;
         } catch (Exception e) {
             Log.e(TAG, "Error starting foreground service", e);
+            // Fallback to non-typed foreground service if possible
+            try {
+                startForeground(FOREGROUND_NOTIFICATION_ID, notification);
+                isRunningAsForeground = true;
+            } catch (Exception e2) {
+                Log.e(TAG, "Error starting fallback foreground service", e2);
+            }
         }
     }
     
@@ -342,6 +526,63 @@ public class ChatNotificationService extends Service {
         }
     }
     
+    /**
+     * Schedule a restart of the service using AlarmManager
+     */
+    private void scheduleServiceRestart() {
+        Intent restartIntent = new Intent(this, ChatNotificationService.class);
+        restartIntent.setAction(ACTION_RESTART_SERVICE);
+        
+        PendingIntent pendingIntent = PendingIntent.getService(
+                this, 
+                1, 
+                restartIntent, 
+                PendingIntent.FLAG_ONE_SHOT | PendingIntent.FLAG_IMMUTABLE
+        );
+        
+        // Schedule service restart in 5 seconds
+        AlarmManager alarmManager = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && alarmManager.canScheduleExactAlarms()) {
+                    // Use exact alarms if we have permission (Android 12+)
+                    alarmManager.setExactAndAllowWhileIdle(
+                            AlarmManager.RTC_WAKEUP,
+                            System.currentTimeMillis() + 5000,
+                            pendingIntent
+                    );
+                    Log.d(TAG, "Service restart scheduled precisely in 5 seconds");
+                } else {
+                    // Fall back to inexact alarm 
+                    alarmManager.set(
+                            AlarmManager.RTC_WAKEUP,
+                            System.currentTimeMillis() + 5000,
+                            pendingIntent
+                    );
+                    Log.d(TAG, "Service restart scheduled approximately in 5 seconds (inexact)");
+                }
+            } else {
+                // Pre-marshmallow devices
+                alarmManager.set(
+                        AlarmManager.RTC_WAKEUP,
+                        System.currentTimeMillis() + 5000,
+                        pendingIntent
+                );
+                Log.d(TAG, "Service restart scheduled in 5 seconds");
+            }
+        } catch (SecurityException e) {
+            // Handle permission denial
+            Log.e(TAG, "Failed to schedule exact restart due to missing permission, using inexact", e);
+            
+            // Fall back to inexact alarm that doesn't require special permissions
+            alarmManager.set(
+                    AlarmManager.RTC_WAKEUP,
+                    System.currentTimeMillis() + 5000,
+                    pendingIntent
+            );
+        }
+    }
+    
     @Override
     public void onDestroy() {
         super.onDestroy();
@@ -352,13 +593,45 @@ public class ChatNotificationService extends Service {
             mainHandler.removeCallbacks(memoryCleanupRunnable);
         }
         
+        // Release wake lock
+        try {
+            if (wakeLock != null && wakeLock.isHeld()) {
+                wakeLock.release();
+                Log.d(TAG, "WakeLock released");
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error releasing wake lock", e);
+        }
+        
+        // Unregister alarm receiver
+        try {
+            if (alarmReceiver != null) {
+                unregisterReceiver(alarmReceiver);
+                alarmReceiver = null;
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error unregistering alarm receiver", e);
+        }
+        
         // Disconnect from chat service
         chatService.disconnect();
+        
+        // Schedule service restart
+        scheduleServiceRestart();
         
         // Clear references
         chatService = null;
         sessionManager = null;
         mainHandler = null;
+    }
+    
+    @Override
+    public void onTaskRemoved(Intent rootIntent) {
+        super.onTaskRemoved(rootIntent);
+        Log.d(TAG, "Task removed, scheduling service restart");
+        
+        // Schedule service restart when the app is removed from recent apps
+        scheduleServiceRestart();
     }
     
     @Nullable

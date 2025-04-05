@@ -3,6 +3,8 @@ package com.nekkochan.onyxchat;
 import android.content.Intent;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -135,17 +137,15 @@ public class MainActivity extends AppCompatActivity implements BottomNavigationV
     protected void onResume() {
         super.onResume();
         
-        // Connect to chat server with the user ID from session manager
         String userId = sessionManager.getUserId();
-        if (userId != null) {
-            Log.d(TAG, "Checking WebSocket connection status for user ID: " + userId);
+        if (userId != null && !userId.isEmpty()) {
+            Log.d(TAG, "User ID from session: " + userId);
             
-            // Set the user ID in the view model
-            viewModel.setUserAddress(userId);
+            // Make sure the notification service is running
+            startChatNotificationService();
             
-            // Get the ChatService instance and check actual connection status first
-            ChatService chatService = ChatService.getInstance(this);
-            boolean isAlreadyConnected = chatService.checkConnectionStatus();
+            // Check if we need to connect to chat
+            boolean isAlreadyConnected = viewModel.getChatService().checkConnectionStatus();
             
             if (isAlreadyConnected) {
                 Log.d(TAG, "WebSocket is already connected in background service");
@@ -158,15 +158,12 @@ public class MainActivity extends AppCompatActivity implements BottomNavigationV
             boolean connected = viewModel.connectToChat();
             if (!connected) {
                 Log.w(TAG, "Failed to connect to chat server, scheduling retry");
-                // Schedule a retry after a delay
-                new Thread(() -> {
-                    try {
-                        Thread.sleep(2000); // Wait 2 seconds
-                        viewModel.connectToChat(); // Try again
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                    }
-                }).start();
+                // Schedule a retry after a delay using a Handler (safe for threading)
+                Handler handler = new Handler(Looper.getMainLooper());
+                handler.postDelayed(() -> {
+                    // This will run on the main thread
+                    viewModel.connectToChat();
+                }, 2000); // Wait 2 seconds
             }
         } else {
             Log.e(TAG, "No user ID available from session manager");

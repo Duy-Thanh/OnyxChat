@@ -123,4 +123,8 @@
     <string name="error_terms_required">You must accept the terms to continue</string>
     <string name="error_field_required">This field is required</string>
     <string name="error_password_too_short">Password must be at least 8 characters</string>
+    <string name="sync_contacts">Sync Contacts</string>
+    <string name="contacts_permission_required">Contact permission is required for synchronization</string>
+    <string name="delete_contact">Delete Contact</string>
+    <string name="confirm_delete_contact">Are you sure you want to delete %1$s? This action cannot be undone.</string>
 </resources>

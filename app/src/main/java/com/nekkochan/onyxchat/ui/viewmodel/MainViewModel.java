@@ -337,6 +337,14 @@ public class MainViewModel extends AndroidViewModel {
     }
     
     /**
+     * Get the chat service instance
+     * @return ChatService instance
+     */
+    public ChatService getChatService() {
+        return chatService;
+    }
+    
+    /**
      * Connect to the chat server
      * @return true if connection was successful or already connected
      */
@@ -403,10 +411,16 @@ public class MainViewModel extends AndroidViewModel {
      * @return LiveData containing the connection status
      */
     public LiveData<Boolean> isChatConnected() {
-        return Transformations.map(
-            chatService.getConnectionState(),
-            state -> state == WebSocketClient.WebSocketState.CONNECTED
-        );
+        MutableLiveData<Boolean> result = new MutableLiveData<>();
+        
+        // Using observeForever is safe for threading
+        chatService.getConnectionState().observeForever(state -> {
+            boolean isConnected = state == WebSocketClient.WebSocketState.CONNECTED;
+            // Use postValue which is safe to call from any thread
+            result.postValue(isConnected);
+        });
+        
+        return result;
     }
     
     /**

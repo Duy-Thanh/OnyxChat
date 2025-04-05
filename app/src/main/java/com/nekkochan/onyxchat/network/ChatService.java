@@ -250,10 +250,38 @@ public class ChatService {
         // Get token and verify it exists
         UserSessionManager sessionManager = new UserSessionManager(context);
         String token = sessionManager.getAuthToken();
+        
         if (token == null || token.isEmpty()) {
-            Log.e(TAG, "Cannot connect: No auth token available");
-            connectionState.setValue(WebSocketClient.WebSocketState.DISCONNECTED);
-            return false;
+            Log.w(TAG, "No auth token available, attempting to refresh token");
+            
+            // Check if we have a refresh token
+            if (sessionManager.hasRefreshToken()) {
+                // Attempt to refresh the token before connecting
+                sessionManager.refreshToken().thenAccept(refreshResult -> {
+                    if (refreshResult) {
+                        Log.d(TAG, "Token refresh successful, attempting to connect with new token");
+                        // Get the new token and retry connection
+                        String newToken = sessionManager.getAuthToken();
+                        if (newToken != null && !newToken.isEmpty()) {
+                            // Connect to WebSocket with new token
+                            webSocketClient.connect(userId);
+                        } else {
+                            Log.e(TAG, "Token refresh succeeded but new token is empty");
+                            connectionState.setValue(WebSocketClient.WebSocketState.DISCONNECTED);
+                        }
+                    } else {
+                        Log.e(TAG, "Token refresh failed, cannot connect");
+                        connectionState.setValue(WebSocketClient.WebSocketState.DISCONNECTED);
+                    }
+                });
+                
+                // Return true to indicate we've started the connection process
+                return true;
+            } else {
+                Log.e(TAG, "Cannot connect: No auth token available and no refresh token to try");
+                connectionState.setValue(WebSocketClient.WebSocketState.DISCONNECTED);
+                return false;
+            }
         }
         
         // Check if refresh token is available and log a warning if it's not
@@ -448,6 +476,27 @@ public class ChatService {
         });
         
         return userList;
+    }
+    
+    /**
+     * Reset the server URL to default
+     * This can be called when connection issues are detected
+     */
+    public void resetServerUrlToDefault() {
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        prefs.edit().putString("server_url", DEFAULT_SERVER_URL).apply();
+        Log.d(TAG, "Reset server URL to default: " + DEFAULT_SERVER_URL);
+        
+        // Also update the PREF_SERVER_URL key
+        prefs.edit().putString(PREF_SERVER_URL, DEFAULT_SERVER_URL).apply();
+        
+        // Notify user that settings have been reset
+        disconnect();
+        
+        // Attempt to reconnect if there's a user ID
+        if (userId != null && !userId.isEmpty()) {
+            connect(userId);
+        }
     }
     
     /**

@@ -140,10 +140,12 @@ public class WebSocketClient {
                     new X509TrustManager() {
                         @Override
                         public void checkClientTrusted(X509Certificate[] chain, String authType) throws CertificateException {
+                            // Accept all clients
                         }
 
                         @Override
                         public void checkServerTrusted(X509Certificate[] chain, String authType) throws CertificateException {
+                            // Accept all servers
                         }
 
                         @Override
@@ -162,34 +164,29 @@ public class WebSocketClient {
 
             OkHttpClient.Builder builder = new OkHttpClient.Builder();
             builder.sslSocketFactory(sslSocketFactory, (X509TrustManager) trustAllCerts[0]);
-            builder.hostnameVerifier(new HostnameVerifier() {
-                @Override
-                public boolean verify(String hostname, SSLSession session) {
-                    return true; // Allow all hostnames
-                }
-            });
+            builder.hostnameVerifier((hostname, session) -> true); // Allow all hostnames
             
-            // Build OkHttpClient with better connection settings
+            // Build OkHttpClient with improved connection settings
             return builder
-                    .connectTimeout(10, TimeUnit.SECONDS)
+                    .connectTimeout(30, TimeUnit.SECONDS)
                     .readTimeout(60, TimeUnit.SECONDS)  // Increase read timeout
                     .writeTimeout(30, TimeUnit.SECONDS) // Increase write timeout
-                    .pingInterval(3, TimeUnit.SECONDS)  // More frequent protocol-level pings
+                    .pingInterval(15, TimeUnit.SECONDS) // More frequent protocol-level pings
                     .retryOnConnectionFailure(true)     // Retry automatically 
-                    // Avoid connection pooling issues by using a dedicated connection
-                    .connectionPool(new okhttp3.ConnectionPool(0, 1, TimeUnit.MILLISECONDS))
+                    // Use a dedicated connection pool for better reliability
+                    .connectionPool(new ConnectionPool(1, 30, TimeUnit.SECONDS))
                     .build();
         } catch (Exception e) {
             Log.e(TAG, "Error creating unsafe OkHttpClient", e);
             
             // Fall back to default client without SSL customization
             return new OkHttpClient.Builder()
-                    .connectTimeout(10, TimeUnit.SECONDS)
+                    .connectTimeout(30, TimeUnit.SECONDS)
                     .readTimeout(60, TimeUnit.SECONDS) 
                     .writeTimeout(30, TimeUnit.SECONDS)
-                    .pingInterval(3, TimeUnit.SECONDS)
+                    .pingInterval(15, TimeUnit.SECONDS)
                     .retryOnConnectionFailure(true)
-                    .connectionPool(new okhttp3.ConnectionPool(0, 1, TimeUnit.MILLISECONDS))
+                    .connectionPool(new ConnectionPool(1, 30, TimeUnit.SECONDS))
                     .build();
         }
     }
@@ -291,8 +288,11 @@ public class WebSocketClient {
             Log.d(TAG, "Auth token starts with: " + token.substring(0, 10) + "...");
         }
         
+        // Get the current server URL from preferences, which might have been updated
+        String currentUrl = sharedPreferences.getString("server_url", wsEndpoint);
+        
         // Build WebSocket URL with normalized path
-        String baseUrl = wsEndpoint;
+        String baseUrl = currentUrl;
         
         // Ensure we're using secure WebSocket when needed
         if (baseUrl.startsWith("http://")) {
@@ -968,6 +968,15 @@ public class WebSocketClient {
                 
                 // Attempt reconnect with backoff strategy for most connection failures
                 if (t instanceof IOException || t instanceof SocketException || t instanceof EOFException) {
+                    // Check if we're getting repeated connection refused errors
+                    if (t.getMessage() != null && t.getMessage().contains("ECONNREFUSED") 
+                        && reconnectAttempts >= 3) {
+                        // After several attempts, maybe the URL is wrong - try resetting to default
+                        Log.w(TAG, "Multiple connection refused errors - resetting to default URL");
+                        resetServerUrlToDefault();
+                        return;
+                    }
+                    
                     // Calculate delay with exponential backoff, but don't give up
                     long delay = RECONNECT_DELAY_MS * (long)Math.min(Math.pow(1.5, Math.min(reconnectAttempts, 10)), MAX_BACKOFF_SECONDS / 2);
                     scheduleReconnect(delay);
@@ -1069,6 +1078,32 @@ public class WebSocketClient {
         } catch (Exception e) {
             Log.e(TAG, "Error sending ping", e);
             return false;
+        }
+    }
+    
+    /**
+     * Reset the server URL to default and reconnect
+     */
+    public void resetServerUrlToDefault() {
+        Log.d(TAG, "Resetting WebSocket URL to default: " + DEFAULT_WS_ENDPOINT);
+        
+        // Update stored preferences
+        sharedPreferences.edit().putString("server_url", DEFAULT_WS_ENDPOINT).apply();
+        
+        // Reset connection stats
+        reconnectAttempts = 0;
+        lastConnectAttemptTime = 0;
+        
+        // Disconnect existing connection
+        disconnect();
+        
+        // Since wsEndpoint is final, we need a new URL for the next connection
+        // The next time connect() is called, it will use the updated preference
+        
+        // Try to connect immediately with the new URL by recreating the connection
+        if (currentUserId != null) {
+            Log.d(TAG, "Attempting immediate reconnect with default URL");
+            new Handler(Looper.getMainLooper()).post(() -> connect(currentUserId));
         }
     }
 }
