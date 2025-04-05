@@ -234,6 +234,13 @@ public class ChatService {
             return false;
         }
         
+        // First check if we already have an active connection
+        if (checkConnectionStatus()) {
+            Log.d(TAG, "WebSocket is already connected in background service, updating UI state");
+            connectionState.setValue(WebSocketClient.WebSocketState.CONNECTED);
+            return true;
+        }
+        
         // Store user ID
         this.userId = userId;
         
@@ -258,6 +265,45 @@ public class ChatService {
         // Connect to WebSocket
         Log.d(TAG, "Connecting to chat server with user ID: " + userId);
         return webSocketClient.connect(userId);
+    }
+    
+    /**
+     * Check the actual connection status and update the state if needed
+     * @return true if the WebSocket is connected and functional
+     */
+    public boolean checkConnectionStatus() {
+        WebSocketClient.WebSocketState currentState = webSocketClient.getState();
+        
+        // If the client thinks it's connected, verify with a quick test
+        if (currentState == WebSocketClient.WebSocketState.CONNECTED) {
+            // If we have recent heartbeat responses, we're definitely connected
+            if (webSocketClient.hasRecentActivity()) {
+                // Make sure our state reflects this
+                if (connectionState.getValue() != WebSocketClient.WebSocketState.CONNECTED) {
+                    Log.d(TAG, "Updating connection state to match actual connected state");
+                    connectionState.setValue(WebSocketClient.WebSocketState.CONNECTED);
+                }
+                return true;
+            } else {
+                // Try sending a ping to verify connection is still active
+                boolean pingSuccess = webSocketClient.sendPing();
+                if (!pingSuccess) {
+                    // Connection appears broken, update state
+                    Log.w(TAG, "WebSocket reports connected but failed to send ping, resetting state");
+                    connectionState.setValue(WebSocketClient.WebSocketState.DISCONNECTED);
+                    return false;
+                }
+                return true;
+            }
+        } else if (connectionState.getValue() == WebSocketClient.WebSocketState.CONNECTED && 
+                   currentState != WebSocketClient.WebSocketState.CONNECTED) {
+            // Fix mismatched state
+            Log.w(TAG, "Connection state mismatch - updating to: " + currentState);
+            connectionState.setValue(currentState);
+            return false;
+        }
+        
+        return currentState == WebSocketClient.WebSocketState.CONNECTED;
     }
     
     /**

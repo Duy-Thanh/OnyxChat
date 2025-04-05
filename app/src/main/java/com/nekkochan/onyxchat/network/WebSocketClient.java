@@ -75,6 +75,10 @@ public class WebSocketClient {
     private static final int MAX_CONSECUTIVE_ATTEMPTS = 3;
     private int consecutiveAttempts = 0;
     
+    // Track the last time we received any activity from the server
+    private long lastServerActivityTime = 0;
+    private static final long ACTIVITY_TIMEOUT_MS = 30000; // 30 seconds without activity is considered inactive
+    
     private final UserSessionManager sessionManager;
     private final SharedPreferences sharedPreferences;
     
@@ -734,6 +738,9 @@ public class WebSocketClient {
         public void onMessage(WebSocket webSocket, String text) {
             Log.d(TAG, "WebSocket message received: " + text);
             
+            // Record that we received activity from the server
+            recordServerActivity();
+            
             try {
                 // Parse the message to check for token refresh requests
                 JsonObject jsonMessage = JsonParser.parseString(text).getAsJsonObject();
@@ -743,6 +750,11 @@ public class WebSocketClient {
                     // Handle token refresh
                     handleTokenRefresh();
                     return;
+                }
+                
+                // Special handling for pong messages to update activity time
+                if (jsonMessage.has("type") && "pong".equals(jsonMessage.get("type").getAsString())) {
+                    // We already recorded activity, just notify listeners
                 }
                 
                 // Notify listeners for normal messages
@@ -898,5 +910,47 @@ public class WebSocketClient {
                 scheduleReconnect(RECONNECT_DELAY_MS);
             }
         });
+    }
+    
+    /**
+     * Record that server activity was received
+     * This should be called whenever we get a message or pong from the server
+     */
+    private void recordServerActivity() {
+        lastServerActivityTime = System.currentTimeMillis();
+    }
+    
+    /**
+     * Check if there has been recent activity from the server
+     * @return true if there has been activity within ACTIVITY_TIMEOUT_MS
+     */
+    public boolean hasRecentActivity() {
+        if (state != WebSocketState.CONNECTED || webSocket == null) {
+            return false;
+        }
+        
+        long now = System.currentTimeMillis();
+        return (now - lastServerActivityTime) < ACTIVITY_TIMEOUT_MS;
+    }
+    
+    /**
+     * Send a ping to verify the connection is active
+     * @return true if the ping was sent successfully
+     */
+    public boolean sendPing() {
+        if (webSocket == null || state != WebSocketState.CONNECTED) {
+            return false;
+        }
+        
+        try {
+            // Send a ping message
+            JsonObject ping = new JsonObject();
+            ping.addProperty("type", "ping");
+            ping.addProperty("timestamp", System.currentTimeMillis());
+            return webSocket.send(gson.toJson(ping));
+        } catch (Exception e) {
+            Log.e(TAG, "Error sending ping", e);
+            return false;
+        }
     }
 }

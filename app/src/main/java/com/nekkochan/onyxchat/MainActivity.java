@@ -28,6 +28,7 @@ import com.nekkochan.onyxchat.ui.auth.LoginActivity;
 import com.nekkochan.onyxchat.ui.viewmodel.MainViewModel;
 import com.nekkochan.onyxchat.util.NotificationPermissionHelper;
 import com.nekkochan.onyxchat.util.UserSessionManager;
+import com.nekkochan.onyxchat.network.ChatService;
 
 /**
  * Main activity for the application
@@ -137,12 +138,23 @@ public class MainActivity extends AppCompatActivity implements BottomNavigationV
         // Connect to chat server with the user ID from session manager
         String userId = sessionManager.getUserId();
         if (userId != null) {
-            Log.d(TAG, "Connecting to chat server with user ID: " + userId);
+            Log.d(TAG, "Checking WebSocket connection status for user ID: " + userId);
             
             // Set the user ID in the view model
             viewModel.setUserAddress(userId);
             
-            // Initialize connection to chat service
+            // Get the ChatService instance and check actual connection status first
+            ChatService chatService = ChatService.getInstance(this);
+            boolean isAlreadyConnected = chatService.checkConnectionStatus();
+            
+            if (isAlreadyConnected) {
+                Log.d(TAG, "WebSocket is already connected in background service");
+                // We're done - the connection status has been updated in the UI
+                return;
+            }
+            
+            // If we're not connected, try to connect
+            Log.d(TAG, "WebSocket not connected or status mismatch, attempting to connect");
             boolean connected = viewModel.connectToChat();
             if (!connected) {
                 Log.w(TAG, "Failed to connect to chat server, scheduling retry");
