@@ -26,6 +26,9 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.lang.ref.WeakReference;
+import java.util.Iterator;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 import javax.net.ssl.HostnameVerifier;
 import javax.net.ssl.SSLContext;
@@ -59,9 +62,10 @@ public class WebSocketClient {
     private final OkHttpClient client;
     private final String wsEndpoint;
     private WebSocket webSocket;
-    private final List<MessageListener> listeners = new ArrayList<>();
+    // Use a more memory-efficient list for listeners with weak references
+    private final List<WeakReference<MessageListener>> listeners = new CopyOnWriteArrayList<>();
     private WebSocketState state = WebSocketState.DISCONNECTED;
-    private final Gson gson = new Gson();
+    private Gson gson; // Lazy initialize to save memory
     
     // Connection tracking
     private String currentUserId;
@@ -84,6 +88,10 @@ public class WebSocketClient {
     
     // Add this as a class field
     private ScheduledExecutorService heartbeatExecutor;
+    
+    // Memory management
+    private static final long MEMORY_CLEANUP_INTERVAL_MS = 60000; // 1 minute
+    private long lastMemoryCleanupTime = 0;
     
     /**
      * Enumeration for WebSocket connection states
@@ -427,7 +435,7 @@ public class WebSocketClient {
                     JsonObject ping = new JsonObject();
                     ping.addProperty("type", "ping");
                     ping.addProperty("timestamp", System.currentTimeMillis());
-                    webSocket.send(gson.toJson(ping));
+                    webSocket.send(getGson().toJson(ping));
                     Log.d(TAG, "Heartbeat ping sent");
                 } catch (Exception e) {
                     Log.e(TAG, "Error sending heartbeat", e);
@@ -580,6 +588,7 @@ public class WebSocketClient {
         }
         
         try {
+            performMemoryCleanupIfNeeded();
             return webSocket.send(message);
         } catch (Exception e) {
             Log.e(TAG, "Error sending message", e);
@@ -606,6 +615,7 @@ public class WebSocketClient {
             json.addProperty("recipient", recipientId);
             json.addProperty("content", message);
             
+            performMemoryCleanupIfNeeded();
             return webSocket.send(gson.toJson(json));
         } catch (Exception e) {
             Log.e(TAG, "Error sending direct message", e);
@@ -628,9 +638,21 @@ public class WebSocketClient {
      * @param listener the listener to add
      */
     public void addListener(MessageListener listener) {
-        if (!listeners.contains(listener)) {
-            listeners.add(listener);
+        if (listener == null) return;
+        
+        // Check if listener already exists
+        for (WeakReference<MessageListener> ref : listeners) {
+            MessageListener existingListener = ref.get();
+            if (existingListener != null && existingListener.equals(listener)) {
+                return;
+            }
         }
+        
+        // Add as a weak reference
+        listeners.add(new WeakReference<>(listener));
+        
+        // Periodically clean up dead references
+        performMemoryCleanupIfNeeded();
     }
     
     /**
@@ -639,15 +661,89 @@ public class WebSocketClient {
      * @param listener the listener to remove
      */
     public void removeListener(MessageListener listener) {
-        listeners.remove(listener);
+        if (listener == null) return;
+        
+        Iterator<WeakReference<MessageListener>> iterator = listeners.iterator();
+        while (iterator.hasNext()) {
+            WeakReference<MessageListener> ref = iterator.next();
+            MessageListener existingListener = ref.get();
+            if (existingListener == null || existingListener.equals(listener)) {
+                listeners.remove(ref);
+                break;
+            }
+        }
+    }
+    
+    /**
+     * Clean up expired weak references to reduce memory usage
+     */
+    private void cleanupExpiredListeners() {
+        Iterator<WeakReference<MessageListener>> iterator = listeners.iterator();
+        while (iterator.hasNext()) {
+            if (iterator.next().get() == null) {
+                listeners.remove(iterator.next());
+            }
+        }
+    }
+    
+    /**
+     * Perform memory cleanup operations if enough time has passed since last cleanup
+     */
+    private void performMemoryCleanupIfNeeded() {
+        long now = System.currentTimeMillis();
+        if (now - lastMemoryCleanupTime > MEMORY_CLEANUP_INTERVAL_MS) {
+            lastMemoryCleanupTime = now;
+            
+            // Clean up expired weak references
+            cleanupExpiredListeners();
+            
+            // Hint to the garbage collector that now would be a good time to run
+            System.gc();
+            
+            Log.d(TAG, "Performed memory cleanup, remaining listeners: " + listeners.size());
+        }
+    }
+    
+    /**
+     * Force a memory cleanup operation
+     */
+    public void forceMemoryCleanup() {
+        cleanupExpiredListeners();
+        System.gc();
+        Log.d(TAG, "Forced memory cleanup, remaining listeners: " + listeners.size());
+    }
+    
+    /**
+     * Get Gson instance (lazy initialization to save memory)
+     */
+    private Gson getGson() {
+        if (gson == null) {
+            gson = new Gson();
+        }
+        return gson;
     }
     
     /**
      * Notify all listeners of a state change
      */
     private void notifyStateChanged() {
-        for (MessageListener listener : new ArrayList<>(listeners)) {
-            listener.onStateChanged(state);
+        List<MessageListener> activeListeners = new ArrayList<>(listeners.size());
+        
+        // First collect all valid listeners
+        for (WeakReference<MessageListener> ref : listeners) {
+            MessageListener listener = ref.get();
+            if (listener != null) {
+                activeListeners.add(listener);
+            }
+        }
+        
+        // Then notify them
+        for (MessageListener listener : activeListeners) {
+            try {
+                listener.onStateChanged(state);
+            } catch (Exception e) {
+                Log.e(TAG, "Error notifying listener of state change", e);
+            }
         }
     }
     
@@ -655,8 +751,23 @@ public class WebSocketClient {
      * Notify all listeners of a message
      */
     private void notifyMessageReceived(String message) {
-        for (MessageListener listener : new ArrayList<>(listeners)) {
-            listener.onMessageReceived(message);
+        List<MessageListener> activeListeners = new ArrayList<>(listeners.size());
+        
+        // First collect all valid listeners
+        for (WeakReference<MessageListener> ref : listeners) {
+            MessageListener listener = ref.get();
+            if (listener != null) {
+                activeListeners.add(listener);
+            }
+        }
+        
+        // Then notify them
+        for (MessageListener listener : activeListeners) {
+            try {
+                listener.onMessageReceived(message);
+            } catch (Exception e) {
+                Log.e(TAG, "Error notifying listener of message", e);
+            }
         }
     }
     
@@ -664,8 +775,23 @@ public class WebSocketClient {
      * Notify all listeners of an error
      */
     private void notifyError(String error) {
-        for (MessageListener listener : new ArrayList<>(listeners)) {
-            listener.onError(error);
+        List<MessageListener> activeListeners = new ArrayList<>(listeners.size());
+        
+        // First collect all valid listeners
+        for (WeakReference<MessageListener> ref : listeners) {
+            MessageListener listener = ref.get();
+            if (listener != null) {
+                activeListeners.add(listener);
+            }
+        }
+        
+        // Then notify them
+        for (MessageListener listener : activeListeners) {
+            try {
+                listener.onError(error);
+            } catch (Exception e) {
+                Log.e(TAG, "Error notifying listener of error", e);
+            }
         }
     }
     
@@ -758,16 +884,12 @@ public class WebSocketClient {
                 }
                 
                 // Notify listeners for normal messages
-                for (MessageListener listener : listeners) {
-                    listener.onMessageReceived(text);
-                }
+                notifyMessageReceived(text);
             } catch (Exception e) {
                 Log.e(TAG, "Error processing WebSocket message", e);
                 
                 // If the message couldn't be parsed as JSON, just pass it through
-                for (MessageListener listener : listeners) {
-                    listener.onMessageReceived(text);
-                }
+                notifyMessageReceived(text);
             }
         }
         
@@ -877,9 +999,7 @@ public class WebSocketClient {
             Log.e(TAG, "No refresh token available, cannot refresh");
             
             // Notify listeners about the error
-            for (MessageListener listener : listeners) {
-                listener.onError("Authentication error: No refresh token available");
-            }
+            notifyError("Authentication error: No refresh token available");
             
             // Even without a refresh token, try to reconnect with the existing token
             // It might still be valid or the server might have different validation rules
@@ -902,9 +1022,7 @@ public class WebSocketClient {
                 Log.e(TAG, "Failed to refresh token");
                 
                 // Notify listeners about the error
-                for (MessageListener listener : listeners) {
-                    listener.onError("Failed to refresh authentication token");
-                }
+                notifyError("Failed to refresh authentication token");
                 
                 // Schedule a reconnect attempt in case token refreshing failed
                 scheduleReconnect(RECONNECT_DELAY_MS);
@@ -947,7 +1065,7 @@ public class WebSocketClient {
             JsonObject ping = new JsonObject();
             ping.addProperty("type", "ping");
             ping.addProperty("timestamp", System.currentTimeMillis());
-            return webSocket.send(gson.toJson(ping));
+            return webSocket.send(getGson().toJson(ping));
         } catch (Exception e) {
             Log.e(TAG, "Error sending ping", e);
             return false;

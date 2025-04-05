@@ -46,10 +46,14 @@ public class ChatNotificationService extends Service {
     // Delay before promoting to foreground after boot (in milliseconds)
     private static final long BOOT_TO_FOREGROUND_DELAY = 3000; // 3 seconds (reduced from 30 seconds)
     
+    // Memory management
+    private static final long MEMORY_CLEANUP_INTERVAL_MS = 300000; // 5 minutes
+    private Handler mainHandler;
+    private Runnable memoryCleanupRunnable;
+    
     private ChatService chatService;
     private UserSessionManager sessionManager;
     private int nextNotificationId = MESSAGE_NOTIFICATION_START_ID;
-    private Handler mainHandler;
     private boolean isRunningAsForeground = false;
     
     @Override
@@ -68,6 +72,53 @@ public class ChatNotificationService extends Service {
         
         // Initialize handler for delayed tasks
         mainHandler = new Handler(Looper.getMainLooper());
+        
+        // Set up periodic memory cleanup
+        setupMemoryCleanup();
+    }
+    
+    /**
+     * Set up periodic memory cleanup to reduce RAM usage
+     */
+    private void setupMemoryCleanup() {
+        memoryCleanupRunnable = new Runnable() {
+            @Override
+            public void run() {
+                performMemoryCleanup();
+                // Schedule next cleanup
+                mainHandler.postDelayed(this, MEMORY_CLEANUP_INTERVAL_MS);
+            }
+        };
+        
+        // Start the periodic memory cleanup
+        mainHandler.postDelayed(memoryCleanupRunnable, MEMORY_CLEANUP_INTERVAL_MS);
+    }
+    
+    /**
+     * Perform memory cleanup to reduce RAM usage
+     */
+    private void performMemoryCleanup() {
+        Log.d(TAG, "Performing service memory cleanup");
+        
+        // Clear any cached data that might be holding references
+        System.gc();
+        
+        // Request WebSocketClient to clean up any unused resources
+        if (chatService != null) {
+            // If we have access to the WebSocketClient, tell it to clean up
+            WebSocketClient client = chatService.getWebSocketClient();
+            if (client != null) {
+                client.forceMemoryCleanup();
+            }
+        }
+        
+        // Log memory usage
+        long usedMemory = Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory();
+        long maxMemory = Runtime.getRuntime().maxMemory();
+        Log.d(TAG, String.format("Memory usage: %.2f MB / %.2f MB (%.1f%%)", 
+                usedMemory / (1024.0 * 1024.0), 
+                maxMemory / (1024.0 * 1024.0),
+                usedMemory * 100.0 / maxMemory));
     }
     
     @Override
@@ -296,8 +347,18 @@ public class ChatNotificationService extends Service {
         super.onDestroy();
         Log.d(TAG, "Destroying Chat Notification Service");
         
+        // Stop memory cleanup
+        if (mainHandler != null && memoryCleanupRunnable != null) {
+            mainHandler.removeCallbacks(memoryCleanupRunnable);
+        }
+        
         // Disconnect from chat service
         chatService.disconnect();
+        
+        // Clear references
+        chatService = null;
+        sessionManager = null;
+        mainHandler = null;
     }
     
     @Nullable

@@ -314,6 +314,34 @@ public class ChatService {
     }
     
     /**
+     * Get the underlying WebSocketClient to allow for memory optimization
+     * This should be used carefully and only for maintenance operations
+     * @return the WebSocketClient instance
+     */
+    public WebSocketClient getWebSocketClient() {
+        return webSocketClient;
+    }
+    
+    /**
+     * Perform memory cleanup to reduce RAM usage
+     */
+    public void performMemoryCleanup() {
+        // Ask the WebSocketClient to clean up any unused resources
+        if (webSocketClient != null) {
+            webSocketClient.forceMemoryCleanup();
+        }
+        
+        // Clear any cached data
+        if (onlineUsers.getValue() != null && onlineUsers.getValue().isEmpty()) {
+            // If there are no online users, set to null to free memory
+            onlineUsers.setValue(null);
+        }
+        
+        // Suggest garbage collection
+        System.gc();
+    }
+    
+    /**
      * Send a direct message to a specific user
      * @param recipientId ID of the user to send the message to
      * @param message The message content
