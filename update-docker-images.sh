@@ -9,10 +9,7 @@ NC='\033[0m' # No Color
 
 echo -e "${YELLOW}Starting Docker image version update...${NC}"
 
-# Remove version attribute from docker-compose files
-echo -e "${GREEN}Removing obsolete 'version' attribute from docker-compose files...${NC}"
-sed -i '/^version:/d' docker-compose.prod.yml
-sed -i '/^version:/d' docker-compose.yml
+# Remove version attribute from docker-compose files (now handled in main script)
 
 # Update postgres image in docker-compose.prod.yml
 echo -e "${GREEN}Updating PostgreSQL from postgres:14-alpine to postgres:16-alpine in docker-compose.prod.yml${NC}"

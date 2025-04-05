@@ -46,67 +46,54 @@ error_handler() {
 # Set up error handling
 trap 'error_handler $LINENO' ERR
 
-# Step 0: Check PostgreSQL compatibility
-echo -e "${YELLOW}STEP 0: Checking PostgreSQL compatibility for upgrade from 14 to 16...${NC}"
-echo -e "Analyzing PostgreSQL database for potential compatibility issues..."
+# First remove version attribute from docker-compose files
+echo -e "${YELLOW}Removing obsolete 'version' attribute from docker-compose files...${NC}"
+if grep -q "^version:" docker-compose.prod.yml; then
+  sed -i '/^version:/d' docker-compose.prod.yml
+  echo -e "${GREEN}Removed 'version' attribute from docker-compose.prod.yml${NC}"
+fi
 
-# Check if PostgreSQL is running
-if sudo docker-compose -f docker-compose.prod.yml ps | grep -q "postgres.*Up"; then
-  # Save current postgresql.conf settings
-  echo -e "Creating a PostgreSQL configuration backup..."
-  sudo docker-compose -f docker-compose.prod.yml exec -T postgres sh -c "cat /var/lib/postgresql/data/postgresql.conf" > "${BACKUP_DIR}/postgresql.conf.bak" || echo -e "${YELLOW}Could not save PostgreSQL configuration, continuing anyway...${NC}"
+if grep -q "^version:" docker-compose.yml; then
+  sed -i '/^version:/d' docker-compose.yml
+  echo -e "${GREEN}Removed 'version' attribute from docker-compose.yml${NC}"
+fi
+
+# Function to wait for container to be ready
+wait_for_container() {
+  local container=$1
+  local max_attempts=30
+  local attempt=1
   
-  # Check for any PostgreSQL incompatibilities
-  incompatibilities=$(sudo docker-compose -f docker-compose.prod.yml exec -T postgres psql -U ${DB_USER:-postgres} -d ${DB_NAME:-onyxchat} -c "
-    SELECT c.relname, a.attname
-    FROM pg_catalog.pg_class c
-    JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid
-    JOIN pg_catalog.pg_type t ON a.atttypid = t.oid
-    WHERE c.relkind = 'r' 
-    AND NOT a.attisdropped
-    AND t.typname IN ('money', 'abstime', 'reltime', 'tinterval');
-  " || echo "Failed to check incompatibilities")
+  echo -e "${YELLOW}Waiting for $container to be ready...${NC}"
   
-  if echo "$incompatibilities" | grep -q "row\|rows"; then
-    echo -e "${YELLOW}Warning: Found data types that may be problematic in PostgreSQL 16:${NC}"
-    echo "$incompatibilities"
-    echo -e "${YELLOW}Consider creating a more comprehensive backup and testing the upgrade in a non-production environment first.${NC}"
-    
-    read -p "Do you want to continue with the upgrade anyway? (y/n) " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-      echo -e "${RED}Upgrade aborted by user.${NC}"
-      exit 1
+  while [ $attempt -le $max_attempts ]; do
+    if sudo docker-compose -f docker-compose.prod.yml ps $container | grep -q "Up"; then
+      # Add extra delay to ensure container is fully initialized
+      sleep 5
+      echo -e "${GREEN}$container is ready${NC}"
+      return 0
     fi
-  else
-    echo -e "${GREEN}No known PostgreSQL compatibility issues detected.${NC}"
-  fi
-else
-  echo -e "${YELLOW}PostgreSQL container not running, skipping compatibility check.${NC}"
-  echo -e "${YELLOW}WARNING: It's recommended to run this script when PostgreSQL is running to check for compatibility issues.${NC}"
+    
+    echo -e "${YELLOW}Attempt $attempt/$max_attempts: $container is not ready yet...${NC}"
+    sleep 5
+    ((attempt++))
+  done
   
-  read -p "Do you want to continue with the upgrade anyway? (y/n) " -n 1 -r
-  echo
-  if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    echo -e "${RED}Upgrade aborted by user.${NC}"
-    exit 1
-  fi
-fi
+  echo -e "${RED}Timed out waiting for $container to be ready${NC}"
+  return 1
+}
 
-# Step 1: Create backup
-echo -e "${YELLOW}STEP 1: Creating backup before upgrade...${NC}"
-if bash ./backup-before-upgrade.sh; then
-  echo -e "${GREEN}Backup completed successfully at ${BACKUP_DIR}${NC}"
-else
-  echo -e "${YELLOW}WARNING: Backup script completed with errors. Check the messages above.${NC}"
-  read -p "Would you like to continue with the upgrade anyway? (y/n) " -n 1 -r
-  echo
-  if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    echo -e "${RED}Upgrade aborted by user.${NC}"
-    exit 1
-  fi
-  echo -e "${YELLOW}Continuing with upgrade despite backup issues...${NC}"
-fi
+# Create a custom backup file for key data
+echo -e "${YELLOW}Creating a direct backup of critical data...${NC}"
+
+# Backup docker-compose files
+echo -e "${GREEN}Backing up Docker configuration files...${NC}"
+cp docker-compose.yml "${BACKUP_DIR}/docker-compose.yml.bak" || true
+cp docker-compose.prod.yml "${BACKUP_DIR}/docker-compose.prod.yml.bak" || true
+cp nginx.Dockerfile "${BACKUP_DIR}/nginx.Dockerfile.bak" || true
+cp -r nodejs-server/Dockerfile* "${BACKUP_DIR}/" || true
+cp nginx.conf "${BACKUP_DIR}/nginx.conf.bak" || true
+cp .env.production "${BACKUP_DIR}/.env.production.bak" 2>/dev/null || echo -e "${YELLOW}No .env.production file found${NC}"
 
 # Step 2: Update Docker image references in configuration files
 echo -e "\n${YELLOW}STEP 2: Updating Docker image versions in configuration files...${NC}"
@@ -132,10 +119,20 @@ echo -e "\n${YELLOW}STEP 6: Starting updated containers...${NC}"
 sudo docker-compose -f docker-compose.prod.yml up -d
 echo -e "${GREEN}Containers started in detached mode${NC}"
 
+# Wait for containers to be ready
+echo -e "\n${YELLOW}Waiting for containers to initialize...${NC}"
+sleep 20  # Initial wait for containers to start
+
+# Check if PostgreSQL is ready
+wait_for_container "postgres" || {
+  echo -e "${RED}PostgreSQL container failed to start properly.${NC}"
+  echo -e "${YELLOW}Continuing with the upgrade process...${NC}"
+}
+
 # Step 7: Wait for services to be healthy
 echo -e "\n${YELLOW}STEP 7: Waiting for services to become healthy...${NC}"
 attempt=1
-max_attempts=10
+max_attempts=20
 all_healthy=0
 
 # Initialize health variables
@@ -148,7 +145,8 @@ while [ $attempt -le $max_attempts ] && [ $all_healthy -eq 0 ]; do
   echo -e "Attempt $attempt of $max_attempts - Checking service health..."
   
   # Check PostgreSQL
-  if sudo docker-compose -f docker-compose.prod.yml exec -T postgres pg_isready -U ${DB_USER:-postgres} > /dev/null 2>&1; then
+  if sudo docker-compose -f docker-compose.prod.yml ps | grep -q "postgres.*Up" && \
+     sudo docker-compose -f docker-compose.prod.yml exec -T postgres pg_isready -U ${DB_USER:-postgres} > /dev/null 2>&1; then
     echo -e "${GREEN}PostgreSQL is healthy${NC}"
     pg_healthy=1
   else
@@ -157,7 +155,8 @@ while [ $attempt -le $max_attempts ] && [ $all_healthy -eq 0 ]; do
   fi
   
   # Check Redis
-  if sudo docker-compose -f docker-compose.prod.yml exec -T redis redis-cli -a ${REDIS_PASSWORD:-redis} PING 2>/dev/null | grep -q "PONG"; then
+  if sudo docker-compose -f docker-compose.prod.yml ps | grep -q "redis.*Up" && \
+     sudo docker-compose -f docker-compose.prod.yml exec -T redis redis-cli -a ${REDIS_PASSWORD:-redis} PING 2>/dev/null | grep -q "PONG"; then
     echo -e "${GREEN}Redis is healthy${NC}"
     redis_healthy=1
   else
