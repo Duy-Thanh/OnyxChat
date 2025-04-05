@@ -49,6 +49,8 @@
         <item name="cardBackgroundColor">@color/card_background_dark</item>
         <item name="cardElevation">2dp</item>
         <item name="cardCornerRadius">12dp</item>
+        <item name="contentPadding">16dp</item>
+        <item name="android:layout_margin">8dp</item>
     </style>
 
     <!-- Style for circular image views (avatars) -->
@@ -76,15 +78,6 @@
         <item name="tint">@color/accent</item>
     </style>
     
-    <!-- Floating action button style -->
-    <style name="CustomFAB" parent="Widget.MaterialComponents.FloatingActionButton">
-        <item name="backgroundTint">@color/primary</item>
-        <item name="tint">@color/white</item>
-        <item name="rippleColor">@color/primary_dark</item>
-        <item name="borderWidth">0dp</item>
-        <item name="elevation">6dp</item>
-    </style>
-    
     <!-- Text appearance styles -->
     <style name="TextAppearance.App.Subtitle" parent="TextAppearance.MaterialComponents.Subtitle1">
         <item name="android:textColor">@color/text_secondary_dark</item>
@@ -109,5 +102,106 @@
         <item name="iconTint">@color/primary</item>
         <item name="iconPadding">16dp</item>
         <item name="android:textColor">@color/text_primary_dark</item>
+    </style>
+
+    <!-- Preference styles -->
+    <style name="PreferenceStyle">
+        <item name="android:layout_marginStart">16dp</item>
+        <item name="android:layout_marginEnd">16dp</item>
+        <item name="android:layout_marginTop">8dp</item>
+        <item name="android:layout_marginBottom">8dp</item>
+        <item name="android:background">@drawable/preference_background</item>
+    </style>
+    
+    <style name="PreferenceCategoryStyle">
+        <item name="android:layout_marginStart">16dp</item>
+        <item name="android:layout_marginEnd">16dp</item>
+        <item name="android:layout_marginTop">16dp</item>
+        <item name="android:paddingBottom">8dp</item>
+        <item name="android:textAppearance">@style/TextAppearance.App.PreferenceCategory</item>
+    </style>
+    
+    <!-- Preference Text Appearance -->
+    <style name="TextAppearance.App.PreferenceCategory" parent="TextAppearance.MaterialComponents.Subtitle1">
+        <item name="android:textSize">16sp</item>
+        <item name="android:textColor">@color/primary</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+    </style>
+    
+    <style name="TextAppearance.App.PreferenceTitle" parent="TextAppearance.MaterialComponents.Subtitle1">
+        <item name="android:textSize">16sp</item>
+        <item name="android:textColor">@color/text_primary_dark</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+    </style>
+    
+    <style name="TextAppearance.App.PreferenceSummary" parent="TextAppearance.MaterialComponents.Body2">
+        <item name="android:textSize">14sp</item>
+        <item name="android:textColor">@color/text_secondary_dark</item>
+        <item name="android:fontFamily">sans-serif</item>
+    </style>
+    
+    <!-- Dialog styles -->
+    <style name="AlertDialogStyle" parent="ThemeOverlay.MaterialComponents.Dialog.Alert">
+        <item name="android:background">@color/colorSurface</item>
+        <item name="android:textColorPrimary">@color/colorOnSurface</item>
+        <item name="buttonBarPositiveButtonStyle">@style/PositiveButtonStyle</item>
+        <item name="buttonBarNegativeButtonStyle">@style/NegativeButtonStyle</item>
+    </style>
+    
+    <style name="PositiveButtonStyle" parent="Widget.MaterialComponents.Button.TextButton.Dialog">
+        <item name="android:textColor">@color/colorSecondary</item>
+        <item name="rippleColor">@color/ripple</item>
+    </style>
+    
+    <style name="NegativeButtonStyle" parent="Widget.MaterialComponents.Button.TextButton.Dialog">
+        <item name="android:textColor">@color/colorSecondary</item>
+        <item name="rippleColor">@color/ripple</item>
+    </style>
+    
+    <!-- Button styles -->
+    <style name="PrimaryButtonStyle" parent="Widget.MaterialComponents.Button">
+        <item name="android:textColor">@color/colorOnPrimary</item>
+        <item name="backgroundTint">@color/colorPrimary</item>
+        <item name="cornerRadius">24dp</item>
+        <item name="android:paddingStart">16dp</item>
+        <item name="android:paddingEnd">16dp</item>
+        <item name="android:paddingTop">12dp</item>
+        <item name="android:paddingBottom">12dp</item>
+    </style>
+    
+    <style name="SecondaryButtonStyle" parent="Widget.MaterialComponents.Button.OutlinedButton">
+        <item name="android:textColor">@color/colorSecondary</item>
+        <item name="strokeColor">@color/colorSecondary</item>
+        <item name="cornerRadius">24dp</item>
+        <item name="android:paddingStart">16dp</item>
+        <item name="android:paddingEnd">16dp</item>
+        <item name="android:paddingTop">12dp</item>
+        <item name="android:paddingBottom">12dp</item>
+    </style>
+    
+    <!-- Text styles -->
+    <style name="HeadingStyle">
+        <item name="android:textSize">22sp</item>
+        <item name="android:textColor">@color/colorOnSurface</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+    </style>
+    
+    <style name="SubheadingStyle">
+        <item name="android:textSize">16sp</item>
+        <item name="android:textColor">@color/colorOnSurface</item>
+        <item name="android:fontFamily">sans-serif</item>
+    </style>
+    
+    <style name="BodyTextStyle">
+        <item name="android:textSize">14sp</item>
+        <item name="android:textColor">@color/colorOnSurface</item>
+        <item name="android:fontFamily">sans-serif</item>
+    </style>
+    
+    <style name="CaptionStyle">
+        <item name="android:textSize">12sp</item>
+        <item name="android:textColor">@color/text_secondary</item>
+        <item name="android:fontFamily">sans-serif</item>
     </style>
 </resources> 

@@ -11,19 +11,19 @@
     <color name="transparent">#00000000</color>
 
     <!-- Theme colors -->
-    <color name="primary">#6C63FF</color>
-    <color name="primary_dark">#5650D8</color>
+    <color name="primary">#4527A0</color>
+    <color name="primary_dark">#311B92</color>
     <color name="primary_light">#CDC9FF</color>
-    <color name="secondary">#03DAC5</color>
+    <color name="secondary">#7C4DFF</color>
     <color name="secondary_light">#B3F1EA</color>
-    <color name="accent">#03DAC5</color>
-    <color name="background">#F8F8F8</color>
-    <color name="background_light">#FFFFFF</color>
-    <color name="surface">#FFFFFF</color>
+    <color name="accent">#7C4DFF</color>
+    <color name="background">#121212</color>
+    <color name="background_light">#1F1F1F</color>
+    <color name="surface">#1F1F1F</color>
     <color name="on_primary">#FFFFFF</color>
-    <color name="on_background">#121212</color>
-    <color name="on_surface">#121212</color>
-    <color name="error">#B00020</color>
+    <color name="on_background">#FFFFFF</color>
+    <color name="on_surface">#FFFFFF</color>
+    <color name="error">#CF6679</color>
     <color name="error_red">#CF6679</color>
     <color name="success_green">#4CAF50</color>
     <color name="on_error">#FFFFFF</color>
@@ -31,7 +31,7 @@
     <!-- Dark theme colors -->
     <color name="primary_dark_theme">#B388FF</color>
     <color name="primary_dark_dark_theme">#805ACB</color>
-    <color name="accent_dark_theme">#03DAC6</color>
+    <color name="accent_dark_theme">#651FFF</color>
     <color name="background_dark">#121212</color>
     <color name="surface_dark">#1E1E1E</color>
     <color name="on_primary_dark_theme">#000000</color>
@@ -47,7 +47,14 @@
     <color name="colorPrimary">@color/primary</color>
     <color name="colorPrimaryDark">@color/primary_dark</color>
     <color name="colorAccent">@color/accent</color>
-    <color name="colorSecondary">@color/accent</color>
+    <color name="colorSecondary">@color/secondary</color>
+    <color name="colorSecondaryVariant">#651FFF</color>
+    <color name="colorOnSecondary">#FFFFFF</color>
+    <color name="colorOnPrimary">@color/on_primary</color>
+    <color name="colorError">@color/error</color>
+    <color name="colorBackground">@color/background</color>
+    <color name="colorSurface">@color/surface</color>
+    <color name="colorOnSurface">@color/on_surface</color>
     <color name="background_primary">@color/background_dark</color>
     <color name="background_secondary">@color/surface_dark</color>
     <color name="text_primary">@color/text_primary_dark</color>
@@ -91,7 +98,9 @@
     
     <!-- UI elements -->
     <color name="divider">@color/divider_dark</color>
+    <color name="dividerColor">@color/divider_dark</color>
     <color name="icon_tint">@color/text_secondary_dark</color>
     <color name="ripple">#33FFFFFF</color>
     <color name="scrim">#B3000000</color>
+    <color name="shadowColor">#66000000</color>
 </resources>

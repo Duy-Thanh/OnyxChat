@@ -3,6 +3,9 @@ package com.nekkochan.onyxchat.ui;
 import android.content.Intent;
 import android.os.Bundle;
 import android.view.LayoutInflater;
+import android.view.Menu;
+import android.view.MenuInflater;
+import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.TextView;
@@ -14,6 +17,8 @@ import androidx.lifecycle.ViewModelProvider;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.google.android.material.snackbar.BaseTransientBottomBar;
+import com.google.android.material.snackbar.Snackbar;
 import com.nekkochan.onyxchat.R;
 import com.nekkochan.onyxchat.model.ConversationDisplay;
 import com.nekkochan.onyxchat.ui.adapters.ConversationAdapter;
@@ -39,6 +44,26 @@ public class ConversationListFragment extends Fragment implements ConversationAd
     public void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         viewModel = new ViewModelProvider(requireActivity()).get(MainViewModel.class);
+        setHasOptionsMenu(true); // Enable options menu
+    }
+    
+    @Override
+    public void onCreateOptionsMenu(@NonNull Menu menu, @NonNull MenuInflater inflater) {
+        inflater.inflate(R.menu.conversation_menu, menu);
+        super.onCreateOptionsMenu(menu, inflater);
+    }
+    
+    @Override
+    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
+        int id = item.getItemId();
+        if (id == R.id.action_refresh_conversations) {
+            refreshConversations();
+            return true;
+        } else if (id == R.id.action_new_chat) {
+            showContactsForNewChat();
+            return true;
+        }
+        return super.onOptionsItemSelected(item);
     }
     
     @Nullable
@@ -153,5 +178,56 @@ public class ConversationListFragment extends Fragment implements ConversationAd
         intent.putExtra(ChatActivity.EXTRA_CONTACT_ID, conversation.getParticipantId());
         intent.putExtra(ChatActivity.EXTRA_CONTACT_NAME, conversation.getDisplayName());
         startActivity(intent);
+    }
+    
+    /**
+     * Refresh conversations
+     */
+    private void refreshConversations() {
+        // Request conversations update from server
+        viewModel.refreshConversations();
+        createSnackbar(requireView(), "Refreshing conversations...", Snackbar.LENGTH_SHORT).show();
+    }
+    
+    /**
+     * Show contacts to select for a new chat
+     */
+    private void showContactsForNewChat() {
+        // Navigate to contacts fragment with selection mode
+        ContactsFragment contactsFragment = new ContactsFragment();
+        Bundle args = new Bundle();
+        args.putBoolean(ContactsFragment.ARG_SELECTION_MODE, true);
+        contactsFragment.setArguments(args);
+        
+        // Replace current fragment with contacts fragment
+        requireActivity().getSupportFragmentManager().beginTransaction()
+                .replace(R.id.fragment_container, contactsFragment)
+                .addToBackStack(null)
+                .commit();
+    }
+    
+    /**
+     * Create a properly positioned Snackbar that won't overlap with bottom navigation
+     */
+    private Snackbar createSnackbar(View view, String message, int duration) {
+        Snackbar snackbar = Snackbar.make(view, message, duration);
+        
+        // Apply special margins to position above navigation bar
+        View snackbarView = snackbar.getView();
+        ViewGroup.MarginLayoutParams params = (ViewGroup.MarginLayoutParams) snackbarView.getLayoutParams();
+        
+        // Add extra margin at the bottom to ensure it's above the navigation bar
+        params.bottomMargin = params.bottomMargin + 72;
+        snackbarView.setLayoutParams(params);
+        
+        // Force Snackbar to appear higher up
+        snackbar.setBehavior(new BaseTransientBottomBar.Behavior() {
+            @Override
+            public boolean canSwipeDismissView(View child) {
+                return true; // Allow swipe dismiss
+            }
+        });
+        
+        return snackbar;
     }
 } 

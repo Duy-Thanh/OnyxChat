@@ -1,6 +1,7 @@
 package com.nekkochan.onyxchat.ui;
 
 import android.app.AlertDialog;
+import android.content.Intent;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.Menu;
@@ -21,12 +22,12 @@ import androidx.recyclerview.widget.DividerItemDecoration;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
-import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.google.android.material.snackbar.BaseTransientBottomBar;
 import com.google.android.material.snackbar.Snackbar;
 import com.nekkochan.onyxchat.R;
 import com.nekkochan.onyxchat.data.Contact;
 import com.nekkochan.onyxchat.ui.adapter.ContactAdapter;
+import com.nekkochan.onyxchat.ui.chat.ChatActivity;
 import com.nekkochan.onyxchat.ui.viewmodel.MainViewModel;
 
 /**
@@ -34,10 +35,13 @@ import com.nekkochan.onyxchat.ui.viewmodel.MainViewModel;
  */
 public class ContactsFragment extends Fragment implements ContactAdapter.OnContactClickListener {
     
+    public static final String ARG_SELECTION_MODE = "selection_mode";
+    
     private MainViewModel viewModel;
     private RecyclerView recyclerView;
     private TextView emptyView;
     private ContactAdapter adapter;
+    private boolean selectionMode = false;
     
     @Override
     public void onCreate(@Nullable Bundle savedInstanceState) {
@@ -45,6 +49,12 @@ public class ContactsFragment extends Fragment implements ContactAdapter.OnConta
         viewModel = new ViewModelProvider(requireActivity()).get(MainViewModel.class);
         adapter = new ContactAdapter(this);
         setHasOptionsMenu(true); // Enable options menu
+        
+        // Check if we're in selection mode
+        Bundle args = getArguments();
+        if (args != null) {
+            selectionMode = args.getBoolean(ARG_SELECTION_MODE, false);
+        }
     }
     
     @Override
@@ -56,7 +66,13 @@ public class ContactsFragment extends Fragment implements ContactAdapter.OnConta
     
     @Override
     public void onCreateOptionsMenu(@NonNull Menu menu, @NonNull MenuInflater inflater) {
-        inflater.inflate(R.menu.contacts_menu, menu);
+        if (selectionMode) {
+            // Custom menu for selection mode
+            inflater.inflate(R.menu.contacts_selection_menu, menu);
+        } else {
+            // Normal contacts menu
+            inflater.inflate(R.menu.contacts_menu, menu);
+        }
         super.onCreateOptionsMenu(menu, inflater);
     }
     
@@ -68,6 +84,10 @@ public class ContactsFragment extends Fragment implements ContactAdapter.OnConta
             return true;
         } else if (id == R.id.action_add_contact) {
             showAddContactDialog();
+            return true;
+        } else if (id == R.id.action_cancel_selection) {
+            // Go back to conversation list
+            requireActivity().getSupportFragmentManager().popBackStack();
             return true;
         }
         return super.onOptionsItemSelected(item);
@@ -86,6 +106,11 @@ public class ContactsFragment extends Fragment implements ContactAdapter.OnConta
         // Initialize views
         recyclerView = view.findViewById(R.id.contactsRecyclerView);
         emptyView = view.findViewById(R.id.emptyContactsText);
+        
+        // Set appropriate text for empty view based on mode
+        if (selectionMode) {
+            emptyView.setText(R.string.select_contact_for_chat);
+        }
         
         // Setup SwipeRefreshLayout
         androidx.swiperefreshlayout.widget.SwipeRefreshLayout swipeRefreshLayout = 
@@ -195,9 +220,24 @@ public class ContactsFragment extends Fragment implements ContactAdapter.OnConta
     
     @Override
     public void onContactClick(Contact contact) {
-        // Open chat with this contact
-        // TODO: Implement navigation to chat fragment with this contact
-        createSnackbar(requireView(), "Chat with " + contact.getContactAddress(), Snackbar.LENGTH_SHORT).show();
+        if (selectionMode) {
+            // Start a chat with this contact
+            Intent intent = new Intent(getActivity(), ChatActivity.class);
+            intent.putExtra(ChatActivity.EXTRA_CONTACT_ID, contact.getContactAddress());
+            intent.putExtra(ChatActivity.EXTRA_CONTACT_NAME, 
+                   contact.getNickName() != null ? contact.getNickName() : contact.getContactAddress());
+            startActivity(intent);
+            
+            // Go back to conversation list
+            requireActivity().getSupportFragmentManager().popBackStack();
+        } else {
+            // Normal behavior - Open chat with this contact
+            Intent intent = new Intent(getActivity(), ChatActivity.class);
+            intent.putExtra(ChatActivity.EXTRA_CONTACT_ID, contact.getContactAddress());
+            intent.putExtra(ChatActivity.EXTRA_CONTACT_NAME, 
+                   contact.getNickName() != null ? contact.getNickName() : contact.getContactAddress());
+            startActivity(intent);
+        }
     }
     
     @Override

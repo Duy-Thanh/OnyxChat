@@ -81,6 +81,7 @@
     <string name="contact_photo_description">Contact photo</string>
     <string name="no_contacts_yet">No contacts yet</string>
     <string name="encryption_info">Encryption Info</string>
+    <string name="select_contact_for_chat">Select a contact to start a new chat</string>
     
     <!-- Messages -->
     <string name="type_a_message">Type a message</string>
@@ -98,6 +99,7 @@
     <!-- Settings -->
     <string name="generate_new_keys">Generate New Keys</string>
     <string name="generate_new_key">Generate New Key</string>
+    <string name="generate_key_description">Create a new encryption key pair for enhanced security</string>
     <string name="copy_address">Copy Address</string>
     <string name="settings_encryption">Encryption Settings</string>
     <string name="settings_notifications">Notification Settings</string>
@@ -108,9 +110,17 @@
     <string name="screen_security_description">Block screenshots and hide content in recents</string>
     <string name="theme">Theme</string>
     <string name="about">About OnyxChat</string>
+    <string name="app_version">App Version</string>
     <string name="server_settings">Server Settings</string>
     <string name="server_url">Server URL</string>
     <string name="server_url_description">The URL of the OnyxChat server</string>
+    <string name="test_server_connection">Test Server Connection</string>
+    <string name="test_server_description">Verify connectivity to the chat server</string>
+    <string name="server_connection_success">Successfully connected to server</string>
+    <string name="server_connection_failure">Failed to connect to server: %s</string>
+    <string name="key_generation_success">New encryption key generated successfully</string>
+    <string name="key_generation_progress">Generating new keys...</string>
+    <string name="key_generation_failure">Failed to generate new key: %s</string>
     
     <!-- Errors -->
     <string name="error_connection">Connection error</string>

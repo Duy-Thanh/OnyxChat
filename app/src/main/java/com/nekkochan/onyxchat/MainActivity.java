@@ -20,10 +20,9 @@ import androidx.fragment.app.Fragment;
 import androidx.lifecycle.ViewModelProvider;
 
 import com.google.android.material.bottomnavigation.BottomNavigationView;
-import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.nekkochan.onyxchat.service.ChatNotificationService;
-import com.nekkochan.onyxchat.ui.ContactsFragment;
 import com.nekkochan.onyxchat.ui.ConversationListFragment;
+import com.nekkochan.onyxchat.ui.ContactsFragment;
 import com.nekkochan.onyxchat.ui.ProfileFragment;
 import com.nekkochan.onyxchat.ui.SettingsActivity;
 import com.nekkochan.onyxchat.ui.auth.LoginActivity;
@@ -42,7 +41,6 @@ public class MainActivity extends AppCompatActivity implements BottomNavigationV
     private UserSessionManager sessionManager;
     
     private BottomNavigationView bottomNavigation;
-    private FloatingActionButton fab;
     
     // Permission request launcher
     private ActivityResultLauncher<String> notificationPermissionLauncher;
@@ -110,22 +108,9 @@ public class MainActivity extends AppCompatActivity implements BottomNavigationV
         
         // Initialize views
         bottomNavigation = findViewById(R.id.bottomNavigation);
-        fab = findViewById(R.id.fab);
         
         // Set up bottom navigation
         bottomNavigation.setOnNavigationItemSelectedListener(this);
-        
-        // Set up FAB
-        fab.setOnClickListener(view -> {
-            int selectedItemId = bottomNavigation.getSelectedItemId();
-            if (selectedItemId == R.id.nav_messages) {
-                // Action for messages tab - start new chat
-                startNewChat();
-            } else if (selectedItemId == R.id.nav_contacts) {
-                // Action for contacts tab - add new contact
-                addNewContact();
-            }
-        });
         
         // Set initial fragment
         if (savedInstanceState == null) {
@@ -176,48 +161,23 @@ public class MainActivity extends AppCompatActivity implements BottomNavigationV
         super.onPause();
     }
     
-    /**
-     * Start a new chat
-     */
-    private void startNewChat() {
-        Toast.makeText(this, "Start new chat", Toast.LENGTH_SHORT).show();
-    }
-    
-    /**
-     * Add a new contact
-     */
-    private void addNewContact() {
-        Toast.makeText(this, "Add new contact", Toast.LENGTH_SHORT).show();
-    }
-    
     @Override
     public boolean onNavigationItemSelected(@NonNull MenuItem item) {
         Fragment selectedFragment = null;
-        boolean showFab = false;
         
         int itemId = item.getItemId();
         if (itemId == R.id.nav_messages) {
             selectedFragment = new ConversationListFragment();
-            showFab = true;
         } else if (itemId == R.id.nav_contacts) {
             selectedFragment = new ContactsFragment();
-            showFab = true;
         } else if (itemId == R.id.nav_profile) {
             selectedFragment = new ProfileFragment();
-            showFab = false;
         }
         
         if (selectedFragment != null) {
             getSupportFragmentManager().beginTransaction()
                     .replace(R.id.fragment_container, selectedFragment)
                     .commit();
-            
-            // Show/hide FAB based on the selected item
-            if (showFab) {
-                fab.show();
-            } else {
-                fab.hide();
-            }
             
             return true;
         }

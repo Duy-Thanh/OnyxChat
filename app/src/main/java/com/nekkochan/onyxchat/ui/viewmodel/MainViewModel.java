@@ -155,36 +155,57 @@ public class MainViewModel extends AndroidViewModel {
     
     /**
      * Generate a new key pair for the current user
+     * @return LiveData<Boolean> that will be true if successful, false otherwise
      */
-    public void generateNewKeyPair() {
+    public LiveData<Boolean> generateNewKeyPair() {
+        MutableLiveData<Boolean> result = new MutableLiveData<>();
+        
         try {
             if (currentUser == null) {
                 errorMessage.setValue("No current user");
-                return;
+                result.setValue(false);
+                return result;
             }
             
             isLoading.setValue(true);
             
-            // Generate new post-quantum key pair
-            KeyPair keyPair = PQCProvider.generateKyberKeyPair();
-            if (keyPair == null) {
-                errorMessage.setValue("Failed to generate key pair");
-                isLoading.setValue(false);
-                return;
-            }
+            // Run on a background thread
+            new Thread(() -> {
+                try {
+                    // Generate new post-quantum key pair
+                    KeyPair keyPair = PQCProvider.generateKyberKeyPair();
+                    if (keyPair == null) {
+                        errorMessage.postValue("Failed to generate key pair");
+                        isLoading.postValue(false);
+                        result.postValue(false);
+                        return;
+                    }
+                    
+                    String encodedPublicKey = PQCProvider.encodePublicKey(keyPair.getPublic());
+                    String encodedPrivateKey = PQCProvider.encodePrivateKey(keyPair.getPrivate());
+                    
+                    // Update user
+                    currentUser.setPublicKey(encodedPublicKey);
+                    repository.updateUser(currentUser);
+                    
+                    isLoading.postValue(false);
+                    result.postValue(true);
+                } catch (Exception e) {
+                    Log.e(TAG, "Error generating key pair: " + e.getMessage(), e);
+                    errorMessage.postValue("Failed to generate new key: " + e.getMessage());
+                    isLoading.postValue(false);
+                    result.postValue(false);
+                }
+            }).start();
             
-            String encodedPublicKey = PQCProvider.encodePublicKey(keyPair.getPublic());
-            
-            // Update user
-            currentUser.setPublicKey(encodedPublicKey);
-            repository.updateUser(currentUser);
-            
-            isLoading.setValue(false);
         } catch (Exception e) {
             Log.e(TAG, "Error generating key pair: " + e.getMessage(), e);
             errorMessage.setValue("Failed to generate new key: " + e.getMessage());
             isLoading.setValue(false);
+            result.setValue(false);
         }
+        
+        return result;
     }
     
     /**
@@ -500,5 +521,27 @@ public class MainViewModel extends AndroidViewModel {
         public Date getTimestamp() {
             return timestamp;
         }
+    }
+
+    /**
+     * Refresh the conversations list from the server
+     */
+    public void refreshConversations() {
+        // Request conversations update from server
+        chatService.requestConversations();
+        
+        // For immediate feedback, we can also do any direct database operations if needed
+        // Note: We can't use repository.getConversations since that method doesn't exist
+        
+        // The actual data update will come through the WebSocket connection
+        // and will be reflected in the conversations LiveData when received
+    }
+
+    /**
+     * Get the current user's ID/address
+     * @return The user ID or null if not available
+     */
+    public String getUserId() {
+        return userAddress.getValue();
     }
 } 

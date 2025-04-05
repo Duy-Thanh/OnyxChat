@@ -442,12 +442,23 @@ public class ChatService {
     }
     
     /**
-     * Update the server URL in preferences
+     * Get the current server URL from preferences
+     * @return The current server URL
+     */
+    public String getCurrentServerUrl() {
+        // We need to use the constant that's already defined in this class
+        return PreferenceManager.getDefaultSharedPreferences(context)
+                .getString("server_url", DEFAULT_SERVER_URL);
+    }
+    
+    /**
+     * Update the server URL setting
      * @param serverUrl The new server URL
      */
     public void updateServerUrl(String serverUrl) {
+        // Store server URL in preferences
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
-        prefs.edit().putString(PREF_SERVER_URL, serverUrl).apply();
+        prefs.edit().putString("server_url", serverUrl).apply();
         
         // Reconnect with new URL
         boolean wasConnected = webSocketClient.getState() == WebSocketClient.WebSocketState.CONNECTED;
@@ -459,8 +470,28 @@ public class ChatService {
     }
     
     /**
-     * Get the online users
-     * @return LiveData containing a list of online users
+     * Request to refresh conversations list from the server
+     * @return true if request was sent successfully, false otherwise
+     */
+    public boolean requestConversations() {
+        // Check if connected
+        if (connectionState.getValue() != WebSocketClient.WebSocketState.CONNECTED) {
+            Log.d(TAG, "Cannot request conversations: Not connected");
+            return false;
+        }
+        
+        // Create a conversation list request message
+        JsonObject request = new JsonObject();
+        request.addProperty("type", "request");
+        request.addProperty("resource", "conversations");
+        
+        // Send the request
+        return webSocketClient.send(request.toString());
+    }
+    
+    /**
+     * Get online users as a list
+     * @return LiveData containing a list of user IDs
      */
     public LiveData<List<String>> getOnlineUsersList() {
         // Convert the map to a list for compatibility with old code

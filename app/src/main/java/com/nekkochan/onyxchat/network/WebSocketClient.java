@@ -624,6 +624,25 @@ public class WebSocketClient {
     }
     
     /**
+     * Send a generic message
+     * @param message The message to send
+     * @return true if send was successful, false otherwise
+     */
+    public boolean send(String message) {
+        if (state != WebSocketState.CONNECTED || webSocket == null) {
+            Log.d(TAG, "Cannot send message: Not connected");
+            return false;
+        }
+
+        try {
+            return webSocket.send(message);
+        } catch (Exception e) {
+            Log.e(TAG, "Error sending message", e);
+            return false;
+        }
+    }
+    
+    /**
      * Get the current connection state
      * 
      * @return the WebSocket connection state

@@ -1,45 +1,87 @@
 <?xml version="1.0" encoding="utf-8"?>
-<PreferenceScreen xmlns:app="http://schemas.android.com/apk/res-auto">
+<PreferenceScreen xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <PreferenceCategory app:title="@string/settings_encryption">
+    <PreferenceCategory 
+        app:title="@string/settings_encryption"
+        app:iconSpaceReserved="false"
+        app:layout="@style/PreferenceCategoryStyle">
+        
         <SwitchPreferenceCompat
             app:key="post_quantum_encryption"
             app:title="@string/post_quantum_encryption"
-            app:defaultValue="true" />
+            app:defaultValue="true"
+            app:icon="@drawable/ic_security"
+            android:layout="@style/PreferenceStyle" />
 
         <Preference
             app:key="generate_new_key"
             app:title="@string/generate_new_key"
-            app:icon="@drawable/ic_key" />
+            app:summary="@string/generate_key_description"
+            app:icon="@drawable/ic_key_rotate"
+            android:layout="@style/PreferenceStyle" />
     </PreferenceCategory>
 
-    <PreferenceCategory app:title="@string/settings_privacy">
+    <PreferenceCategory 
+        app:title="@string/settings_privacy"
+        app:iconSpaceReserved="false"
+        app:layout="@style/PreferenceCategoryStyle">
+        
         <SwitchPreferenceCompat
             app:key="screen_security"
             app:title="@string/screen_security"
             app:summary="@string/screen_security_description"
-            app:defaultValue="true" />
+            app:defaultValue="true"
+            app:icon="@drawable/ic_visibility"
+            android:layout="@style/PreferenceStyle" />
     </PreferenceCategory>
 
-    <PreferenceCategory app:title="@string/server_settings">
+    <PreferenceCategory 
+        app:title="@string/server_settings"
+        app:iconSpaceReserved="false"
+        app:layout="@style/PreferenceCategoryStyle">
+        
         <EditTextPreference
             app:key="server_url"
             app:title="@string/server_url"
             app:summary="@string/server_url_description"
             app:defaultValue="wss://10.0.2.2:443/ws/"
-            app:useSimpleSummaryProvider="true" />
+            app:useSimpleSummaryProvider="true"
+            app:icon="@drawable/ic_server"
+            android:layout="@style/PreferenceStyle" />
+
+        <Preference
+            app:key="test_server_connection"
+            app:title="@string/test_server_connection"
+            app:summary="@string/test_server_description"
+            app:icon="@drawable/ic_network_check"
+            android:layout="@style/PreferenceStyle" />
     </PreferenceCategory>
 
-    <PreferenceCategory app:title="@string/about">
+    <PreferenceCategory 
+        app:title="@string/about"
+        app:iconSpaceReserved="false"
+        app:layout="@style/PreferenceCategoryStyle">
+        
+        <Preference
+            app:key="app_version"
+            app:title="@string/app_version"
+            app:summary="1.0.0"
+            app:icon="@drawable/ic_info"
+            app:selectable="false"
+            android:layout="@style/PreferenceStyle" />
+
         <Preference
             app:key="privacy_policy"
             app:title="@string/view_privacy_policy"
-            app:icon="@drawable/ic_privacy_policy" />
+            app:icon="@drawable/ic_privacy"
+            android:layout="@style/PreferenceStyle" />
             
         <Preference
             app:key="terms_of_service"
             app:title="@string/view_terms_of_service"
-            app:icon="@drawable/ic_terms" />
+            app:icon="@drawable/ic_document"
+            android:layout="@style/PreferenceStyle" />
     </PreferenceCategory>
 
 </PreferenceScreen> 

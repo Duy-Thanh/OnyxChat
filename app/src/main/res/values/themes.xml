@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools">
     <!-- Base application theme. -->
     <style name="Base.Theme.OnyxChat" parent="Theme.Material3.DayNight.NoActionBar">
@@ -39,6 +40,20 @@
         <item name="textAppearanceBody2">@style/TextAppearance.App.Body2</item>
         <!-- Force dark mode -->
         <item name="android:forceDarkAllowed" tools:targetApi="q">false</item>
+        
+        <!-- Preference styles -->
+        <item name="preferenceTheme">@style/PreferenceThemeOverlay</item>
+        <item name="android:listDivider">@color/divider</item>
+        <item name="alertDialogTheme">@style/AlertDialogStyle</item>
+        <item name="preferenceCategoryTitleTextAppearance">@style/TextAppearance.App.PreferenceCategory</item>
+        <item name="android:textAppearanceListItem">@style/TextAppearance.App.PreferenceTitle</item>
+        
+        <!-- Custom component styles -->
+        <item name="materialCardViewStyle">@style/CardStyle</item>
+        <item name="toolbarStyle">@style/CustomToolbar</item>
+        <item name="buttonStyle">@style/PrimaryButtonStyle</item>
+        <item name="materialButtonOutlinedStyle">@style/SecondaryButtonStyle</item>
+        <item name="bottomNavigationStyle">@style/BottomNavigationStyle</item>
     </style>
 
     <!-- Dialog theme for the download activity -->
@@ -52,8 +67,11 @@
         <item name="windowNoTitle">true</item>
         <item name="android:windowIsFloating">true</item>
         <item name="android:windowBackground">@color/surface_dark</item>
+        <item name="android:background">@color/surface_dark</item>
+        <item name="buttonBarPositiveButtonStyle">@style/PositiveButtonStyle</item>
+        <item name="buttonBarNegativeButtonStyle">@style/NegativeButtonStyle</item>
     </style>
-
+    
     <!-- No Action Bar theme -->
     <style name="Theme.OnyxChat.NoActionBar" parent="Theme.OnyxChat">
         <item name="windowActionBar">false</item>
