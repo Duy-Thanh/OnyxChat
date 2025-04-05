@@ -248,7 +248,8 @@ public class ApiClient {
                     sessionManager.createLoginSession(
                             authResponse.data.user.username,
                             authResponse.data.user.id,
-                            authResponse.data.tokens.accessToken);
+                            authResponse.data.tokens.accessToken,
+                            authResponse.data.tokens.refreshToken);
                     
                     // Notify callback
                     callback.onSuccess(authResponse);
@@ -311,7 +312,8 @@ public class ApiClient {
                     sessionManager.createLoginSession(
                             authResponse.data.user.username,
                             authResponse.data.user.id,
-                            authResponse.data.tokens.accessToken);
+                            authResponse.data.tokens.accessToken,
+                            authResponse.data.tokens.refreshToken);
                     
                     // Notify callback
                     callback.onSuccess(authResponse);

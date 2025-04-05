@@ -11,7 +11,7 @@ const generateAccessToken = (userId) => {
   return jwt.sign(
     { sub: userId },
     process.env.JWT_SECRET,
-    { expiresIn: process.env.JWT_EXPIRATION || '1h' }
+    { expiresIn: process.env.JWT_EXPIRES_IN || '30d' }
   );
 };
 
@@ -24,7 +24,7 @@ const generateRefreshToken = (userId) => {
   return jwt.sign(
     { sub: userId, jti: uuidv4() },
     process.env.JWT_REFRESH_SECRET,
-    { expiresIn: process.env.JWT_REFRESH_EXPIRATION || '7d' }
+    { expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '90d' }
   );
 };
 

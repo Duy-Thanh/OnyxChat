@@ -122,6 +122,14 @@ public class UserSessionManager {
     }
     
     /**
+     * Check if user has a refresh token
+     */
+    public boolean hasRefreshToken() {
+        String refreshToken = getRefreshToken();
+        return refreshToken != null && !refreshToken.isEmpty();
+    }
+    
+    /**
      * Check login status
      */
     public boolean isLoggedIn() {
@@ -248,26 +256,127 @@ public class UserSessionManager {
             return null;
         }
         
-        String username = pref.getString(KEY_USERNAME, null);
-        String userId = pref.getString(KEY_USER_ID, null);
-        String authToken = pref.getString(KEY_AUTH_TOKEN, null);
+        UserDetails details = new UserDetails();
+        details.username = getUsername();
+        details.userId = getUserId();
+        details.authToken = getAuthToken();
         
-        return new UserDetails(username, userId, authToken);
+        return details;
     }
     
     /**
-     * User details data class
+     * Attempt to fetch a refresh token for a user that doesn't have one.
+     * This should be called when we detect a user is logged in but missing a refresh token.
+     * 
+     * @param username The username to request new tokens for
+     * @param password The user's password
+     * @return A future that resolves to true if successful, false otherwise
+     */
+    public CompletableFuture<Boolean> refreshTokensForExistingUser(String username, String password) {
+        CompletableFuture<Boolean> future = new CompletableFuture<>();
+        
+        // If the user already has a refresh token, just return true
+        if (hasRefreshToken()) {
+            Log.d(TAG, "User already has a refresh token, no need to fetch a new one");
+            future.complete(true);
+            return future;
+        }
+        
+        Log.d(TAG, "Attempting to fetch refresh token for existing user: " + username);
+        
+        // Get saved server URL from shared preferences
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        String serverUrl = prefs.getString("server_url", "https://10.0.2.2:443");
+        if (serverUrl.endsWith("/ws") || serverUrl.endsWith("/ws/")) {
+            // If the URL points to a WebSocket endpoint, strip the /ws
+            serverUrl = serverUrl.replace("/ws/", "/").replace("/ws", "/");
+        }
+        
+        // Make sure URL ends with a slash
+        if (!serverUrl.endsWith("/")) {
+            serverUrl += "/";
+        }
+        
+        final String apiUrl = serverUrl + "api/auth/login";
+        Log.d(TAG, "Requesting new tokens from: " + apiUrl);
+        
+        // Execute network request in background
+        executor.execute(() -> {
+            HttpURLConnection connection = null;
+            try {
+                // Create connection
+                URL url = new URL(apiUrl);
+                connection = (HttpURLConnection) url.openConnection();
+                connection.setRequestMethod("POST");
+                connection.setRequestProperty("Content-Type", "application/json");
+                connection.setRequestProperty("Accept", "application/json");
+                connection.setDoOutput(true);
+                
+                // Create request body with username and password
+                JSONObject requestBody = new JSONObject();
+                requestBody.put("username", username);
+                requestBody.put("password", password);
+                
+                // Write request body
+                try (OutputStream os = connection.getOutputStream()) {
+                    byte[] input = requestBody.toString().getBytes("utf-8");
+                    os.write(input, 0, input.length);
+                }
+                
+                // Get response
+                int responseCode = connection.getResponseCode();
+                if (responseCode >= 200 && responseCode < 300) {
+                    // Read response
+                    StringBuilder response = new StringBuilder();
+                    try (BufferedReader br = new BufferedReader(
+                            new InputStreamReader(connection.getInputStream(), "utf-8"))) {
+                        String responseLine;
+                        while ((responseLine = br.readLine()) != null) {
+                            response.append(responseLine.trim());
+                        }
+                    }
+                    
+                    // Parse response
+                    JSONObject jsonResponse = new JSONObject(response.toString());
+                    JSONObject data = jsonResponse.getJSONObject("data");
+                    JSONObject tokens = data.getJSONObject("tokens");
+                    JSONObject user = data.getJSONObject("user");
+                    
+                    // Extract tokens
+                    String newAuthToken = tokens.getString("accessToken");
+                    String newRefreshToken = tokens.getString("refreshToken");
+                    String userId = user.getString("id");
+                    
+                    // Save tokens and user info
+                    createLoginSession(username, userId, newAuthToken, newRefreshToken);
+                    
+                    Log.d(TAG, "Successfully obtained new tokens for existing user");
+                    future.complete(true);
+                } else {
+                    // Handle error response
+                    Log.e(TAG, "Failed to obtain tokens: HTTP " + responseCode);
+                    future.complete(false);
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Error obtaining tokens", e);
+                future.complete(false);
+            } finally {
+                if (connection != null) {
+                    connection.disconnect();
+                }
+            }
+        });
+        
+        return future;
+    }
+    
+    /**
+     * Helper class for user details
      */
     public static class UserDetails {
-        private final String username;
-        private final String userId;
-        private final String authToken;
-        
-        public UserDetails(String username, String userId, String authToken) {
-            this.username = username;
-            this.userId = userId;
-            this.authToken = authToken;
-        }
+        private String username;
+        private String userId;
+        private String authToken;
         
         public String getUsername() {
             return username;

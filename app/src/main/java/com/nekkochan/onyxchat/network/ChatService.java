@@ -249,6 +249,12 @@ public class ChatService {
             return false;
         }
         
+        // Check if refresh token is available and log a warning if it's not
+        if (!sessionManager.hasRefreshToken()) {
+            Log.w(TAG, "Warning: No refresh token available. Token refresh will fail if needed.");
+            Log.w(TAG, "To fix this, please log out and log in again to obtain a refresh token.");
+        }
+        
         // Connect to WebSocket
         Log.d(TAG, "Connecting to chat server with user ID: " + userId);
         return webSocketClient.connect(userId);

@@ -10,6 +10,7 @@ import android.widget.Toast;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.annotation.NonNull;
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
 import androidx.core.view.WindowCompat;
@@ -80,6 +81,9 @@ public class MainActivity extends AppCompatActivity implements BottomNavigationV
             finish();
             return;
         }
+        
+        // Check if refresh token is missing for an existing user
+        checkForMissingRefreshToken();
         
         // Get the user ID from session
         String userId = sessionManager.getUserId();
@@ -288,5 +292,31 @@ public class MainActivity extends AppCompatActivity implements BottomNavigationV
         Intent intent = new Intent(this, LoginActivity.class);
         startActivity(intent);
         finish();
+    }
+    
+    /**
+     * Check if refresh token is missing for an existing user
+     */
+    private void checkForMissingRefreshToken() {
+        if (!sessionManager.hasRefreshToken()) {
+            Log.w(TAG, "User is missing a refresh token - token refresh will fail");
+            
+            // Show a dialog to inform the user
+            new AlertDialog.Builder(this)
+                    .setTitle("Authentication Update Required")
+                    .setMessage("To improve security and ensure uninterrupted service, please log out and log back in again.")
+                    .setPositiveButton("Log Out Now", (dialog, which) -> {
+                        // Log out the user
+                        logOut();
+                    })
+                    .setNegativeButton("Later", (dialog, which) -> {
+                        // User chooses to stay logged in, warn about possible disconnections
+                        Toast.makeText(this, 
+                                "You may experience disconnections until you log out and log back in", 
+                                Toast.LENGTH_LONG).show();
+                    })
+                    .setCancelable(false)
+                    .show();
+        }
     }
 }

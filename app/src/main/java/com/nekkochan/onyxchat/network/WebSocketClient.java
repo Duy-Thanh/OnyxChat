@@ -54,6 +54,7 @@ public class WebSocketClient {
     // Connection parameters
     private static final int MAX_BACKOFF_SECONDS = 300; // Max backoff of 5 minutes
     private static final long RECONNECT_DELAY_MS = 2000; // Start with 2 seconds
+    private static final long MIN_RECONNECT_DELAY_MS = 1000; // Minimum delay between reconnects
     
     private final OkHttpClient client;
     private final String wsEndpoint;
@@ -66,6 +67,7 @@ public class WebSocketClient {
     private String currentUserId;
     private int reconnectAttempts = 0;
     private final AtomicBoolean reconnecting = new AtomicBoolean(false);
+    private boolean disconnectRequested = false;
     
     // Cooldown tracking to prevent excessive reconnection attempts
     private long lastConnectAttemptTime = 0;
@@ -181,22 +183,36 @@ public class WebSocketClient {
     }
     
     /**
-     * Connect to the WebSocket server
-     * @param userId The user ID to connect with
-     * @return true if connection started, false otherwise
+     * Connect to the WebSocket server for a user
      */
     public boolean connect(String userId) {
-        if (webSocket != null) {
-            Log.w(TAG, "WebSocket already exists, disconnecting first");
-            disconnect();
+        if (userId == null || userId.isEmpty()) {
+            Log.e(TAG, "Cannot connect: no user ID provided");
+            return false;
         }
         
-        // Track connection attempt cooldown
+        Log.d(TAG, "Connecting to WebSocket for user: " + userId);
+        
+        // Update state
+        disconnectRequested = false;
+        
+        // Check if we're already connected or connecting
+        if (state == WebSocketState.CONNECTED || state == WebSocketState.CONNECTING) {
+            Log.d(TAG, "Already connected or connecting, no need to reconnect");
+            return true;
+        }
+        
+        // Rate limit connect attempts
         long now = System.currentTimeMillis();
-        if (now - lastConnectAttemptTime < RECONNECT_COOLDOWN_MS) {
-            consecutiveAttempts++;
-            if (consecutiveAttempts > MAX_CONSECUTIVE_ATTEMPTS) {
-                Log.w(TAG, "Too many connection attempts, cooling down");
+        long timeSinceLastAttempt = now - lastConnectAttemptTime;
+        
+        // If we're reconnecting too quickly, implement backoff
+        if (timeSinceLastAttempt < MIN_RECONNECT_DELAY_MS) {
+            // Count consecutive attempts for exponential backoff
+            if (consecutiveAttempts < MAX_CONSECUTIVE_ATTEMPTS) {
+                consecutiveAttempts++;
+            } else {
+                Log.w(TAG, "Too many consecutive connection attempts, backing off");
                 return false;
             }
         } else {
@@ -208,17 +224,25 @@ public class WebSocketClient {
         // Store the current user ID
         this.currentUserId = userId;
         
-        // Try to refresh the token first
-        sessionManager.refreshToken().thenAccept(refreshSuccess -> {
-            if (refreshSuccess) {
-                Log.d(TAG, "Successfully refreshed token before connecting");
-            } else {
-                Log.w(TAG, "Failed to refresh token, will continue with current token");
-            }
-            
-            // Continue with connection after token refresh attempt
+        // Try to refresh the token first if we have a refresh token
+        String refreshToken = sessionManager.getRefreshToken();
+        if (refreshToken != null && !refreshToken.isEmpty()) {
+            Log.d(TAG, "Refresh token available, attempting to refresh before connecting");
+            sessionManager.refreshToken().thenAccept(refreshSuccess -> {
+                if (refreshSuccess) {
+                    Log.d(TAG, "Successfully refreshed token before connecting");
+                } else {
+                    Log.w(TAG, "Failed to refresh token, will continue with current token");
+                }
+                
+                // Continue with connection after token refresh attempt
+                connectWithCurrentToken();
+            });
+        } else {
+            // No refresh token available, connect with current access token
+            Log.d(TAG, "No refresh token available, connecting with current access token");
             connectWithCurrentToken();
-        });
+        }
         
         return true;
     }
@@ -820,6 +844,22 @@ public class WebSocketClient {
         state = WebSocketState.DISCONNECTED;
         notifyStateChanged();
         
+        // Check if we have a refresh token before attempting to refresh
+        if (sessionManager.getRefreshToken() == null || sessionManager.getRefreshToken().isEmpty()) {
+            Log.e(TAG, "No refresh token available, cannot refresh");
+            
+            // Notify listeners about the error
+            for (MessageListener listener : listeners) {
+                listener.onError("Authentication error: No refresh token available");
+            }
+            
+            // Even without a refresh token, try to reconnect with the existing token
+            // It might still be valid or the server might have different validation rules
+            Log.d(TAG, "Attempting to reconnect with existing token despite refresh failure");
+            scheduleReconnect(RECONNECT_DELAY_MS);
+            return;
+        }
+        
         // Refresh the token
         sessionManager.refreshToken().thenAccept(refreshSuccess -> {
             if (refreshSuccess) {
@@ -837,6 +877,9 @@ public class WebSocketClient {
                 for (MessageListener listener : listeners) {
                     listener.onError("Failed to refresh authentication token");
                 }
+                
+                // Schedule a reconnect attempt in case token refreshing failed
+                scheduleReconnect(RECONNECT_DELAY_MS);
             }
         });
     }
