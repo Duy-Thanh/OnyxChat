@@ -235,17 +235,41 @@ public class MainViewModel extends AndroidViewModel {
             return;
         }
         
+        // Don't allow adding self as contact
+        if (contactAddress.equals(currentUser.getAddress())) {
+            errorMessage.setValue("Cannot add yourself as a contact");
+            return;
+        }
+        
         try {
-            // Create new contact
-            Contact contact = new Contact(
-                    currentUser.getAddress(),
-                    contactAddress,
-                    nickname
-            );
-            
-            // Save to database
-            repository.insertContact(contact);
-            
+            // Use an async transaction to prevent main thread blocking
+            repository.executeTransactionAsync(() -> {
+                // Check if User already exists with this address
+                User existingUser = repository.getUserByAddress(contactAddress);
+                
+                // If not, create a User entry for the contact address
+                if (existingUser == null) {
+                    User contactUser = new User(contactAddress, nickname != null ? nickname : contactAddress, null);
+                    contactUser.setCurrentUser(false);
+                    repository.insertUser(contactUser);
+                }
+                
+                // Check if contact already exists to avoid duplicates
+                if (repository.contactExists(currentUser.getAddress(), contactAddress)) {
+                    throw new IllegalStateException("Contact already exists");
+                }
+                
+                // Now create the contact
+                Contact contact = new Contact(
+                        currentUser.getAddress(),
+                        contactAddress,
+                        nickname
+                );
+                
+                // Save to database
+                repository.insertContact(contact);
+                return null;
+            });
         } catch (Exception e) {
             Log.e(TAG, "Error adding contact: " + e.getMessage(), e);
             errorMessage.setValue("Failed to add contact: " + e.getMessage());

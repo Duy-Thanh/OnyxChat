@@ -149,6 +149,62 @@ public class Repository {
     }
     
     /**
+     * Get a user by their address
+     * @param address The user's address
+     * @return The user, or null if not found
+     */
+    public User getUserByAddress(String address) {
+        return userDao.getUserByAddress(address);
+    }
+    
+    /**
+     * Execute a transaction with proper error handling
+     * @param transaction The transaction to execute
+     * @param <T> The return type of the transaction
+     * @return The result of the transaction
+     */
+    public <T> T executeTransaction(RoomTransactionCallback<T> transaction) {
+        try {
+            // Execute transaction on a background thread
+            return appDatabase.runInTransaction(transaction::execute);
+        } catch (Exception e) {
+            Log.e("Repository", "Transaction failed", e);
+            throw e;
+        }
+    }
+    
+    /**
+     * Execute a transaction with proper error handling on a background thread
+     * @param transaction The transaction to execute
+     */
+    public void executeTransactionAsync(RoomTransactionCallback<Void> transaction) {
+        executorService.execute(() -> {
+            try {
+                appDatabase.runInTransaction(transaction::execute);
+            } catch (Exception e) {
+                Log.e("Repository", "Transaction failed", e);
+            }
+        });
+    }
+    
+    /**
+     * Functional interface for Room transactions
+     */
+    public interface RoomTransactionCallback<T> {
+        T execute() throws Exception;
+    }
+    
+    /**
+     * Check if a contact exists
+     * @param ownerAddress The owner's address
+     * @param contactAddress The contact's address
+     * @return True if the contact exists, false otherwise
+     */
+    public boolean contactExists(String ownerAddress, String contactAddress) {
+        return contactDao.contactExists(ownerAddress, contactAddress);
+    }
+    
+    /**
      * Sync contacts with server to find which ones are app users
      */
     public void syncContactsWithServer(String ownerAddress, Consumer<Boolean> completionCallback) {
