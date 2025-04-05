@@ -2,7 +2,7 @@ const { v4: uuidv4 } = require('uuid');
 const jwt = require('jsonwebtoken');
 const db = require('./models');
 
-// Store clients connections
+// Store clients connections - modified to support multiple connections per user
 const clients = new Map();
 
 // Authentication middleware for WebSocket
@@ -34,7 +34,7 @@ const authenticateWsConnection = (token) => {
 };
 
 // Handle incoming messages
-const handleMessage = async (userId, messageData) => {
+const handleMessage = async (userId, messageData, connectionId) => {
   try {
     const message = JSON.parse(messageData);
     const { type, data } = message;
@@ -42,12 +42,16 @@ const handleMessage = async (userId, messageData) => {
     switch (type) {
       case 'ping':
         // Respond to ping with pong to keep connection alive
-        const client = clients.get(userId);
-        if (client && client.readyState === 1) { // WebSocket.OPEN
-          client.send(JSON.stringify({
-            type: 'pong',
-            timestamp: new Date().getTime()
-          }));
+        const userConnections = clients.get(userId);
+        if (userConnections) {
+          // Find the specific connection that sent this ping
+          const connection = userConnections.find(conn => conn.connectionId === connectionId);
+          if (connection && connection.ws.readyState === 1) { // WebSocket.OPEN
+            connection.ws.send(JSON.stringify({
+              type: 'pong',
+              timestamp: new Date().getTime()
+            }));
+          }
         }
         break;
         
@@ -61,22 +65,24 @@ const handleMessage = async (userId, messageData) => {
           contentType: data.contentType || 'text',
         });
         
-        // Forward message to recipient if online
+        // Forward message to all recipient's devices if online
         if (clients.has(data.recipientId)) {
-          const client = clients.get(data.recipientId);
-          if (client.readyState === 1) { // WebSocket.OPEN
-            client.send(JSON.stringify({
-              type: 'NEW_MESSAGE',
-              data: {
-                id: newMessage.id,
-                senderId: userId,
-                content: data.content,
-                encrypted: data.encrypted || false,
-                contentType: data.contentType || 'text',
-                timestamp: newMessage.createdAt
-              }
-            }));
-          }
+          const recipientConnections = clients.get(data.recipientId);
+          recipientConnections.forEach(connection => {
+            if (connection.ws.readyState === 1) { // WebSocket.OPEN
+              connection.ws.send(JSON.stringify({
+                type: 'NEW_MESSAGE',
+                data: {
+                  id: newMessage.id,
+                  senderId: userId,
+                  content: data.content,
+                  encrypted: data.encrypted || false,
+                  contentType: data.contentType || 'text',
+                  timestamp: newMessage.createdAt
+                }
+              }));
+            }
+          });
         }
         break;
         
@@ -87,35 +93,39 @@ const handleMessage = async (userId, messageData) => {
           { where: { id: data.messageId, recipientId: userId }}
         );
         
-        // Notify sender if online
+        // Notify all of sender's devices if online
         const readMessage = await db.Message.findByPk(data.messageId);
         if (readMessage && clients.has(readMessage.senderId)) {
-          const client = clients.get(readMessage.senderId);
-          if (client.readyState === 1) {
-            client.send(JSON.stringify({
-              type: 'READ_RECEIPT',
-              data: {
-                messageId: data.messageId,
-                readAt: new Date()
-              }
-            }));
-          }
+          const senderConnections = clients.get(readMessage.senderId);
+          senderConnections.forEach(connection => {
+            if (connection.ws.readyState === 1) {
+              connection.ws.send(JSON.stringify({
+                type: 'READ_RECEIPT',
+                data: {
+                  messageId: data.messageId,
+                  readAt: new Date()
+                }
+              }));
+            }
+          });
         }
         break;
         
       case 'TYPING':
-        // Notify recipient that user is typing
+        // Notify all recipient's devices that user is typing
         if (clients.has(data.recipientId)) {
-          const client = clients.get(data.recipientId);
-          if (client.readyState === 1) {
-            client.send(JSON.stringify({
-              type: 'TYPING',
-              data: {
-                userId: userId,
-                isTyping: data.isTyping
-              }
-            }));
-          }
+          const recipientConnections = clients.get(data.recipientId);
+          recipientConnections.forEach(connection => {
+            if (connection.ws.readyState === 1) {
+              connection.ws.send(JSON.stringify({
+                type: 'TYPING',
+                data: {
+                  userId: userId,
+                  isTyping: data.isTyping
+                }
+              }));
+            }
+          });
         }
         break;
         
@@ -248,10 +258,10 @@ const setupWebSocketServer = (wss) => {
   });
   
   // Heartbeat to keep connections alive
-  setInterval(() => {
+  const interval = setInterval(() => {
     wss.clients.forEach((ws) => {
       if (ws.isAlive === false) {
-        console.log(`Terminating inactive WebSocket connection: ${ws.connectionId || 'unknown'} for user: ${ws.userId || 'unknown'} - No pong received`);
+        console.log(`Terminating inactive connection: ${ws.connectionId}`);
         return ws.terminate();
       }
       
@@ -259,14 +269,29 @@ const setupWebSocketServer = (wss) => {
       ws.ping();
     });
   }, 30000);
+  
+  wss.on('close', () => {
+    clearInterval(interval);
+    console.log('WebSocket server closed');
+  });
 };
 
-// Setup authenticated connection
 const setupAuthenticatedConnection = (ws, userId, connectionId) => {
   console.log(`WebSocket authenticated for user: ${userId}`);
   
-  // Store client connection
-  clients.set(userId, ws);
+  // Store client connection - add to array of connections for this user
+  if (!clients.has(userId)) {
+    clients.set(userId, []);
+  }
+  
+  // Add this connection to the user's connections array
+  clients.get(userId).push({
+    ws,
+    connectionId,
+    connectedAt: new Date()
+  });
+  
+  // Add connection info to the WebSocket object
   ws.userId = userId;
   ws.connectionId = connectionId;
   ws.isAlive = true; // Initialize isAlive flag
@@ -292,22 +317,37 @@ const setupAuthenticatedConnection = (ws, userId, connectionId) => {
   
   // Handle incoming messages
   ws.on('message', (message) => {
-    handleMessage(userId, message);
+    handleMessage(userId, message, connectionId);
   });
   
   // Handle disconnection
   ws.on('close', () => {
     console.log('WebSocket client disconnected:', connectionId);
     
-    // Update user as offline
-    db.User.update({ isActive: false, lastActiveAt: new Date() }, { where: { id: userId } })
-      .catch(err => console.error('Failed to update user inactive status:', err));
-    
-    // Remove from clients map
-    clients.delete(userId);
-    
-    // Notify user's contacts that they're offline
-    notifyUserStatus(userId, false);
+    // Remove this connection from the user's connections
+    if (clients.has(userId)) {
+      const connections = clients.get(userId);
+      const connectionIndex = connections.findIndex(conn => conn.connectionId === connectionId);
+      
+      if (connectionIndex !== -1) {
+        connections.splice(connectionIndex, 1);
+        
+        // If this was the last connection for this user, remove the user from the clients map
+        // and update their status to offline
+        if (connections.length === 0) {
+          clients.delete(userId);
+          
+          // Update user as offline
+          db.User.update({ isActive: false, lastActiveAt: new Date() }, { where: { id: userId } })
+            .catch(err => console.error('Failed to update user inactive status:', err));
+          
+          // Notify user's contacts that they're offline
+          notifyUserStatus(userId, false);
+        } else {
+          console.log(`User ${userId} still has ${connections.length} active connections`);
+        }
+      }
+    }
   });
 };
 
@@ -328,17 +368,19 @@ const notifyUserStatus = async (userId, isOnline) => {
     // Notify each online contact
     contacts.forEach(contact => {
       if (clients.has(contact.contactId)) {
-        const client = clients.get(contact.contactId);
-        if (client.readyState === 1) {
-          client.send(JSON.stringify({
-            type: 'USER_STATUS',
-            data: {
-              userId,
-              isOnline,
-              timestamp: new Date()
-            }
-          }));
-        }
+        const contactConnections = clients.get(contact.contactId);
+        contactConnections.forEach(connection => {
+          if (connection.ws.readyState === 1) {
+            connection.ws.send(JSON.stringify({
+              type: 'USER_STATUS',
+              data: {
+                userId,
+                isOnline,
+                timestamp: new Date()
+              }
+            }));
+          }
+        });
       }
     });
   } catch (error) {

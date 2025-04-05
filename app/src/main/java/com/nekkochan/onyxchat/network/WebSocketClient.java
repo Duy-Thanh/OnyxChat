@@ -206,8 +206,8 @@ public class WebSocketClient {
         disconnectRequested = false;
         
         // Check if we're already connected
-        if (state == WebSocketState.CONNECTED) {
-            Log.d(TAG, "Already connected, no need to reconnect");
+        if (state == WebSocketState.CONNECTED && userId.equals(currentUserId)) {
+            Log.d(TAG, "Already connected with same user ID, no need to reconnect");
             return true;
         }
         
@@ -249,6 +249,16 @@ public class WebSocketClient {
         // Store the current user ID
         this.currentUserId = userId;
         
+        // Update state to connecting
+        state = WebSocketState.CONNECTING;
+        notifyStateChanged();
+        
+        // Get connection token
+        return connectWithCurrentToken();
+    }
+    
+    /**
+     * Connect to the WebSocket server with the current auth token
         // Try to refresh the token first if we have a refresh token
         String refreshToken = sessionManager.getRefreshToken();
         if (refreshToken != null && !refreshToken.isEmpty()) {
