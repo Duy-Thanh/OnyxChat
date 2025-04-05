@@ -73,9 +73,6 @@ public class SettingsActivity extends AppCompatActivity {
         public void onCreatePreferences(Bundle savedInstanceState, String rootKey) {
             setPreferencesFromResource(R.xml.root_preferences, rootKey);
             
-            // Apply styling to preference categories
-            applyPreferenceStyles();
-            
             // Set app version
             setupAppVersionPreference();
             
@@ -129,13 +126,28 @@ public class SettingsActivity extends AppCompatActivity {
             setupServerTestPreference();
         }
         
+        @Override
+        public void onViewCreated(View view, Bundle savedInstanceState) {
+            super.onViewCreated(view, savedInstanceState);
+            
+            // Apply styling to preferences - moved from onCreatePreferences
+            // The RecyclerView is only available in onViewCreated
+            applyPreferenceStyles();
+        }
+        
         /**
          * Apply custom styles to preferences
          */
         private void applyPreferenceStyles() {
-            // Modern styling will be applied through the theme
-            setDivider(new ColorDrawable(ContextCompat.getColor(requireContext(), R.color.transparent)));
-            setDividerHeight(16);
+            // Add padding to the RecyclerView
+            if (getListView() != null) {
+                int horizontalPadding = getResources().getDimensionPixelSize(R.dimen.activity_horizontal_margin);
+                int verticalPadding = getResources().getDimensionPixelSize(R.dimen.activity_vertical_margin);
+                getListView().setPadding(horizontalPadding, verticalPadding, horizontalPadding, verticalPadding);
+                getListView().setClipToPadding(false);
+                setDivider(new ColorDrawable(ContextCompat.getColor(requireContext(), R.color.transparent)));
+                setDividerHeight(16);
+            }
         }
         
         /**

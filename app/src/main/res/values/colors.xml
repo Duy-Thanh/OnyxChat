@@ -11,12 +11,12 @@
     <color name="transparent">#00000000</color>
 
     <!-- Theme colors -->
-    <color name="primary">#4527A0</color>
-    <color name="primary_dark">#311B92</color>
-    <color name="primary_light">#CDC9FF</color>
-    <color name="secondary">#7C4DFF</color>
+    <color name="primary">#1565C0</color>
+    <color name="primary_dark">#0D47A1</color>
+    <color name="primary_light">#BBDEFB</color>
+    <color name="secondary">#2196F3</color>
     <color name="secondary_light">#B3F1EA</color>
-    <color name="accent">#7C4DFF</color>
+    <color name="accent">#2196F3</color>
     <color name="background">#121212</color>
     <color name="background_light">#1F1F1F</color>
     <color name="surface">#1F1F1F</color>
@@ -29,9 +29,9 @@
     <color name="on_error">#FFFFFF</color>
     
     <!-- Dark theme colors -->
-    <color name="primary_dark_theme">#B388FF</color>
-    <color name="primary_dark_dark_theme">#805ACB</color>
-    <color name="accent_dark_theme">#651FFF</color>
+    <color name="primary_dark_theme">#64B5F6</color>
+    <color name="primary_dark_dark_theme">#1E88E5</color>
+    <color name="accent_dark_theme">#2196F3</color>
     <color name="background_dark">#121212</color>
     <color name="surface_dark">#1E1E1E</color>
     <color name="on_primary_dark_theme">#000000</color>
@@ -48,7 +48,7 @@
     <color name="colorPrimaryDark">@color/primary_dark</color>
     <color name="colorAccent">@color/accent</color>
     <color name="colorSecondary">@color/secondary</color>
-    <color name="colorSecondaryVariant">#651FFF</color>
+    <color name="colorSecondaryVariant">#0D47A1</color>
     <color name="colorOnSecondary">#FFFFFF</color>
     <color name="colorOnPrimary">@color/on_primary</color>
     <color name="colorError">@color/error</color>
@@ -69,15 +69,15 @@
     <color name="incoming_message_bg">@color/received_message_background</color>
     <color name="outgoing_message_bg">@color/sent_message_background</color>
     <color name="unread_count_text">@color/white</color>
-    <color name="message_sent_background">#2A3451</color>
-    <color name="message_received_background">#2E2A3A</color>
+    <color name="message_sent_background">#1A3558</color>
+    <color name="message_received_background">#1E2A3A</color>
     <color name="message_sent_text">@color/white</color>
     <color name="message_received_text">@color/white</color>
     
     <!-- Message colors -->
-    <color name="sent_message_background">#2A3451</color>
+    <color name="sent_message_background">#1A3558</color>
     <color name="sent_message_text">@color/white</color>
-    <color name="received_message_background">#2E2A3A</color>
+    <color name="received_message_background">#1E2A3A</color>
     <color name="received_message_text">@color/white</color>
     <color name="system_message_bg">#383838</color>
     <color name="error_message_bg">#452227</color>

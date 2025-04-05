@@ -45,8 +45,9 @@
         <item name="preferenceTheme">@style/PreferenceThemeOverlay</item>
         <item name="android:listDivider">@color/divider</item>
         <item name="alertDialogTheme">@style/AlertDialogStyle</item>
-        <item name="preferenceCategoryTitleTextAppearance">@style/TextAppearance.App.PreferenceCategory</item>
-        <item name="android:textAppearanceListItem">@style/TextAppearance.App.PreferenceTitle</item>
+        <item name="android:textColorPrimary">@color/text_primary_dark</item>
+        <item name="android:textColorSecondary">@color/text_secondary_dark</item>
+        <item name="colorAccent">@color/accent</item>
         
         <!-- Custom component styles -->
         <item name="materialCardViewStyle">@style/CardStyle</item>
