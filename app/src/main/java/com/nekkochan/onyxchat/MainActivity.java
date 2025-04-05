@@ -203,6 +203,10 @@ public class MainActivity extends AppCompatActivity implements BottomNavigationV
             // Log out
             logOut();
             return true;
+        } else if (id == R.id.action_media) {
+            // Open media processing activity
+            openMediaProcessing();
+            return true;
         }
         
         return super.onOptionsItemSelected(item);
@@ -213,6 +217,14 @@ public class MainActivity extends AppCompatActivity implements BottomNavigationV
      */
     public void openSettings() {
         Intent intent = new Intent(this, SettingsActivity.class);
+        startActivity(intent);
+    }
+    
+    /**
+     * Open the media processing activity
+     */
+    public void openMediaProcessing() {
+        Intent intent = new Intent(this, com.nekkochan.onyxchat.ui.MediaProcessingActivity.class);
         startActivity(intent);
     }
     

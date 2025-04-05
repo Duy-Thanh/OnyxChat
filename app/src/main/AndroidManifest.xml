@@ -16,6 +16,18 @@
     
     <!-- Permission for exact alarms (needed for ChatNotificationService) -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    
+    <!-- Permissions for media handling -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    
+    <!-- Legacy storage permissions for older Android versions -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" 
+                     android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" 
+                     android:maxSdkVersion="29" />
 
     <application
         android:allowBackup="true"
@@ -110,6 +122,13 @@
             android:exported="false"
             android:parentActivityName=".MainActivity"
             android:theme="@style/AppTheme" />
+        
+        <!-- Media Processing Activity -->
+        <activity
+            android:name=".ui.MediaProcessingActivity"
+            android:exported="false"
+            android:parentActivityName=".ui.chat.ChatActivity"
+            android:label="Media Processing" />
         
     </application>
 
