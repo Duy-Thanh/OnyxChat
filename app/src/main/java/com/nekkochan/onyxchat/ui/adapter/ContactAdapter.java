@@ -107,9 +107,14 @@ public class ContactAdapter extends ListAdapter<Contact, ContactAdapter.ContactV
          * @param contact The contact to display
          */
         void bind(Contact contact) {
-            // In Contacts tab, always use the real contact address (not nickname)
-            String displayAddress = formatAddressForDisplay(contact.getContactAddress());
-            contactNameView.setText(displayAddress);
+            // In Contacts tab, display name as username (top) and format contact address as @username (bottom)
+            // This matches the format in the Discover Users screen
+            contactNameView.setText(contact.getDisplayName());
+            
+            // Format the handle/username as @username below the display name
+            // Split the email address to get the username part (before the @)
+            String username = contact.getContactAddress().split("@")[0];
+            lastMessageView.setText("@" + username);
             
             // Set verification status
             verifiedIconView.setVisibility(contact.isVerified() ? View.VISIBLE : View.GONE);
@@ -126,9 +131,6 @@ public class ContactAdapter extends ListAdapter<Contact, ContactAdapter.ContactV
             
             // Last interaction time
             lastMessageTimeView.setText(timeFormat.format(new Date(contact.getLastInteractionTime())));
-            
-            // Default message if no message history
-            lastMessageView.setText("No messages yet");
             
             // TODO: Set real profile picture when available
             contactAvatarView.setImageResource(android.R.drawable.ic_menu_myplaces);
