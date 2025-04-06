@@ -143,12 +143,23 @@ public class ChatService {
                             String sender = jsonMessage.get("sender").getAsString();
                             String content = jsonMessage.get("content").getAsString();
                             
+                            // Use server timestamp if available, otherwise use local time
+                            long timestamp = System.currentTimeMillis();
+                            if (jsonMessage.has("timestamp")) {
+                                try {
+                                    timestamp = jsonMessage.get("timestamp").getAsLong();
+                                    Log.d(TAG, "Using server timestamp: " + timestamp);
+                                } catch (Exception e) {
+                                    Log.e(TAG, "Error parsing timestamp, using system time", e);
+                                }
+                            }
+                            
                             ChatMessage chatMessage = new ChatMessage(
                                     ChatMessage.MessageType.DIRECT,
                                     sender,
                                     userId, // me as recipient
                                     content,
-                                    System.currentTimeMillis()
+                                    timestamp
                             );
                             latestMessage.postValue(chatMessage);
                         } else if ("status".equals(type)) {
@@ -171,25 +182,45 @@ public class ChatService {
                             
                             onlineUsers.postValue(users);
                             
+                            // Use server timestamp if available, otherwise use local time
+                            long timestamp = System.currentTimeMillis();
+                            if (jsonMessage.has("timestamp")) {
+                                try {
+                                    timestamp = jsonMessage.get("timestamp").getAsLong();
+                                } catch (Exception e) {
+                                    Log.e(TAG, "Error parsing timestamp, using system time", e);
+                                }
+                            }
+                            
                             // Also post a system message about the status change
                             ChatMessage chatMessage = new ChatMessage(
                                     ChatMessage.MessageType.SYSTEM,
                                     "server",
                                     userId,
                                     "User " + statusUserId + " is " + status,
-                                    System.currentTimeMillis()
+                                    timestamp
                             );
                             latestMessage.postValue(chatMessage);
                         } else if ("echo".equals(type)) {
                             // Echo message (confirmation of our message)
                             String content = jsonMessage.get("content").getAsString();
                             
+                            // Use server timestamp if available, otherwise use local time
+                            long timestamp = System.currentTimeMillis();
+                            if (jsonMessage.has("timestamp")) {
+                                try {
+                                    timestamp = jsonMessage.get("timestamp").getAsLong();
+                                } catch (Exception e) {
+                                    Log.e(TAG, "Error parsing timestamp, using system time", e);
+                                }
+                            }
+                            
                             ChatMessage chatMessage = new ChatMessage(
                                     ChatMessage.MessageType.ECHO,
                                     userId, // me as sender
                                     "server",
                                     content,
-                                    System.currentTimeMillis()
+                                    timestamp
                             );
                             chatMessage.setSelf(true);
                             latestMessage.postValue(chatMessage);
@@ -197,14 +228,27 @@ public class ChatService {
                             // Error message
                             String content = jsonMessage.get("content").getAsString();
                             
+                            // Use server timestamp if available, otherwise use local time
+                            long timestamp = System.currentTimeMillis();
+                            if (jsonMessage.has("timestamp")) {
+                                try {
+                                    timestamp = jsonMessage.get("timestamp").getAsLong();
+                                } catch (Exception e) {
+                                    Log.e(TAG, "Error parsing timestamp, using system time", e);
+                                }
+                            }
+                            
                             ChatMessage chatMessage = new ChatMessage(
                                     ChatMessage.MessageType.ERROR,
                                     "server",
                                     userId,
                                     content,
-                                    System.currentTimeMillis()
+                                    timestamp
                             );
                             latestMessage.postValue(chatMessage);
+                            
+                            // Also post to the error event stream
+                            chatEvents.postValue(new ChatEvent(ChatEventType.SERVER_ERROR, content));
                         } else {
                             // Other message types
                             ChatMessage chatMessage = new ChatMessage(

@@ -7,8 +7,10 @@ import android.text.TextWatcher;
 import android.util.Log;
 import android.view.MenuItem;
 import android.view.View;
+import android.view.ViewParent;
 import android.widget.EditText;
 import android.widget.ImageButton;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -95,8 +97,34 @@ public class ChatActivity extends AppCompatActivity {
         videoCallButton = findViewById(R.id.videoCallButton);
         chatSettingsButton = findViewById(R.id.chatSettingsButton);
         
-        // Set up contact info
+        // Add logging to track timestamps of messages
+        // Set up contact info in header format similar to Discover Users screen
         contactNameText.setText(contactName != null ? contactName : contactId);
+        
+        // Find the statusChip's parent LinearLayout
+        ViewParent statusChipParent = statusChip.getParent();
+        if (statusChipParent instanceof LinearLayout) {
+            // Get the username from the contact ID (email)
+            if (isEmail) {
+                String username = contactId.split("@")[0];
+                // Create a new TextView for the username
+                TextView usernameText = new TextView(this);
+                usernameText.setLayoutParams(new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT));
+                usernameText.setText("@" + username);
+                usernameText.setTextColor(getResources().getColor(R.color.white, null));
+                usernameText.setTextSize(12);
+                
+                // Replace the statusChip with the username text
+                LinearLayout parent = (LinearLayout) statusChipParent;
+                parent.removeView(statusChip);
+                parent.addView(usernameText);
+                
+                // Add the status chip back after the username
+                parent.addView(statusChip);
+            }
+        }
         
         // Fetch messages for this contact
         viewModel.setCurrentRecipient(contactId);

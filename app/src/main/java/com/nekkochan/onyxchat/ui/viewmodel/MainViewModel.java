@@ -27,10 +27,15 @@ import com.nekkochan.onyxchat.model.UserStatus;
 
 import java.security.KeyPair;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.text.SimpleDateFormat;
+import java.util.TimeZone;
+import java.util.concurrent.TimeUnit;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -595,61 +600,87 @@ public class MainViewModel extends AndroidViewModel {
      * Refresh the conversations list from the server
      */
     public void refreshConversations() {
-        if (isLoading.getValue() != null && isLoading.getValue()) {
-            return; // Don't refresh if already loading
-        }
-
+        // Show loading indicator
         isLoading.setValue(true);
         
-        // Get conversations from the API
-        ApiClient.getInstance(getApplication().getApplicationContext())
-            .getConversations(new ApiClient.ApiCallback<List<ApiClient.ConversationResponse>>() {
-                @Override
-                public void onSuccess(List<ApiClient.ConversationResponse> result) {
-                    // Convert API response to ConversationDisplay objects
-                    List<ConversationDisplay> conversationList = new ArrayList<>();
+        // Get user ID
+        String userId = getUserId();
+        if (userId == null || userId.isEmpty()) {
+            errorMessage.setValue("User ID not available");
+            isLoading.setValue(false);
+            return;
+        }
+        
+        // Get conversations from API
+        ApiClient apiClient = ApiClient.getInstance(getApplication());
+        apiClient.getConversations(new ApiClient.ApiCallback<List<ApiClient.ConversationResponse>>() {
+            @Override
+            public void onSuccess(List<ApiClient.ConversationResponse> result) {
+                Log.d(TAG, "Got " + (result != null ? result.size() : 0) + " conversations");
+                
+                if (result != null) {
+                    List<ConversationDisplay> conversationsList = new ArrayList<>();
                     
-                    if (result != null) {
-                        for (ApiClient.ConversationResponse conversation : result) {
-                            String displayName = conversation.getDisplayName();
-                            if (displayName == null || displayName.isEmpty()) {
-                                displayName = conversation.getUsername();
-                            }
-                            
-                            // Add null check for createdAt
-                            Date timestamp = null;
-                            if (conversation.getCreatedAt() != null) {
-                                timestamp = new Date(conversation.getCreatedAt().getTime());
-                            } else {
-                                timestamp = new Date(); // Use current time as fallback
-                            }
-                            
-                            conversationList.add(new ConversationDisplay(
+                    SimpleDateFormat formatter = new SimpleDateFormat("HH:mm", Locale.getDefault());
+                    formatter.setTimeZone(TimeZone.getDefault());
+                    
+                    for (ApiClient.ConversationResponse conversation : result) {
+                        // Log the timestamp for debugging
+                        if (conversation.getCreatedAt() != null) {
+                            Log.d(TAG, "Conversation timestamp for " + conversation.getEmail() + 
+                                  ": " + conversation.getCreatedAt() + 
+                                  " -> " + formatter.format(conversation.getCreatedAt()));
+                        } else {
+                            Log.d(TAG, "No timestamp for conversation with " + conversation.getEmail());
+                        }
+                        
+                        // Create display model for this conversation
+                        String displayName = conversation.getDisplayName();
+                        if (displayName == null || displayName.isEmpty()) {
+                            displayName = conversation.getUsername();
+                        }
+                        
+                        conversationsList.add(new ConversationDisplay(
                                 conversation.getUserId(),
                                 conversation.getEmail(),
                                 displayName,
                                 conversation.getContent(),
-                                timestamp,
+                                conversation.getCreatedAt(),
                                 conversation.getUnreadCount(),
-                                false // Assume offline until we get status update
-                            ));
-                        }
+                                false // Default to offline since we don't have online status yet
+                        ));
                     }
                     
-                    // Update the LiveData on the main thread
-                    new Handler(Looper.getMainLooper()).post(() -> {
-                        conversations.setValue(conversationList);
-                        isLoading.setValue(false);
+                    // Sort conversations by timestamp (newest first)
+                    Collections.sort(conversationsList, (a, b) -> {
+                        if (a.getLastMessageTime() == null && b.getLastMessageTime() == null) {
+                            return 0;
+                        } else if (a.getLastMessageTime() == null) {
+                            return 1;
+                        } else if (b.getLastMessageTime() == null) {
+                            return -1;
+                        } else {
+                            // Sort in descending order (newest first)
+                            return b.getLastMessageTime().compareTo(a.getLastMessageTime());
+                        }
                     });
+                    
+                    conversations.setValue(conversationsList);
+                } else {
+                    conversations.setValue(new ArrayList<>());
                 }
-
-                @Override
-                public void onFailure(String error) {
-                    Log.e(TAG, "Error refreshing conversations: " + error);
-                    errorMessage.postValue("Failed to refresh conversations: " + error);
-                    isLoading.postValue(false);
-                }
-            });
+                
+                isLoading.setValue(false);
+                clearErrorMessage();
+            }
+            
+            @Override
+            public void onFailure(String errorMsg) {
+                Log.e(TAG, "Error getting conversations: " + errorMsg);
+                errorMessage.setValue("Error loading conversations: " + errorMsg);
+                isLoading.setValue(false);
+            }
+        });
     }
 
     /**

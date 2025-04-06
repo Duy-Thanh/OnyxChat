@@ -1,5 +1,6 @@
 package com.nekkochan.onyxchat.ui.adapters;
 
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -14,11 +15,15 @@ import com.nekkochan.onyxchat.model.ConversationDisplay;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.Date;
 import java.util.List;
 import java.util.Locale;
+import java.util.TimeZone;
 
 public class ConversationAdapter extends RecyclerView.Adapter<ConversationAdapter.ConversationViewHolder> {
     
+    private static final String TAG = "ConversationAdapter";
     private List<ConversationDisplay> conversations = new ArrayList<>();
     private final OnConversationClickListener listener;
     private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("MMM d", Locale.getDefault());
@@ -30,6 +35,9 @@ public class ConversationAdapter extends RecyclerView.Adapter<ConversationAdapte
     
     public ConversationAdapter(OnConversationClickListener listener) {
         this.listener = listener;
+        // Ensure formatters use device timezone
+        TIME_FORMAT.setTimeZone(TimeZone.getDefault());
+        DATE_FORMAT.setTimeZone(TimeZone.getDefault());
     }
     
     @NonNull
@@ -55,6 +63,23 @@ public class ConversationAdapter extends RecyclerView.Adapter<ConversationAdapte
         notifyDataSetChanged();
     }
     
+    /**
+     * Format a time value to display consistently in 24-hour format
+     * @param date The date to format
+     * @return The formatted time string in HH:mm format
+     */
+    private String formatTime(Date date) {
+        if (date == null) return "";
+        
+        // Create a new formatter for thread safety
+        SimpleDateFormat timeFormat = new SimpleDateFormat("HH:mm", Locale.getDefault());
+        timeFormat.setTimeZone(TimeZone.getDefault());
+        
+        String formattedTime = timeFormat.format(date);
+        Log.d(TAG, "Formatting time: " + date.toString() + " -> " + formattedTime);
+        return formattedTime;
+    }
+    
     static class ConversationViewHolder extends RecyclerView.ViewHolder {
         private final TextView nameText;
         private final TextView messageText;
@@ -77,9 +102,20 @@ public class ConversationAdapter extends RecyclerView.Adapter<ConversationAdapte
             nameText.setText(conversation.getDisplayName());
             messageText.setText(conversation.getLastMessage());
             
-            // Format the timestamp
+            // Format the timestamp using the adapter's formatTime method
             if (conversation.getLastMessageTime() != null) {
-                timeText.setText(formatTime(conversation.getLastMessageTime().getTime()));
+                // Use 24-hour time format exclusively for consistency
+                SimpleDateFormat timeFormat = new SimpleDateFormat("HH:mm", Locale.getDefault());
+                timeFormat.setTimeZone(TimeZone.getDefault());
+                
+                timeText.setText(timeFormat.format(conversation.getLastMessageTime()));
+                
+                Log.d("ConversationAdapter", "Setting timestamp: " + 
+                      conversation.getLastMessageTime() + " -> " + 
+                      timeFormat.format(conversation.getLastMessageTime()));
+            } else {
+                timeText.setText("");
+                Log.d("ConversationAdapter", "No timestamp available for conversation");
             }
             
             // Show unread count if any
@@ -99,16 +135,6 @@ public class ConversationAdapter extends RecyclerView.Adapter<ConversationAdapte
                     clickListener.onConversationClick(conversation);
                 }
             });
-        }
-        
-        private String formatTime(long timeMillis) {
-            // If the message is from today, show the time, otherwise show the date
-            long now = System.currentTimeMillis();
-            if (now - timeMillis < 24 * 60 * 60 * 1000) {
-                return TIME_FORMAT.format(timeMillis);
-            } else {
-                return DATE_FORMAT.format(timeMillis);
-            }
         }
     }
 } 
