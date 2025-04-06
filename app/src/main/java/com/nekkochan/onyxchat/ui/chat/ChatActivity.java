@@ -94,6 +94,9 @@ public class ChatActivity extends AppCompatActivity {
         // Set up contact info
         contactNameText.setText(contactName != null ? contactName : contactId);
         
+        // Fetch messages for this contact
+        viewModel.setCurrentRecipient(contactId);
+        
         // Set up back button
         backButton.setOnClickListener(v -> finish());
         

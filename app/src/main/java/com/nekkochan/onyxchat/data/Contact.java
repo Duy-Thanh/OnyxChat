@@ -142,4 +142,25 @@ public class Contact {
     public void setAppUser(boolean appUser) {
         isAppUser = appUser;
     }
+
+    /**
+     * Get the display name of the contact
+     * @return nickname if available, otherwise contact address
+     */
+    public String getDisplayName() {
+        return nickName != null && !nickName.isEmpty() ? nickName : contactAddress;
+    }
+
+    /**
+     * Shorten an onion address for display purposes
+     * 
+     * @param address The full onion address
+     * @return A shortened version (first 6 chars + ... + last 6 chars)
+     */
+    public static String shortenOnionAddress(String address) {
+        if (address == null || address.length() <= 15) {
+            return address;
+        }
+        return address.substring(0, 6) + "..." + address.substring(address.length() - 6);
+    }
 } 

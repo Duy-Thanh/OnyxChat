@@ -2,6 +2,8 @@ package com.nekkochan.onyxchat.ui.viewmodel;
 
 import android.app.Application;
 import android.content.Context;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
@@ -593,14 +595,60 @@ public class MainViewModel extends AndroidViewModel {
      * Refresh the conversations list from the server
      */
     public void refreshConversations() {
-        // Request conversations update from server
-        chatService.requestConversations();
+        if (isLoading.getValue() != null && isLoading.getValue()) {
+            return; // Don't refresh if already loading
+        }
+
+        isLoading.setValue(true);
         
-        // For immediate feedback, we can also do any direct database operations if needed
-        // Note: We can't use repository.getConversations since that method doesn't exist
-        
-        // The actual data update will come through the WebSocket connection
-        // and will be reflected in the conversations LiveData when received
+        // Get conversations from the API
+        ApiClient.getInstance(getApplication().getApplicationContext())
+            .getConversations(new ApiClient.ApiCallback<List<ApiClient.ConversationResponse>>() {
+                @Override
+                public void onSuccess(List<ApiClient.ConversationResponse> result) {
+                    // Convert API response to ConversationDisplay objects
+                    List<ConversationDisplay> conversationList = new ArrayList<>();
+                    
+                    if (result != null) {
+                        for (ApiClient.ConversationResponse conversation : result) {
+                            String displayName = conversation.getDisplayName();
+                            if (displayName == null || displayName.isEmpty()) {
+                                displayName = conversation.getUsername();
+                            }
+                            
+                            // Add null check for createdAt
+                            Date timestamp = null;
+                            if (conversation.getCreatedAt() != null) {
+                                timestamp = new Date(conversation.getCreatedAt().getTime());
+                            } else {
+                                timestamp = new Date(); // Use current time as fallback
+                            }
+                            
+                            conversationList.add(new ConversationDisplay(
+                                conversation.getUserId(),
+                                displayName,
+                                conversation.getContent(),
+                                timestamp,
+                                conversation.getUnreadCount(),
+                                false // Assume offline until we get status update
+                            ));
+                        }
+                    }
+                    
+                    // Update the LiveData on the main thread
+                    new Handler(Looper.getMainLooper()).post(() -> {
+                        conversations.setValue(conversationList);
+                        isLoading.setValue(false);
+                    });
+                }
+
+                @Override
+                public void onFailure(String error) {
+                    Log.e(TAG, "Error refreshing conversations: " + error);
+                    errorMessage.postValue("Failed to refresh conversations: " + error);
+                    isLoading.postValue(false);
+                }
+            });
     }
 
     /**

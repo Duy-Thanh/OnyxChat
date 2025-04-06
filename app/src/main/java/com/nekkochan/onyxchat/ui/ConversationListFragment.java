@@ -121,6 +121,9 @@ public class ConversationListFragment extends Fragment implements ConversationAd
         if (isAdded() && isVisible() && viewModel.isChatConnected().getValue() != Boolean.TRUE) {
             viewModel.connectToChat();
         }
+        
+        // Refresh conversations list from server
+        refreshConversations();
     }
     
     /**
@@ -197,9 +200,9 @@ public class ConversationListFragment extends Fragment implements ConversationAd
      * Refresh conversations
      */
     private void refreshConversations() {
-        // Request conversations update from server
-        viewModel.refreshConversations();
-        createSnackbar(requireView(), "Refreshing conversations...", Snackbar.LENGTH_SHORT).show();
+        if (isAdded()) {
+            viewModel.refreshConversations();
+        }
     }
     
     /**

@@ -1,6 +1,8 @@
 package com.nekkochan.onyxchat.ui.viewmodel;
 
 import android.app.Application;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
@@ -9,6 +11,7 @@ import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
 import androidx.lifecycle.Transformations;
 
+import com.nekkochan.onyxchat.network.ApiClient;
 import com.nekkochan.onyxchat.network.ChatService;
 import com.nekkochan.onyxchat.network.WebSocketClient;
 
@@ -75,6 +78,51 @@ public class ChatViewModel extends AndroidViewModel {
      */
     public void setCurrentRecipient(String recipientId) {
         this.currentRecipientId = recipientId;
+        
+        // Load messages for this recipient
+        if (recipientId != null) {
+            loadMessages(recipientId);
+        }
+    }
+    
+    /**
+     * Load messages between the current user and the specified recipient
+     */
+    private void loadMessages(String recipientId) {
+        // Clear existing messages first
+        chatMessages.setValue(new ArrayList<>());
+        
+        // Load messages from API
+        ApiClient.getInstance(getApplication().getApplicationContext())
+            .getMessages(recipientId, new ApiClient.ApiCallback<List<ApiClient.MessageResponse>>() {
+                @Override
+                public void onSuccess(List<ApiClient.MessageResponse> result) {
+                    if (result != null) {
+                        List<ChatMessage> messages = new ArrayList<>();
+                        
+                        for (ApiClient.MessageResponse message : result) {
+                            // Convert API message to ChatMessage
+                            messages.add(new ChatMessage(
+                                "DIRECT", // Assuming all are direct messages
+                                message.getSenderId(),
+                                message.getRecipientId(),
+                                message.getContent(),
+                                message.getCreatedAt()
+                            ));
+                        }
+                        
+                        // Update UI on main thread
+                        new Handler(Looper.getMainLooper()).post(() -> {
+                            chatMessages.setValue(messages);
+                        });
+                    }
+                }
+
+                @Override
+                public void onFailure(String errorMessage) {
+                    Log.e(TAG, "Error loading messages: " + errorMessage);
+                }
+            });
     }
     
     /**

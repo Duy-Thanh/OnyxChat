@@ -4,6 +4,8 @@ const { authenticate } = require('../middleware/auth.middleware');
 const { ValidationError, NotFoundError, ForbiddenError } = require('../utils/error.utils');
 const db = require('../models');
 const { v4: uuidv4 } = require('uuid');
+// const { authJwt } = require("../middlewares");
+const Op = db.Sequelize.Op;
 
 const router = express.Router();
 
@@ -343,6 +345,249 @@ router.delete('/:id', authenticate, [
     });
   } catch (error) {
     next(error);
+  }
+});
+
+/**
+ * Create a new message
+ * @route POST /api/messages
+ */
+router.post("/", [authenticate], async (req, res) => {
+  try {
+    if (!req.body.recipientId || !req.body.content) {
+      return res.status(400).send({
+        message: "Content and recipientId are required!"
+      });
+    }
+
+    const newMessage = await db.Message.create({
+      senderId: req.userId,
+      recipientId: req.body.recipientId,
+      content: req.body.content,
+      encrypted: req.body.encrypted || false,
+      contentType: req.body.contentType || 'text',
+    });
+
+    res.status(201).send({
+      id: newMessage.id,
+      senderId: newMessage.senderId,
+      recipientId: newMessage.recipientId,
+      content: newMessage.content,
+      encrypted: newMessage.encrypted,
+      contentType: newMessage.contentType,
+      createdAt: newMessage.createdAt
+    });
+  } catch (err) {
+    console.error("Error creating message:", err);
+    res.status(500).send({
+      message: err.message || "Some error occurred while creating the message."
+    });
+  }
+});
+
+/**
+ * Get messages between the current user and another user
+ * @route GET /api/messages/:userId
+ */
+router.get("/:userId", [authenticate], async (req, res) => {
+  try {
+    const otherUserId = req.params.userId;
+    
+    if (!otherUserId) {
+      return res.status(400).send({
+        message: "User ID is required!"
+      });
+    }
+    
+    // Find messages where the current user is either the sender or recipient
+    // and the other user is the opposite role
+    const messages = await db.Message.findAll({
+      where: {
+        [Op.or]: [
+          {
+            senderId: req.userId,
+            recipientId: otherUserId
+          },
+          {
+            senderId: otherUserId,
+            recipientId: req.userId
+          }
+        ]
+      },
+      order: [['createdAt', 'ASC']]
+    });
+    
+    res.status(200).send(messages);
+  } catch (err) {
+    console.error("Error retrieving messages:", err);
+    res.status(500).send({
+      message: err.message || "Some error occurred while retrieving messages."
+    });
+  }
+});
+
+/**
+ * Mark a message as read
+ * @route PUT /api/messages/:id/read
+ */
+router.put("/:id/read", [authenticate], async (req, res) => {
+  try {
+    const messageId = req.params.id;
+    
+    // Verify the message exists and is sent to this user
+    const message = await db.Message.findOne({
+      where: {
+        id: messageId,
+        recipientId: req.userId
+      }
+    });
+    
+    if (!message) {
+      return res.status(404).send({
+        message: "Message not found or not addressed to you."
+      });
+    }
+    
+    // Update the message
+    await message.update({
+      read: true,
+      readAt: new Date()
+    });
+    
+    res.status(200).send({
+      message: "Message marked as read successfully."
+    });
+  } catch (err) {
+    console.error("Error marking message as read:", err);
+    res.status(500).send({
+      message: err.message || "Some error occurred while updating the message."
+    });
+  }
+});
+
+/**
+ * Get conversations list for the current user
+ * @route GET /api/messages/conversations
+ */
+router.get("/conversations/list", [authenticate], async (req, res) => {
+  try {
+    // Get the latest message with each user the current user has communicated with
+    const userId = req.user.id;
+    const conversations = await db.sequelize.query(`
+      WITH latest_messages AS (
+        SELECT 
+          CASE 
+            WHEN "senderId" = :userId THEN "recipientId" 
+            ELSE "senderId" 
+          END as other_user_id,
+          MAX("createdAt") as latest_message_time
+        FROM messages
+        WHERE "senderId" = :userId OR "recipientId" = :userId
+        GROUP BY other_user_id
+      )
+      SELECT 
+        u.id as user_id,
+        u.username,
+        u."displayName" as display_name,
+        u.email,
+        m.id as message_id,
+        m.content,
+        m."senderId",
+        m."recipientId",
+        m."createdAt",
+        m.read,
+        CASE WHEN m.read = false AND m."recipientId" = :userId THEN true ELSE false END as unread
+      FROM latest_messages lm
+      JOIN users u ON u.id = lm.other_user_id
+      JOIN messages m ON (
+        (m."senderId" = :userId AND m."recipientId" = lm.other_user_id) OR
+        (m."senderId" = lm.other_user_id AND m."recipientId" = :userId)
+      ) AND m."createdAt" = lm.latest_message_time
+      ORDER BY m."createdAt" DESC
+    `, {
+      replacements: { userId },
+      type: db.sequelize.QueryTypes.SELECT
+    });
+    
+    // Get unread counts for each conversation
+    const unreadCounts = await db.sequelize.query(`
+      SELECT 
+        "senderId",
+        COUNT(*) as unread_count
+      FROM messages
+      WHERE "recipientId" = :userId AND read = false
+      GROUP BY "senderId"
+    `, {
+      replacements: { userId },
+      type: db.sequelize.QueryTypes.SELECT
+    });
+    
+    // Create a map of sender_id to unread_count
+    const unreadCountMap = {};
+    unreadCounts.forEach(count => {
+      unreadCountMap[count.senderId] = count.unread_count;
+    });
+    
+    // Enhance the conversations with unread counts
+    const enhancedConversations = conversations.map(conv => ({
+      ...conv,
+      unread_count: unreadCountMap[conv.user_id] || 0
+    }));
+    
+    res.status(200).send(enhancedConversations);
+  } catch (err) {
+    console.error("Error retrieving conversations:", err);
+    res.status(500).send({
+      message: err.message || "Some error occurred while retrieving conversations."
+    });
+  }
+});
+
+/**
+ * Get messages with a user by email address
+ * @route GET /api/messages/email/:email
+ * @access Protected
+ */
+router.get("/email/:email", authenticate, async (req, res) => {
+  try {
+    const email = req.params.email;
+    // Remove .onion suffix if present
+    const cleanEmail = email.endsWith('.onion') ? email.substring(0, email.length - 6) : email;
+    
+    // Find the user by email
+    const otherUser = await db.User.findOne({
+      where: { email: cleanEmail }
+    });
+    
+    if (!otherUser) {
+      return res.status(404).send({
+        message: "User not found with email: " + cleanEmail
+      });
+    }
+    
+    // Find messages between current user and the other user
+    const messages = await db.Message.findAll({
+      where: {
+        [Op.or]: [
+          {
+            senderId: req.user.id,
+            recipientId: otherUser.id
+          },
+          {
+            senderId: otherUser.id,
+            recipientId: req.user.id
+          }
+        ]
+      },
+      order: [['createdAt', 'ASC']]
+    });
+    
+    res.status(200).send(messages);
+  } catch (err) {
+    console.error("Error retrieving messages by email:", err);
+    res.status(500).send({
+      message: err.message || "Some error occurred while retrieving messages."
+    });
   }
 });
 

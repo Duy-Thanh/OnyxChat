@@ -692,7 +692,9 @@ public class WebSocketClient {
             json.addProperty("content", message);
             
             performMemoryCleanupIfNeeded();
-            return webSocket.send(gson.toJson(json));
+            
+            // Use getGson() helper method instead of directly accessing gson
+            return webSocket.send(getGson().toJson(json));
         } catch (Exception e) {
             Log.e(TAG, "Error sending direct message", e);
             return false;

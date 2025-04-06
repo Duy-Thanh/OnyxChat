@@ -158,7 +158,7 @@ public class ApiClient {
                         .header("Authorization", "Bearer " + token)
                         .method(original.method(), original.body());
                 
-                Response response = chain.proceed(requestBuilder.build());
+                okhttp3.Response response = chain.proceed(requestBuilder.build());
                 
                 // Check if the response code is 401 (Unauthorized) which indicates token expiration
                 if (response.code() == 401) {
@@ -226,7 +226,7 @@ public class ApiClient {
                     
                     // If we couldn't refresh the token or it wasn't a token expiration issue,
                     // create a new response with the original error
-                    return new Response.Builder()
+                    return new okhttp3.Response.Builder()
                             .request(original)
                             .protocol(response.protocol())
                             .code(401)
@@ -662,42 +662,30 @@ public class ApiClient {
     }
     
     /**
-     * Helper method to handle error responses
+     * Handle error responses from the server
+     * @param response The error response
+     * @param callback The callback to send the error to
      */
-    private <T> void handleErrorResponse(retrofit2.Response<T> response, ApiCallback<?> callback) {
-        String errorMsg = "Request failed";
-        
-        // Check if we have a body with an error message
-        if (response.body() instanceof BaseResponse) {
-            BaseResponse baseResponse = (BaseResponse) response.body();
-            if (baseResponse != null && baseResponse.message != null) {
-                errorMsg = baseResponse.message;
-            }
-        }
-        // Otherwise try to parse the error body
-        else if (response.errorBody() != null) {
-            try {
+    private <T> void handleErrorResponse(retrofit2.Response<T> response, ApiCallback<T> callback) {
+        try {
+            if (response.errorBody() != null) {
                 String errorBody = response.errorBody().string();
-                // Try to extract the message from error body if it's in JSON format
-                if (errorBody.contains("\"message\"")) {
-                    Gson gson = new Gson();
-                    try {
-                        ErrorResponse error = gson.fromJson(errorBody, ErrorResponse.class);
-                        if (error != null && error.message != null) {
-                            errorMsg = error.message;
-                        }
-                    } catch (Exception e) {
-                        Log.e(TAG, "Error parsing JSON error response", e);
-                    }
-                } else {
-                    errorMsg = errorBody;
+                Log.e(TAG, "API error: " + errorBody);
+                
+                try {
+                    JSONObject errorJson = new JSONObject(errorBody);
+                    String message = errorJson.optString("message", "Unknown error");
+                    callback.onFailure(message);
+                } catch (JSONException e) {
+                    callback.onFailure("Error: " + response.code());
                 }
-            } catch (IOException e) {
-                Log.e(TAG, "Error parsing error response", e);
+            } else {
+                callback.onFailure("Error: " + response.code());
             }
+        } catch (Exception e) {
+            Log.e(TAG, "Error handling API error response", e);
+            callback.onFailure("Error: " + e.getMessage());
         }
-        
-        callback.onFailure(errorMsg);
     }
     
     /**
@@ -742,6 +730,24 @@ public class ApiClient {
         
         @GET("api/friend-requests/users")
         Call<UsersResponse> getUsers();
+        
+        /**
+         * Get conversations list for the current user
+         */
+        @GET("api/messages/conversations/list")
+        Call<List<ConversationResponse>> getConversations();
+        
+        /**
+         * Get messages between the current user and another user
+         */
+        @GET("api/messages/{userId}")
+        Call<List<MessageResponse>> getMessages(@Path("userId") String userId);
+        
+        /**
+         * Get messages between the current user and another user by email
+         */
+        @GET("api/messages/email/{email}")
+        Call<List<MessageResponse>> getMessagesByEmail(@Path("email") String email);
     }
     
     /**
@@ -1120,5 +1126,191 @@ public class ApiClient {
                 callback.onFailure("Network error during token refresh: " + t.getMessage());
             }
         });
+    }
+    
+    /**
+     * Get messages between the current user and another user
+     * @param userId ID or email of the other user
+     * @param callback Callback for the response
+     */
+    public void getMessages(String userId, ApiCallback<List<MessageResponse>> callback) {
+        if (apiService == null) {
+            Log.e(TAG, "API service not initialized");
+            callback.onFailure("API service not initialized");
+            return;
+        }
+        
+        Call<List<MessageResponse>> call;
+        
+        // Check if userId is an email address
+        if (userId.contains("@")) {
+            call = apiService.getMessagesByEmail(userId);
+        } else {
+            call = apiService.getMessages(userId);
+        }
+        
+        call.enqueue(new Callback<List<MessageResponse>>() {
+            @Override
+            public void onResponse(Call<List<MessageResponse>> call, retrofit2.Response<List<MessageResponse>> response) {
+                if (response.isSuccessful() && response.body() != null) {
+                    callback.onSuccess(response.body());
+                } else {
+                    handleErrorResponse(response, callback);
+                }
+            }
+
+            @Override
+            public void onFailure(Call<List<MessageResponse>> call, Throwable t) {
+                Log.e(TAG, "Error getting messages", t);
+                callback.onFailure(t.getMessage());
+            }
+        });
+    }
+    
+    /**
+     * Get conversations for the current user
+     * @param callback Callback for the response
+     */
+    public void getConversations(ApiCallback<List<ConversationResponse>> callback) {
+        if (apiService == null) {
+            Log.e(TAG, "API service not initialized");
+            callback.onFailure("API service not initialized");
+            return;
+        }
+        
+        Call<List<ConversationResponse>> call = apiService.getConversations();
+        call.enqueue(new Callback<List<ConversationResponse>>() {
+            @Override
+            public void onResponse(Call<List<ConversationResponse>> call, retrofit2.Response<List<ConversationResponse>> response) {
+                if (response.isSuccessful() && response.body() != null) {
+                    callback.onSuccess(response.body());
+                } else {
+                    handleErrorResponse(response, callback);
+                }
+            }
+
+            @Override
+            public void onFailure(Call<List<ConversationResponse>> call, Throwable t) {
+                Log.e(TAG, "Error getting conversations", t);
+                callback.onFailure(t.getMessage());
+            }
+        });
+    }
+    
+    /**
+     * Response class for messages
+     */
+    public static class MessageResponse {
+        private String id;
+        private String senderId;
+        private String recipientId;
+        private String content;
+        private boolean encrypted;
+        private String contentType;
+        private Date createdAt;
+        private boolean read;
+        private Date readAt;
+        
+        public String getId() {
+            return id;
+        }
+        
+        public String getSenderId() {
+            return senderId;
+        }
+        
+        public String getRecipientId() {
+            return recipientId;
+        }
+        
+        public String getContent() {
+            return content;
+        }
+        
+        public boolean isEncrypted() {
+            return encrypted;
+        }
+        
+        public String getContentType() {
+            return contentType;
+        }
+        
+        public Date getCreatedAt() {
+            return createdAt;
+        }
+        
+        public boolean isRead() {
+            return read;
+        }
+        
+        public Date getReadAt() {
+            return readAt;
+        }
+    }
+    
+    /**
+     * Response class for conversations
+     */
+    public static class ConversationResponse {
+        private String user_id;
+        private String username;
+        private String display_name;
+        private String email;
+        private String message_id;
+        private String content;
+        private String sender_id;
+        private String recipient_id;
+        private Date created_at;
+        private boolean read;
+        private boolean unread;
+        private int unread_count;
+        
+        public String getUserId() {
+            return user_id;
+        }
+        
+        public String getUsername() {
+            return username;
+        }
+        
+        public String getDisplayName() {
+            return display_name;
+        }
+        
+        public String getEmail() {
+            return email;
+        }
+        
+        public String getMessageId() {
+            return message_id;
+        }
+        
+        public String getContent() {
+            return content;
+        }
+        
+        public String getSenderId() {
+            return sender_id;
+        }
+        
+        public String getRecipientId() {
+            return recipient_id;
+        }
+        
+        public Date getCreatedAt() {
+            return created_at;
+        }
+        
+        public boolean isRead() {
+            return read;
+        }
+        
+        public boolean isUnread() {
+            return unread;
+        }
+        
+        public int getUnreadCount() {
+            return unread_count;
+        }
     }
 } 
