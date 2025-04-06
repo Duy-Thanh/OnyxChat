@@ -164,14 +164,12 @@ public class ContactsFragment extends Fragment implements ContactAdapter.OnConta
                 .inflate(R.layout.dialog_add_contact, null);
         
         EditText addressInput = dialogView.findViewById(R.id.contactAddressInput);
-        EditText nicknameInput = dialogView.findViewById(R.id.contactNicknameInput);
         
         new AlertDialog.Builder(requireContext())
                 .setTitle(R.string.add_contact)
                 .setView(dialogView)
                 .setPositiveButton(R.string.save, (dialog, which) -> {
                     String address = addressInput.getText().toString().trim();
-                    String nickname = nicknameInput.getText().toString().trim();
                     
                     if (address.isEmpty()) {
                         Toast.makeText(requireContext(), "Address is required", Toast.LENGTH_SHORT).show();
@@ -183,7 +181,8 @@ public class ContactsFragment extends Fragment implements ContactAdapter.OnConta
                         address = address + ".onion";
                     }
                     
-                    viewModel.addContact(address, nickname.isEmpty() ? null : nickname);
+                    // Always use null for nickname - we'll display the real name from the server
+                    viewModel.addContact(address, null);
                 })
                 .setNegativeButton(R.string.cancel, null)
                 .show();
@@ -227,8 +226,7 @@ public class ContactsFragment extends Fragment implements ContactAdapter.OnConta
             // Start a chat with this contact
             Intent intent = new Intent(getActivity(), ChatActivity.class);
             intent.putExtra(ChatActivity.EXTRA_CONTACT_ID, contact.getContactAddress());
-            intent.putExtra(ChatActivity.EXTRA_CONTACT_NAME, 
-                   contact.getNickName() != null ? contact.getNickName() : contact.getContactAddress());
+            intent.putExtra(ChatActivity.EXTRA_CONTACT_NAME, contact.getContactAddress());
             startActivity(intent);
             
             // Go back to conversation list
@@ -237,8 +235,7 @@ public class ContactsFragment extends Fragment implements ContactAdapter.OnConta
             // Normal behavior - Open chat with this contact
             Intent intent = new Intent(getActivity(), ChatActivity.class);
             intent.putExtra(ChatActivity.EXTRA_CONTACT_ID, contact.getContactAddress());
-            intent.putExtra(ChatActivity.EXTRA_CONTACT_NAME, 
-                   contact.getNickName() != null ? contact.getNickName() : contact.getContactAddress());
+            intent.putExtra(ChatActivity.EXTRA_CONTACT_NAME, contact.getContactAddress());
             startActivity(intent);
         }
     }

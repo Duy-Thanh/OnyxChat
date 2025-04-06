@@ -107,10 +107,9 @@ public class ContactAdapter extends ListAdapter<Contact, ContactAdapter.ContactV
          * @param contact The contact to display
          */
         void bind(Contact contact) {
-            // Show nickname if available, otherwise use address
-            contactNameView.setText(contact.getNickName() != null ? 
-                    contact.getNickName() : 
-                    formatAddressForDisplay(contact.getContactAddress()));
+            // In Contacts tab, always use the real contact address (not nickname)
+            String displayAddress = formatAddressForDisplay(contact.getContactAddress());
+            contactNameView.setText(displayAddress);
             
             // Set verification status
             verifiedIconView.setVisibility(contact.isVerified() ? View.VISIBLE : View.GONE);
