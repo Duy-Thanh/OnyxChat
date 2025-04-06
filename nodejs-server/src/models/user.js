@@ -72,6 +72,30 @@ module.exports = (sequelize, DataTypes) => {
       foreignKey: 'userId',
       as: 'oneTimePrekeys'
     });
+    
+    // Friend requests sent by user
+    User.hasMany(models.FriendRequest, {
+      foreignKey: 'senderId',
+      as: 'sentFriendRequests'
+    });
+    
+    // Friend requests received by user
+    User.hasMany(models.FriendRequest, {
+      foreignKey: 'receiverId',
+      as: 'receivedFriendRequests'
+    });
+    
+    // Contacts (users added as friends)
+    User.hasMany(models.Contact, {
+      foreignKey: 'userId',
+      as: 'contacts'
+    });
+    
+    // Being a contact of other users
+    User.hasMany(models.Contact, {
+      foreignKey: 'contactId',
+      as: 'contactOf'
+    });
   };
 
   // Create a profile object without sensitive data

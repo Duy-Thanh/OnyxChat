@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:padding="12dp"
+    android:background="?attr/selectableItemBackground">
+
+    <com.google.android.material.imageview.ShapeableImageView
+        android:id="@+id/userAvatar"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:src="@drawable/default_avatar"
+        android:contentDescription="@string/contact_photo_description"
+        app:shapeAppearanceOverlay="@style/CircleImageView"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent" />
+
+    <TextView
+        android:id="@+id/userDisplayName"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="8dp"
+        android:textColor="@color/text_primary_dark"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        android:ellipsize="end"
+        android:maxLines="1"
+        app:layout_constraintStart_toEndOf="@id/userAvatar"
+        app:layout_constraintEnd_toStartOf="@+id/actionsLayout"
+        app:layout_constraintTop_toTopOf="@id/userAvatar"
+        tools:text="John Smith" />
+
+    <TextView
+        android:id="@+id/userUsername"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="8dp"
+        android:textColor="@color/text_secondary_dark"
+        android:textSize="14sp"
+        app:layout_constraintStart_toEndOf="@id/userAvatar"
+        app:layout_constraintEnd_toStartOf="@+id/actionsLayout"
+        app:layout_constraintTop_toBottomOf="@id/userDisplayName"
+        tools:text="@johnsmith" />
+
+    <com.google.android.material.chip.Chip
+        android:id="@+id/statusChip"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:layout_marginTop="4dp"
+        app:chipMinHeight="24dp"
+        android:textSize="12sp"
+        android:textColor="@color/white"
+        app:chipIconVisible="true"
+        app:chipIconTint="@color/white"
+        app:chipIcon="@drawable/ic_status_online"
+        app:chipIconSize="12dp"
+        app:layout_constraintStart_toEndOf="@id/userAvatar"
+        app:layout_constraintTop_toBottomOf="@id/userUsername"
+        tools:text="Online" />
+
+    <!-- Actions layout with horizontal arrangement for multiple buttons -->
+    <LinearLayout
+        android:id="@+id/actionsLayout"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <!-- Secondary action button (for decline/reject) -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/secondaryButton"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="12sp"
+            android:minHeight="36dp"
+            android:layout_marginEnd="8dp"
+            android:textColor="@color/error"
+            android:visibility="gone"
+            tools:text="Decline"
+            tools:visibility="visible" />
+
+        <!-- Primary action button (for add/message) -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/actionButton"
+            style="@style/Widget.MaterialComponents.Button.UnelevatedButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="12sp"
+            android:minHeight="36dp"
+            tools:text="Add Friend" />
+            
+    </LinearLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout> 

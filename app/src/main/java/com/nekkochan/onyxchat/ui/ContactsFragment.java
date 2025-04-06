@@ -89,6 +89,9 @@ public class ContactsFragment extends Fragment implements ContactAdapter.OnConta
             // Go back to conversation list
             requireActivity().getSupportFragmentManager().popBackStack();
             return true;
+        } else if (id == R.id.action_discover_users) {
+            showDiscoverUsers();
+            return true;
         }
         return super.onOptionsItemSelected(item);
     }
@@ -303,5 +306,16 @@ public class ContactsFragment extends Fragment implements ContactAdapter.OnConta
     private void syncContacts() {
         viewModel.syncContacts();
         createSnackbar(requireView(), "Syncing contacts...", Snackbar.LENGTH_SHORT).show();
+    }
+    
+    /**
+     * Show discover users screen
+     */
+    private void showDiscoverUsers() {
+        UsersFragment usersFragment = new UsersFragment();
+        requireActivity().getSupportFragmentManager().beginTransaction()
+                .replace(R.id.fragment_container, usersFragment)
+                .addToBackStack(null)
+                .commit();
     }
 } 

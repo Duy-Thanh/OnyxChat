@@ -37,37 +37,29 @@ router.post('/sync', authenticate, [
     // Initialize result array
     let appUsers = [];
     
-    // In mock mode, simply return a random subset of contacts as app users
-    if (process.env.USE_MOCK_DB === 'true' || process.env.NODE_ENV === 'test') {
-      console.log('Using mock mode for contact sync');
-      // Randomly select ~70% of the contacts
-      appUsers = contacts.filter(() => Math.random() > 0.3);
-      console.log(`Mock mode: Found ${appUsers.length} app users out of ${contacts.length} contacts`);
-    } else {
-      // Real implementation: Query the database to find which contacts are registered users
-      // Use username or email field depending on what client is sending as contact addresses
-      const users = await db.User.findAll({
-        where: {
-          [db.Sequelize.Op.or]: [
-            { username: contacts },
-            { email: contacts }
-          ]
-        },
-        attributes: ['username', 'email']
-      });
-      
-      // Extract usernames and emails
-      users.forEach(user => {
-        if (contacts.includes(user.username)) {
-          appUsers.push(user.username);
-        }
-        if (contacts.includes(user.email)) {
-          appUsers.push(user.email);
-        }
-      });
-      
-      console.log(`Found ${appUsers.length} app users out of ${contacts.length} contacts`);
-    }
+    // Real implementation: Query the database to find which contacts are registered users
+    // Use username or email field depending on what client is sending as contact addresses
+    const users = await db.User.findAll({
+      where: {
+        [db.Sequelize.Op.or]: [
+          { username: contacts },
+          { email: contacts }
+        ]
+      },
+      attributes: ['username', 'email']
+    });
+    
+    // Extract usernames and emails
+    users.forEach(user => {
+      if (contacts.includes(user.username)) {
+        appUsers.push(user.username);
+      }
+      if (contacts.includes(user.email)) {
+        appUsers.push(user.email);
+      }
+    });
+    
+    console.log(`Found ${appUsers.length} app users out of ${contacts.length} contacts`);
     
     res.json({
       status: 'success',

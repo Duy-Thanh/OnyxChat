@@ -14,4 +14,10 @@
         android:title="Add Contact"
         app:showAsAction="ifRoom" />
 
+    <item
+        android:id="@+id/action_discover_users"
+        android:icon="@drawable/ic_people"
+        android:title="@string/discover_users"
+        app:showAsAction="ifRoom" />
+
 </menu>

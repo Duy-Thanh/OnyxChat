@@ -83,11 +83,11 @@ public class LoginActivity extends AppCompatActivity {
         binding.passwordInput.setError(null);
         
         // Get values
-        String username = binding.usernameInput.getText().toString().trim();
+        String usernameOrEmail = binding.usernameInput.getText().toString().trim();
         String password = binding.passwordInput.getText().toString();
         
         // Validate inputs
-        if (TextUtils.isEmpty(username)) {
+        if (TextUtils.isEmpty(usernameOrEmail)) {
             binding.usernameInput.setError(getString(R.string.error_field_required));
             binding.usernameInput.requestFocus();
             return;
@@ -104,16 +104,16 @@ public class LoginActivity extends AppCompatActivity {
         binding.loginButton.setEnabled(false);
         
         // Authenticate with the server
-        authenticateUser(username, password);
+        authenticateUser(usernameOrEmail, password);
     }
     
     /**
      * Authenticate the user with the server
      */
-    private void authenticateUser(String username, String password) {
-        Log.d(TAG, "Authenticating user: " + username);
+    private void authenticateUser(String usernameOrEmail, String password) {
+        Log.d(TAG, "Authenticating user with: " + usernameOrEmail);
         
-        apiClient.login(username, password, new ApiClient.ApiCallback<ApiClient.AuthResponse>() {
+        apiClient.login(usernameOrEmail, password, new ApiClient.ApiCallback<ApiClient.AuthResponse>() {
             @Override
             public void onSuccess(ApiClient.AuthResponse response) {
                 Log.d(TAG, "Login successful: " + response.data.user.username);

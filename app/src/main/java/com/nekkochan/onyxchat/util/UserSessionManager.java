@@ -254,9 +254,15 @@ public class UserSessionManager {
                     .sslSocketFactory(getUnsafeSSLSocketFactory(), getUnsafeTrustManager())
                     .build();
                 
-                // Create request body
+                // Create request body with proper format as expected by the server
                 JSONObject requestBody = new JSONObject();
                 requestBody.put("refreshToken", refreshToken);
+                
+                // Print to debug that we're sending the refresh token (first 10 chars)
+                if (refreshToken.length() > 10) {
+                    Log.d(TAG, "Sending refresh token starting with: " + 
+                          refreshToken.substring(0, 10) + "...");
+                }
                 
                 // Build request
                 RequestBody body = RequestBody.create(
@@ -277,7 +283,19 @@ public class UserSessionManager {
                 // Process response
                 if (response.isSuccessful() && response.body() != null) {
                     String responseString = response.body().string();
+                    Log.d(TAG, "Token refresh response: " + responseString);
+                    
                     JSONObject jsonResponse = new JSONObject(responseString);
+                    String status = jsonResponse.optString("status", "");
+                    
+                    if (!"success".equals(status)) {
+                        String errorMessage = jsonResponse.optString("message", "Unknown error");
+                        Log.e(TAG, "Token refresh failed with status: " + status + ", message: " + errorMessage);
+                        future.complete(false);
+                        return;
+                    }
+                    
+                    // Extract data from the response
                     JSONObject data = jsonResponse.getJSONObject("data");
                     JSONObject tokens = data.getJSONObject("tokens");
                     
@@ -285,19 +303,54 @@ public class UserSessionManager {
                     String newAuthToken = tokens.getString("accessToken");
                     String newRefreshToken = tokens.getString("refreshToken");
                     
+                    // Extract user data if available
+                    // Server may include user data with tokens
+                    if (data.has("user")) {
+                        try {
+                            JSONObject user = data.getJSONObject("user");
+                            String userId = user.getString("id");
+                            String username = user.getString("username");
+                            
+                            // Update user info along with tokens
+                            editor.putString(KEY_USERNAME, username);
+                            editor.putString(KEY_USER_ID, userId);
+                            editor.putBoolean(IS_LOGIN, true);
+                        } catch (Exception e) {
+                            Log.w(TAG, "Error extracting user data from token refresh response", e);
+                            // Continue anyway since we have the tokens
+                        }
+                    }
+                    
                     // Update tokens in preferences
                     editor.putString(KEY_AUTH_TOKEN, newAuthToken);
                     editor.putString(KEY_REFRESH_TOKEN, newRefreshToken);
                     editor.apply();
                     
+                    // Debug logging with token prefix
+                    if (newAuthToken.length() > 10) {
+                        Log.d(TAG, "New auth token starts with: " + newAuthToken.substring(0, 10) + "...");
+                    }
+                    
                     Log.d(TAG, "Token refreshed successfully with OkHttpClient");
                     future.complete(true);
                 } else {
                     int code = response.code();
-                    Log.e(TAG, "Failed to refresh token: HTTP " + code);
+                    String responseBody = "";
+                    
+                    // Try to get error body if available
+                    try {
+                        if (response.body() != null) {
+                            responseBody = response.body().string();
+                        }
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error reading error response body", e);
+                    }
+                    
+                    Log.e(TAG, "Failed to refresh token: HTTP " + code + ", response: " + responseBody);
                     
                     // If unauthorized, clear tokens
                     if (code == 401) {
+                        Log.w(TAG, "Clearing tokens due to 401 Unauthorized response");
                         editor.remove(KEY_AUTH_TOKEN);
                         editor.remove(KEY_REFRESH_TOKEN);
                         editor.apply();
@@ -487,5 +540,45 @@ public class UserSessionManager {
         public String getAuthToken() {
             return authToken;
         }
+    }
+    
+    /**
+     * Test token refresh - for debugging purposes
+     * @return CompletableFuture with success/failure result
+     */
+    public CompletableFuture<Boolean> testTokenRefresh() {
+        Log.d(TAG, "========= STARTING TOKEN REFRESH TEST =========");
+        
+        // First, print current token information
+        String authToken = getAuthToken();
+        String refreshToken = getRefreshToken();
+        
+        Log.d(TAG, "Current auth token: " + (authToken != null ? (authToken.substring(0, Math.min(10, authToken.length())) + "...") : "null"));
+        Log.d(TAG, "Current refresh token: " + (refreshToken != null ? (refreshToken.substring(0, Math.min(10, refreshToken.length())) + "...") : "null"));
+        
+        // Print user information
+        Log.d(TAG, "Current user: " + getUsername() + " (ID: " + getUserId() + ")");
+        
+        // Check if we're logged in
+        Log.d(TAG, "Is logged in: " + isLoggedIn());
+        
+        // Perform refresh
+        Log.d(TAG, "Attempting to refresh token now...");
+        return refreshToken().thenApply(result -> {
+            if (result) {
+                // Print new token information
+                String newAuthToken = getAuthToken();
+                String newRefreshToken = getRefreshToken();
+                
+                Log.d(TAG, "Token refresh SUCCESS!");
+                Log.d(TAG, "New auth token: " + (newAuthToken != null ? (newAuthToken.substring(0, Math.min(10, newAuthToken.length())) + "...") : "null"));
+                Log.d(TAG, "New refresh token: " + (newRefreshToken != null ? (newRefreshToken.substring(0, Math.min(10, newRefreshToken.length())) + "...") : "null"));
+            } else {
+                Log.d(TAG, "Token refresh FAILED!");
+            }
+            
+            Log.d(TAG, "========= TOKEN REFRESH TEST COMPLETED =========");
+            return result;
+        });
     }
 } 

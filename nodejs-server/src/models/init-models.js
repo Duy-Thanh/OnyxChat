@@ -241,6 +241,65 @@ module.exports = (sequelize) => {
   Contact.belongsTo(User, { foreignKey: 'userId' });
   Contact.belongsTo(User, { foreignKey: 'contactId', as: 'contactUser' });
 
+  // FriendRequest model
+  const FriendRequest = sequelize.define('FriendRequest', {
+    id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true
+    },
+    senderId: {
+      type: DataTypes.UUID,
+      allowNull: false,
+      references: {
+        model: 'users',
+        key: 'id'
+      }
+    },
+    receiverId: {
+      type: DataTypes.UUID,
+      allowNull: false,
+      references: {
+        model: 'users',
+        key: 'id'
+      }
+    },
+    status: {
+      type: DataTypes.ENUM('pending', 'accepted', 'rejected'),
+      defaultValue: 'pending'
+    },
+    message: {
+      type: DataTypes.STRING,
+      allowNull: true
+    },
+    createdAt: {
+      type: DataTypes.DATE,
+      defaultValue: DataTypes.NOW
+    },
+    updatedAt: {
+      type: DataTypes.DATE,
+      defaultValue: DataTypes.NOW
+    }
+  }, {
+    tableName: 'friend_requests',
+    timestamps: true,
+    indexes: [
+      {
+        unique: true,
+        fields: ['senderId', 'receiverId'],
+        where: {
+          status: 'pending'
+        }
+      }
+    ]
+  });
+
+  // Add FriendRequest associations
+  User.hasMany(FriendRequest, { foreignKey: 'senderId', as: 'sentFriendRequests' });
+  User.hasMany(FriendRequest, { foreignKey: 'receiverId', as: 'receivedFriendRequests' });
+  FriendRequest.belongsTo(User, { foreignKey: 'senderId', as: 'sender' });
+  FriendRequest.belongsTo(User, { foreignKey: 'receiverId', as: 'receiver' });
+
   // UserKey model
   const UserKey = sequelize.define('UserKey', {
     id: {
@@ -395,6 +454,7 @@ module.exports = (sequelize) => {
     Contact,
     UserKey,
     OneTimePreKey,
-    Session
+    Session,
+    FriendRequest
   };
 }; 

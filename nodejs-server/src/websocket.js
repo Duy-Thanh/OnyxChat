@@ -16,19 +16,32 @@ const authenticateWsConnection = (token) => {
     console.log('Authenticating WebSocket with token:', token.substring(0, 10) + '...');
     
     // Verify JWT token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    console.log('WebSocket token verified successfully for user:', decoded.sub);
-    return decoded.sub; // User ID from token
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      console.log('WebSocket token verified successfully for user:', decoded.sub);
+      
+      // Check if this is an access token (by type if available)
+      if (decoded.type && decoded.type !== 'access') {
+        console.warn(`WebSocket received wrong token type: ${decoded.type}, expected 'access'`);
+        return 'INVALID_TOKEN_TYPE';
+      }
+      
+      return decoded.sub; // User ID from token
+    } catch (error) {
+      // Handle specific JWT errors with more detailed responses
+      if (error instanceof jwt.TokenExpiredError) {
+        console.log(`WebSocket token expired at ${new Date(error.expiredAt)}, client should refresh token`);
+        return 'TOKEN_EXPIRED';
+      } else if (error instanceof jwt.JsonWebTokenError) {
+        console.warn(`WebSocket invalid token: ${error.message}`);
+        return 'INVALID_TOKEN';
+      }
+      
+      console.error('WebSocket authentication error:', error);
+      return null;
+    }
   } catch (error) {
     console.error('WebSocket authentication error:', error);
-    
-    // Check if this is a token expiration error
-    if (error.name === 'TokenExpiredError') {
-      // Instead of returning null, return a special string indicating token expired
-      console.log('Token expired, client should refresh token');
-      return 'TOKEN_EXPIRED';
-    }
-    
     return null;
   }
 };
@@ -236,19 +249,30 @@ const setupWebSocketServer = (wss) => {
       console.log('WebSocket authentication failed, closing connection');
       ws.close(4001, 'Unauthorized');
       return;
-    } else if (userId === 'TOKEN_EXPIRED') {
-      // Send token refresh request instead of closing connection
+    } else if (userId === 'TOKEN_EXPIRED' || userId === 'INVALID_TOKEN' || userId === 'INVALID_TOKEN_TYPE') {
+      // Send token refresh request instead of closing connection immediately
       console.log('Sending token refresh request to client');
+      
+      const errorMessage = userId === 'TOKEN_EXPIRED' 
+        ? 'Your authentication token has expired.'
+        : userId === 'INVALID_TOKEN_TYPE'
+        ? 'Invalid token type provided. Please use an access token.'
+        : 'Your authentication token is invalid.';
+        
       ws.send(JSON.stringify({
         type: 'TOKEN_REFRESH_REQUIRED',
         data: {
-          message: 'Your authentication token has expired. Please refresh your token and reconnect.'
+          message: `${errorMessage} Please refresh your token and reconnect.`,
+          code: userId // TOKEN_EXPIRED, INVALID_TOKEN, or INVALID_TOKEN_TYPE
         }
       }));
       
       // Add a short timeout before closing to allow client to receive the message
       setTimeout(() => {
-        ws.close(4003, 'Token expired');
+        const closeCode = userId === 'TOKEN_EXPIRED' ? 4003 : userId === 'INVALID_TOKEN_TYPE' ? 4004 : 4002;
+        const reason = userId === 'TOKEN_EXPIRED' ? 'Token expired' : 
+                      userId === 'INVALID_TOKEN_TYPE' ? 'Invalid token type' : 'Invalid token';
+        ws.close(closeCode, reason);
       }, 1000);
       
       return;

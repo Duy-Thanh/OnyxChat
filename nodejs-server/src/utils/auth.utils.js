@@ -8,11 +8,25 @@ const { v4: uuidv4 } = require('uuid');
  * @returns {string} JWT token
  */
 const generateAccessToken = (userId) => {
-  return jwt.sign(
-    { sub: userId },
-    process.env.JWT_SECRET,
-    { expiresIn: process.env.JWT_EXPIRES_IN || '30d' }
-  );
+  try {
+    // Use a shorter expiration time for access tokens - 1 hour default
+    const expiresIn = process.env.JWT_EXPIRES_IN || '1h';
+    
+    console.log(`Generating access token for user ${userId} with expiration: ${expiresIn}`);
+    
+    return jwt.sign(
+      { 
+        sub: userId,
+        type: 'access',
+        iat: Math.floor(Date.now() / 1000)
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: expiresIn }
+    );
+  } catch (error) {
+    console.error(`Error generating access token: ${error.message}`);
+    throw error;
+  }
 };
 
 /**
@@ -21,11 +35,27 @@ const generateAccessToken = (userId) => {
  * @returns {string} JWT token
  */
 const generateRefreshToken = (userId) => {
-  return jwt.sign(
-    { sub: userId, jti: uuidv4() },
-    process.env.JWT_REFRESH_SECRET,
-    { expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '90d' }
-  );
+  try {
+    // Use a longer expiration time for refresh tokens - 30 days default
+    const expiresIn = process.env.JWT_REFRESH_EXPIRES_IN || '30d';
+    const tokenId = uuidv4();
+    
+    console.log(`Generating refresh token for user ${userId} with ID ${tokenId} and expiration: ${expiresIn}`);
+    
+    return jwt.sign(
+      { 
+        sub: userId, 
+        jti: tokenId,
+        type: 'refresh',
+        iat: Math.floor(Date.now() / 1000)
+      },
+      process.env.JWT_REFRESH_SECRET,
+      { expiresIn: expiresIn }
+    );
+  } catch (error) {
+    console.error(`Error generating refresh token: ${error.message}`);
+    throw error;
+  }
 };
 
 /**
@@ -38,13 +68,26 @@ const generateRefreshToken = (userId) => {
 const verifyToken = (token, isRefreshToken = false) => {
   try {
     const secret = isRefreshToken ? process.env.JWT_REFRESH_SECRET : process.env.JWT_SECRET;
-    return jwt.verify(token, secret);
+    const decoded = jwt.verify(token, secret);
+    
+    // Additional validation: check token type if present
+    if (decoded.type) {
+      const expectedType = isRefreshToken ? 'refresh' : 'access';
+      if (decoded.type !== expectedType) {
+        throw new Error(`Invalid token type: expected ${expectedType}, got ${decoded.type}`);
+      }
+    }
+    
+    return decoded;
   } catch (error) {
     if (error instanceof jwt.TokenExpiredError) {
+      console.warn(`Token expired at ${new Date(error.expiredAt)}`);
       throw new Error('Token expired');
     } else if (error instanceof jwt.JsonWebTokenError) {
-      throw new Error('Invalid token');
+      console.warn(`Invalid token: ${error.message}`);
+      throw new Error(`Invalid token: ${error.message}`);
     }
+    console.error(`Error verifying token: ${error.message}`);
     throw error;
   }
 };

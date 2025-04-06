@@ -7,8 +7,11 @@ import android.util.Log;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.google.gson.annotations.SerializedName;
 import com.nekkochan.onyxchat.model.User;
+import com.nekkochan.onyxchat.model.UserProfile;
 import com.nekkochan.onyxchat.util.UserSessionManager;
 
 import java.io.IOException;
@@ -25,7 +28,11 @@ import retrofit2.Callback;
 import retrofit2.Retrofit;
 import retrofit2.converter.gson.GsonConverterFactory;
 import retrofit2.http.Body;
+import retrofit2.http.DELETE;
+import retrofit2.http.GET;
 import retrofit2.http.POST;
+import retrofit2.http.PUT;
+import retrofit2.http.Path;
 
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -37,6 +44,7 @@ import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -49,7 +57,11 @@ import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLSession;
 import javax.net.ssl.SSLSocketFactory;
 import javax.net.ssl.TrustManager;
+import javax.net.ssl.TrustManagerFactory;
 import javax.net.ssl.X509TrustManager;
+
+import org.json.JSONException;
+import org.json.JSONObject;
 
 /**
  * API client for interacting with the OnyxChat server
@@ -134,7 +146,7 @@ public class ApiClient {
             
             // Skip auth for login and register endpoints
             String url = original.url().toString();
-            if (url.contains("/auth/login") || 
+            if (url.contains("/auth/login") || url.contains("/auth/refresh") ||
                 (url.contains("/users") && original.method().equals("POST"))) {
                 return chain.proceed(original);
             }
@@ -146,7 +158,84 @@ public class ApiClient {
                         .header("Authorization", "Bearer " + token)
                         .method(original.method(), original.body());
                 
-                return chain.proceed(requestBuilder.build());
+                Response response = chain.proceed(requestBuilder.build());
+                
+                // Check if the response code is 401 (Unauthorized) which indicates token expiration
+                if (response.code() == 401) {
+                    String responseBody = "";
+                    
+                    try {
+                        if (response.body() != null) {
+                            responseBody = response.body().string();
+                            
+                            // Parse responseBody to check message
+                            if (responseBody.contains("\"message\"")) {
+                                try {
+                                    JSONObject json = new JSONObject(responseBody);
+                                    String message = json.optString("message", "");
+                                    if (message.contains("Token expired") || 
+                                        message.contains("jwt expired") ||
+                                        message.contains("invalid token")) {
+                                        Log.d(TAG, "Token error detected: " + message);
+                                    }
+                                } catch (JSONException e) {
+                                    Log.e(TAG, "Error parsing JSON response", e);
+                                }
+                            }
+                        }
+                    } catch (IOException e) {
+                        Log.e(TAG, "Error reading error response body", e);
+                    }
+                    
+                    // Close the consumed response
+                    response.close();
+                    
+                    // Check if we have a refresh token and should attempt refresh
+                    if (sessionManager.hasRefreshToken()) {
+                        Log.d(TAG, "401 Unauthorized response, attempting to refresh token");
+                        
+                        // Try to refresh the token
+                        boolean tokenRefreshed = false;
+                        try {
+                            tokenRefreshed = sessionManager.refreshToken().get(); // Blocking call to wait for refresh
+                        } catch (Exception e) {
+                            Log.e(TAG, "Error refreshing token", e);
+                        }
+                        
+                        if (tokenRefreshed) {
+                            // Token refreshed successfully, retry the request with the new token
+                            Log.d(TAG, "Token refreshed successfully, retrying the request");
+                            
+                            // Get the new token
+                            String newToken = sessionManager.getAuthToken();
+                            
+                            // Create new request with the new token
+                            Request newRequest = original.newBuilder()
+                                    .header("Authorization", "Bearer " + newToken)
+                                    .method(original.method(), original.body())
+                                    .build();
+                            
+                            // Retry the request
+                            return chain.proceed(newRequest);
+                        } else {
+                            Log.e(TAG, "Failed to refresh token");
+                        }
+                    } else {
+                        Log.w(TAG, "No refresh token available to handle 401 response");
+                    }
+                    
+                    // If we couldn't refresh the token or it wasn't a token expiration issue,
+                    // create a new response with the original error
+                    return new Response.Builder()
+                            .request(original)
+                            .protocol(response.protocol())
+                            .code(401)
+                            .message("Unauthorized")
+                            .body(ResponseBody.create(null, responseBody))
+                            .build();
+                }
+                
+                return response;
             }
             
             return chain.proceed(original);
@@ -315,11 +404,11 @@ public class ApiClient {
     }
     
     /**
-     * Login with username and password
+     * Login with username/email and password
      */
-    public void login(String username, String password, final ApiCallback<AuthResponse> callback) {
+    public void login(String usernameOrEmail, String password, final ApiCallback<AuthResponse> callback) {
         // Create login request
-        LoginRequest request = new LoginRequest(username, password);
+        LoginRequest request = new LoginRequest(usernameOrEmail, password);
         
         // Make API call
         apiService.login(request).enqueue(new Callback<AuthResponse>() {
@@ -446,6 +535,172 @@ public class ApiClient {
     }
     
     /**
+     * Get all users for friend discovery
+     */
+    public void getUsers(final ApiCallback<UsersResponse> callback) {
+        apiService.getUsers().enqueue(new Callback<UsersResponse>() {
+            @Override
+            public void onResponse(Call<UsersResponse> call, retrofit2.Response<UsersResponse> response) {
+                if (response.isSuccessful() && response.body() != null && "success".equals(response.body().status)) {
+                    callback.onSuccess(response.body());
+                } else {
+                    handleErrorResponse(response, callback);
+                }
+            }
+            
+            @Override
+            public void onFailure(Call<UsersResponse> call, Throwable t) {
+                callback.onFailure("Network error: " + t.getMessage());
+            }
+        });
+    }
+    
+    /**
+     * Get friend requests for the current user
+     */
+    public void getFriendRequests(final ApiCallback<FriendRequestsResponse> callback) {
+        apiService.getFriendRequests().enqueue(new Callback<FriendRequestsResponse>() {
+            @Override
+            public void onResponse(Call<FriendRequestsResponse> call, retrofit2.Response<FriendRequestsResponse> response) {
+                if (response.isSuccessful() && response.body() != null && "success".equals(response.body().status)) {
+                    callback.onSuccess(response.body());
+                } else {
+                    handleErrorResponse(response, callback);
+                }
+            }
+            
+            @Override
+            public void onFailure(Call<FriendRequestsResponse> call, Throwable t) {
+                callback.onFailure("Network error: " + t.getMessage());
+            }
+        });
+    }
+    
+    /**
+     * Send a friend request
+     */
+    public void sendFriendRequest(String receiverId, String message, final ApiCallback<FriendRequestResponse> callback) {
+        FriendRequestRequest request = new FriendRequestRequest(receiverId, message);
+        apiService.sendFriendRequest(request).enqueue(new Callback<FriendRequestResponse>() {
+            @Override
+            public void onResponse(Call<FriendRequestResponse> call, retrofit2.Response<FriendRequestResponse> response) {
+                if (response.isSuccessful() && response.body() != null && "success".equals(response.body().status)) {
+                    callback.onSuccess(response.body());
+                } else {
+                    handleErrorResponse(response, callback);
+                }
+            }
+            
+            @Override
+            public void onFailure(Call<FriendRequestResponse> call, Throwable t) {
+                callback.onFailure("Network error: " + t.getMessage());
+            }
+        });
+    }
+    
+    /**
+     * Accept a friend request
+     */
+    public void acceptFriendRequest(String requestId, final ApiCallback<AcceptFriendResponse> callback) {
+        apiService.acceptFriendRequest(requestId).enqueue(new Callback<AcceptFriendResponse>() {
+            @Override
+            public void onResponse(Call<AcceptFriendResponse> call, retrofit2.Response<AcceptFriendResponse> response) {
+                if (response.isSuccessful() && response.body() != null && "success".equals(response.body().status)) {
+                    callback.onSuccess(response.body());
+                } else {
+                    handleErrorResponse(response, callback);
+                }
+            }
+            
+            @Override
+            public void onFailure(Call<AcceptFriendResponse> call, Throwable t) {
+                callback.onFailure("Network error: " + t.getMessage());
+            }
+        });
+    }
+    
+    /**
+     * Reject a friend request
+     */
+    public void rejectFriendRequest(String requestId, final ApiCallback<BaseResponse> callback) {
+        apiService.rejectFriendRequest(requestId).enqueue(new Callback<BaseResponse>() {
+            @Override
+            public void onResponse(Call<BaseResponse> call, retrofit2.Response<BaseResponse> response) {
+                if (response.isSuccessful() && response.body() != null && "success".equals(response.body().status)) {
+                    callback.onSuccess(response.body());
+                } else {
+                    handleErrorResponse(response, callback);
+                }
+            }
+            
+            @Override
+            public void onFailure(Call<BaseResponse> call, Throwable t) {
+                callback.onFailure("Network error: " + t.getMessage());
+            }
+        });
+    }
+    
+    /**
+     * Cancel a sent friend request
+     */
+    public void cancelFriendRequest(String requestId, final ApiCallback<BaseResponse> callback) {
+        apiService.cancelFriendRequest(requestId).enqueue(new Callback<BaseResponse>() {
+            @Override
+            public void onResponse(Call<BaseResponse> call, retrofit2.Response<BaseResponse> response) {
+                if (response.isSuccessful() && response.body() != null && "success".equals(response.body().status)) {
+                    callback.onSuccess(response.body());
+                } else {
+                    handleErrorResponse(response, callback);
+                }
+            }
+            
+            @Override
+            public void onFailure(Call<BaseResponse> call, Throwable t) {
+                callback.onFailure("Network error: " + t.getMessage());
+            }
+        });
+    }
+    
+    /**
+     * Helper method to handle error responses
+     */
+    private <T> void handleErrorResponse(retrofit2.Response<T> response, ApiCallback<?> callback) {
+        String errorMsg = "Request failed";
+        
+        // Check if we have a body with an error message
+        if (response.body() instanceof BaseResponse) {
+            BaseResponse baseResponse = (BaseResponse) response.body();
+            if (baseResponse != null && baseResponse.message != null) {
+                errorMsg = baseResponse.message;
+            }
+        }
+        // Otherwise try to parse the error body
+        else if (response.errorBody() != null) {
+            try {
+                String errorBody = response.errorBody().string();
+                // Try to extract the message from error body if it's in JSON format
+                if (errorBody.contains("\"message\"")) {
+                    Gson gson = new Gson();
+                    try {
+                        ErrorResponse error = gson.fromJson(errorBody, ErrorResponse.class);
+                        if (error != null && error.message != null) {
+                            errorMsg = error.message;
+                        }
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error parsing JSON error response", e);
+                    }
+                } else {
+                    errorMsg = errorBody;
+                }
+            } catch (IOException e) {
+                Log.e(TAG, "Error parsing error response", e);
+            }
+        }
+        
+        callback.onFailure(errorMsg);
+    }
+    
+    /**
      * API callback interface
      */
     public interface ApiCallback<T> {
@@ -463,8 +718,30 @@ public class ApiClient {
         @POST("api/auth/login")
         Call<AuthResponse> login(@Body LoginRequest request);
         
+        @POST("api/auth/refresh")
+        Call<AuthResponse> refreshToken(@Body RefreshTokenRequest request);
+        
         @POST("api/contacts/sync")
         Call<ContactSyncResponse> syncContacts(@Body ContactSyncRequest request);
+        
+        // Friend request endpoints
+        @GET("api/friend-requests")
+        Call<FriendRequestsResponse> getFriendRequests();
+        
+        @POST("api/friend-requests")
+        Call<FriendRequestResponse> sendFriendRequest(@Body FriendRequestRequest request);
+        
+        @PUT("api/friend-requests/{id}/accept")
+        Call<AcceptFriendResponse> acceptFriendRequest(@Path("id") String requestId);
+        
+        @PUT("api/friend-requests/{id}/reject")
+        Call<BaseResponse> rejectFriendRequest(@Path("id") String requestId);
+        
+        @DELETE("api/friend-requests/{id}")
+        Call<BaseResponse> cancelFriendRequest(@Path("id") String requestId);
+        
+        @GET("api/friend-requests/users")
+        Call<UsersResponse> getUsers();
     }
     
     /**
@@ -472,13 +749,13 @@ public class ApiClient {
      */
     private static class LoginRequest {
         @SerializedName("username")
-        private final String username;
+        private final String usernameOrEmail;
         
         @SerializedName("password")
         private final String password;
         
-        public LoginRequest(String username, String password) {
-            this.username = username;
+        public LoginRequest(String usernameOrEmail, String password) {
+            this.usernameOrEmail = usernameOrEmail;
             this.password = password;
         }
     }
@@ -552,6 +829,9 @@ public class ApiClient {
         
         @SerializedName("isActive")
         public boolean isActive;
+        
+        @SerializedName("friendStatus")
+        public String friendStatus;
     }
     
     /**
@@ -594,5 +874,251 @@ public class ApiClient {
             @SerializedName("appUsers")
             public List<String> appUsers;
         }
+    }
+    
+    /**
+     * Base response model
+     */
+    public static class BaseResponse {
+        @SerializedName("status")
+        public String status;
+        
+        @SerializedName("message")
+        public String message;
+    }
+    
+    /**
+     * Friend request request model
+     */
+    private static class FriendRequestRequest {
+        @SerializedName("receiverId")
+        private final String receiverId;
+        
+        @SerializedName("message")
+        private final String message;
+        
+        public FriendRequestRequest(String receiverId, String message) {
+            this.receiverId = receiverId;
+            this.message = message;
+        }
+    }
+    
+    /**
+     * Friend request response model
+     */
+    public static class FriendRequestResponse extends BaseResponse {
+        @SerializedName("data")
+        public FriendRequestData data;
+        
+        public static class FriendRequestData {
+            @SerializedName("request")
+            public FriendRequestObj request;
+        }
+        
+        public static class FriendRequestObj {
+            @SerializedName("id")
+            public String id;
+            
+            @SerializedName("receiver")
+            public UserProfile receiver;
+            
+            @SerializedName("message")
+            public String message;
+            
+            @SerializedName("status")
+            public String status;
+            
+            @SerializedName("createdAt")
+            public Date createdAt;
+        }
+    }
+    
+    /**
+     * Friend requests response model
+     */
+    public static class FriendRequestsResponse extends BaseResponse {
+        @SerializedName("data")
+        public FriendRequestsData data;
+        
+        public static class FriendRequestsData {
+            @SerializedName("received")
+            public List<ReceivedRequest> received;
+            
+            @SerializedName("sent")
+            public List<SentRequest> sent;
+        }
+        
+        public static class ReceivedRequest {
+            @SerializedName("id")
+            public String id;
+            
+            @SerializedName("sender")
+            public UserProfile sender;
+            
+            @SerializedName("message")
+            public String message;
+            
+            @SerializedName("status")
+            public String status;
+            
+            @SerializedName("createdAt")
+            public Date createdAt;
+        }
+        
+        public static class SentRequest {
+            @SerializedName("id")
+            public String id;
+            
+            @SerializedName("receiver")
+            public UserProfile receiver;
+            
+            @SerializedName("message")
+            public String message;
+            
+            @SerializedName("status")
+            public String status;
+            
+            @SerializedName("createdAt")
+            public Date createdAt;
+        }
+    }
+    
+    /**
+     * Accept friend response model
+     */
+    public static class AcceptFriendResponse extends BaseResponse {
+        @SerializedName("data")
+        public AcceptFriendData data;
+        
+        public static class AcceptFriendData {
+            @SerializedName("contact")
+            public UserProfile contact;
+        }
+    }
+    
+    /**
+     * Users response model
+     */
+    public static class UsersResponse extends BaseResponse {
+        @SerializedName("data")
+        public UsersData data;
+        
+        public static class UsersData {
+            @SerializedName("users")
+            public List<UserProfile> users;
+        }
+    }
+    
+    /**
+     * Refresh token request model
+     */
+    private static class RefreshTokenRequest {
+        @SerializedName("refreshToken")
+        private final String refreshToken;
+        
+        public RefreshTokenRequest(String refreshToken) {
+            this.refreshToken = refreshToken;
+        }
+    }
+    
+    /**
+     * Refresh token method
+     */
+    public void refreshToken(final ApiCallback<AuthResponse> callback) {
+        String refreshToken = sessionManager.getRefreshToken();
+        if (refreshToken == null || refreshToken.isEmpty()) {
+            callback.onFailure("No refresh token available");
+            return;
+        }
+        
+        // Log attempt with partial token for debugging
+        if (refreshToken.length() > 10) {
+            Log.d(TAG, "ApiClient attempting to refresh token starting with: " + 
+                    refreshToken.substring(0, 10) + "...");
+        }
+        
+        RefreshTokenRequest request = new RefreshTokenRequest(refreshToken);
+        apiService.refreshToken(request).enqueue(new Callback<AuthResponse>() {
+            @Override
+            public void onResponse(Call<AuthResponse> call, retrofit2.Response<AuthResponse> response) {
+                if (response.isSuccessful() && response.body() != null && "success".equals(response.body().status)) {
+                    // Save auth token and user details
+                    AuthResponse authResponse = response.body();
+                    
+                    // Check if we have complete response data
+                    if (authResponse.data != null && 
+                        authResponse.data.tokens != null &&
+                        authResponse.data.tokens.accessToken != null &&
+                        authResponse.data.tokens.refreshToken != null) {
+                        
+                        // Create login session with the tokens
+                        if (authResponse.data.user != null) {
+                            // We have user info - use it for a complete session
+                            sessionManager.createLoginSession(
+                                    authResponse.data.user.username,
+                                    authResponse.data.user.id,
+                                    authResponse.data.tokens.accessToken,
+                                    authResponse.data.tokens.refreshToken);
+                        } else {
+                            // No user data in response - update tokens only
+                            // Keep existing user info and just update tokens
+                            String currentUsername = sessionManager.getUsername();
+                            String currentUserId = sessionManager.getUserId();
+                            
+                            if (currentUsername != null && currentUserId != null) {
+                                sessionManager.createLoginSession(
+                                        currentUsername,
+                                        currentUserId,
+                                        authResponse.data.tokens.accessToken,
+                                        authResponse.data.tokens.refreshToken);
+                            } else {
+                                // We don't have user data - this is unexpected but let's handle it
+                                Log.w(TAG, "Token refresh successful but no user data found");
+                                sessionManager.createLoginSession(
+                                        "user", // Placeholder
+                                        "unknown", // Placeholder
+                                        authResponse.data.tokens.accessToken,
+                                        authResponse.data.tokens.refreshToken);
+                            }
+                        }
+                        
+                        Log.d(TAG, "Token refresh successful via ApiClient");
+                        
+                        // Notify callback
+                        callback.onSuccess(authResponse);
+                    } else {
+                        // Incomplete response data
+                        Log.e(TAG, "Token refresh response missing required data");
+                        callback.onFailure("Invalid token response from server");
+                    }
+                } else {
+                    // Failed response
+                    Log.e(TAG, "Token refresh failed with response code: " + response.code());
+                    
+                    // Detailed error body logging for debugging
+                    if (response.errorBody() != null) {
+                        try {
+                            String errorBody = response.errorBody().string();
+                            Log.e(TAG, "Token refresh error body: " + errorBody);
+                        } catch (IOException e) {
+                            Log.e(TAG, "Failed to read token refresh error body", e);
+                        }
+                    }
+                    
+                    // Handle the common error cases
+                    if (response.code() == 401) {
+                        callback.onFailure("Refresh token invalid or expired");
+                    } else {
+                        handleErrorResponse(response, callback);
+                    }
+                }
+            }
+            
+            @Override
+            public void onFailure(Call<AuthResponse> call, Throwable t) {
+                Log.e(TAG, "Network error during token refresh", t);
+                callback.onFailure("Network error during token refresh: " + t.getMessage());
+            }
+        });
     }
 } 

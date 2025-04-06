@@ -13,6 +13,7 @@ const userRoutes = require('./routes/user.routes');
 const messageRoutes = require('./routes/message.routes');
 const cryptoRoutes = require('./routes/crypto.routes');
 const contactsRoutes = require('./routes/contacts.routes');
+const friendRequestsRoutes = require('./routes/friend-requests.routes');
 
 // Initialize express app
 const app = express();
@@ -40,6 +41,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/crypto', cryptoRoutes);
 app.use('/api/contacts', contactsRoutes);
+app.use('/api/friend-requests', friendRequestsRoutes);
 
 // Add a route to handle WebSocket connections for better debugging
 app.get('/ws', (req, res) => {
@@ -76,6 +78,14 @@ wss.on('error', (error) => {
 
 // Setup the WebSocket server with our handlers
 setupWebSocketServer(wss);
+
+// Check for mock mode configuration - DISABLE MOCK MODE
+if (false) {
+  console.log('WARNING: Running in mock database mode. All data will be lost on server restart.');
+}
+
+// Force mock mode to false regardless of environment variables
+const isMockMode = false;
 
 // Create test user in mock mode
 if (process.env.USE_MOCK_DB === 'true' || process.env.NODE_ENV === 'test') {
@@ -158,9 +168,6 @@ const startServer = () => {
     console.log(`Server running on port ${PORT}`);
   });
 };
-
-// Determine if we're in mock mode
-const isMockMode = process.env.NODE_ENV === 'test' || process.env.USE_MOCK_DB === 'true';
 
 // Handle startup based on mode
 if (isMockMode) {

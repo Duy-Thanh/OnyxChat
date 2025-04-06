@@ -50,8 +50,39 @@ public class ChatService {
     private final MutableLiveData<WebSocketClient.WebSocketState> connectionState;
     private final MutableLiveData<Map<String, String>> onlineUsers;
     private final MutableLiveData<ChatMessage> latestMessage;
+    private final MutableLiveData<ChatEvent> chatEvents;
     private final Gson gson = new Gson();
     private String userId;
+    
+    /**
+     * Event types for chat service events
+     */
+    public enum ChatEventType {
+        AUTH_ERROR,
+        CONNECTION_ERROR,
+        SERVER_ERROR
+    }
+    
+    /**
+     * Chat event class for handling system-level events
+     */
+    public static class ChatEvent {
+        private final ChatEventType type;
+        private final String message;
+        
+        public ChatEvent(ChatEventType type, String message) {
+            this.type = type;
+            this.message = message;
+        }
+        
+        public ChatEventType getType() {
+            return type;
+        }
+        
+        public String getMessage() {
+            return message;
+        }
+    }
     
     /**
      * Get the singleton instance of the ChatService
@@ -74,6 +105,7 @@ public class ChatService {
         this.connectionState = new MutableLiveData<>(WebSocketClient.WebSocketState.DISCONNECTED);
         this.onlineUsers = new MutableLiveData<>(new HashMap<>());
         this.latestMessage = new MutableLiveData<>();
+        this.chatEvents = new MutableLiveData<>();
         
         // Get server URL from preferences
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
@@ -268,10 +300,32 @@ public class ChatService {
                         } else {
                             Log.e(TAG, "Token refresh succeeded but new token is empty");
                             connectionState.setValue(WebSocketClient.WebSocketState.DISCONNECTED);
+                            
+                            // Log the user out if token refresh fails - it's likely the refresh token is invalid
+                            // and the user needs to re-authenticate
+                            Log.w(TAG, "Logging user out due to invalid refresh token");
+                            sessionManager.logout();
+                            
+                            // Post an error event so the UI can show a proper message
+                            chatEvents.postValue(new ChatEvent(
+                                ChatEventType.AUTH_ERROR,
+                                "Your session has expired. Please log in again."
+                            ));
                         }
                     } else {
                         Log.e(TAG, "Token refresh failed, cannot connect");
                         connectionState.setValue(WebSocketClient.WebSocketState.DISCONNECTED);
+                        
+                        // Log the user out if token refresh fails - it's likely the refresh token is invalid
+                        // and the user needs to re-authenticate
+                        Log.w(TAG, "Logging user out due to invalid refresh token");
+                        sessionManager.logout();
+                        
+                        // Post an error event
+                        chatEvents.postValue(new ChatEvent(
+                            ChatEventType.AUTH_ERROR,
+                            "Your session is invalid. Please log in again."
+                        ));
                     }
                 });
                 
@@ -280,6 +334,17 @@ public class ChatService {
             } else {
                 Log.e(TAG, "Cannot connect: No auth token available and no refresh token to try");
                 connectionState.setValue(WebSocketClient.WebSocketState.DISCONNECTED);
+                
+                // Log the user out since we have no valid tokens
+                Log.w(TAG, "Logging user out due to no valid tokens");
+                sessionManager.logout();
+                
+                // Post an error event
+                chatEvents.postValue(new ChatEvent(
+                    ChatEventType.AUTH_ERROR,
+                    "Your session is invalid. Please log in again."
+                ));
+                
                 return false;
             }
         }
@@ -342,9 +407,8 @@ public class ChatService {
     }
     
     /**
-     * Get the underlying WebSocketClient to allow for memory optimization
-     * This should be used carefully and only for maintenance operations
-     * @return the WebSocketClient instance
+     * Get the WebSocket client
+     * @return The WebSocket client
      */
     public WebSocketClient getWebSocketClient() {
         return webSocketClient;
@@ -583,5 +647,12 @@ public class ChatService {
         public void setSelf(boolean self) {
             this.self = self;
         }
+    }
+    
+    /**
+     * Get chat events LiveData
+     */
+    public LiveData<ChatEvent> getChatEvents() {
+        return chatEvents;
     }
 } 

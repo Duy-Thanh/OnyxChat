@@ -29,6 +29,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.lang.ref.WeakReference;
 import java.util.Iterator;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.Map;
+import java.util.HashMap;
 
 import javax.net.ssl.HostnameVerifier;
 import javax.net.ssl.SSLContext;
@@ -44,6 +46,12 @@ import okhttp3.WebSocket;
 import okhttp3.WebSocketListener;
 import okhttp3.ConnectionPool;
 import okio.ByteString;
+
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import androidx.lifecycle.LiveData;
+import androidx.lifecycle.MutableLiveData;
 
 /**
  * WebSocket client for real-time messaging
@@ -93,6 +101,11 @@ public class WebSocketClient {
     private static final long MEMORY_CLEANUP_INTERVAL_MS = 60000; // 1 minute
     private long lastMemoryCleanupTime = 0;
     
+    // LiveData objects for state and events
+    private final MutableLiveData<WebSocketState> connectionState = new MutableLiveData<>(WebSocketState.DISCONNECTED);
+    private final MutableLiveData<WebSocketEvent> eventLiveData = new MutableLiveData<>();
+    private final MutableLiveData<Map<String, String>> onlineUsers = new MutableLiveData<>(new HashMap<>());
+    
     /**
      * Enumeration for WebSocket connection states
      */
@@ -100,6 +113,57 @@ public class WebSocketClient {
         DISCONNECTED,
         CONNECTING,
         CONNECTED
+    }
+    
+    /**
+     * Enumeration for WebSocket event types
+     */
+    public enum WebSocketEventType {
+        USER_JOINED,
+        USER_LEFT,
+        MESSAGE_RECEIVED,
+        DIRECT_MESSAGE,
+        CONNECT,
+        DISCONNECT,
+        ERROR,
+        USER_STATUS_CHANGE  // Add new event type for status changes
+    }
+    
+    /**
+     * WebSocket event class
+     */
+    public static class WebSocketEvent {
+        private final WebSocketEventType type;
+        private final String data;
+        
+        public WebSocketEvent(WebSocketEventType type, String data) {
+            this.type = type;
+            this.data = data;
+        }
+        
+        public WebSocketEventType getType() {
+            return type;
+        }
+        
+        public String getData() {
+            return data;
+        }
+    }
+    
+    /**
+     * Get LiveData for WebSocket events
+     * @return LiveData containing WebSocket events
+     */
+    public LiveData<WebSocketEvent> getEvents() {
+        return eventLiveData;
+    }
+    
+    /**
+     * Get LiveData for online users
+     * @return LiveData containing a map of online users
+     */
+    public LiveData<Map<String, String>> getOnlineUsers() {
+        return onlineUsers;
     }
     
     /**
@@ -259,38 +323,39 @@ public class WebSocketClient {
     
     /**
      * Connect to the WebSocket server with the current auth token
-        // Try to refresh the token first if we have a refresh token
-        String refreshToken = sessionManager.getRefreshToken();
-        if (refreshToken != null && !refreshToken.isEmpty()) {
-            Log.d(TAG, "Refresh token available, attempting to refresh before connecting");
-            sessionManager.refreshToken().thenAccept(refreshSuccess -> {
-                if (refreshSuccess) {
-                    Log.d(TAG, "Successfully refreshed token before connecting");
-                } else {
-                    Log.w(TAG, "Failed to refresh token, will continue with current token");
-                }
-                
-                // Continue with connection after token refresh attempt
-                connectWithCurrentToken();
-            });
-        } else {
-            // No refresh token available, connect with current access token
-            Log.d(TAG, "No refresh token available, connecting with current access token");
-            connectWithCurrentToken();
-        }
-        
-        return true;
-    }
-    
-    /**
-     * Connect to the WebSocket server with the current auth token
      */
     private boolean connectWithCurrentToken() {
         // Get auth token
         String token = sessionManager.getAuthToken();
         if (token == null || token.isEmpty()) {
             Log.e(TAG, "Cannot connect: no auth token available");
-            return false;
+            
+            // Check if we have a refresh token before giving up
+            if (sessionManager.hasRefreshToken()) {
+                Log.d(TAG, "No auth token but refresh token is available, attempting to refresh token");
+                try {
+                    // Use a blocking call to refresh token - this is safe in our reconnect methods
+                    // which are already running in background threads
+                    boolean refreshSuccess = sessionManager.refreshToken().get();
+                    if (refreshSuccess) {
+                        Log.d(TAG, "Successfully refreshed token, proceeding with connection");
+                        token = sessionManager.getAuthToken();
+                        if (token == null || token.isEmpty()) {
+                            Log.e(TAG, "Refresh successful but token is still empty");
+                            return false;
+                        }
+                    } else {
+                        Log.e(TAG, "Failed to refresh token");
+                        return false;
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "Error refreshing token", e);
+                    return false;
+                }
+            } else {
+                // No refresh token available either
+                return false;
+            }
         }
         
         // For debugging, print the first 10 chars of the token
@@ -1134,5 +1199,67 @@ public class WebSocketClient {
             Log.d(TAG, "Attempting immediate reconnect with default URL");
             new Handler(Looper.getMainLooper()).post(() -> connect(currentUserId));
         }
+    }
+
+    /**
+     * Process incoming WebSocket message
+     */
+    private void processMessage(String message) {
+        Log.d(TAG, "Received WebSocket message: " + message);
+        
+        // We'll use this temporarily to avoid implementing all methods
+        // In a real implementation, we would implement each handler method
+        
+        try {
+            JSONObject jsonObject = new JSONObject(message);
+            String type = jsonObject.optString("type", "");
+            
+            if ("userStatusChange".equals(type)) {
+                handleUserStatusChange(jsonObject);
+            } else {
+                // For all other message types, just log them for now
+                Log.d(TAG, "Received message with type: " + type);
+            }
+        } catch (JSONException e) {
+            Log.e(TAG, "Failed to parse WebSocket message", e);
+        }
+    }
+
+    /**
+     * Handle user status change message
+     */
+    private void handleUserStatusChange(JSONObject jsonObject) throws JSONException {
+        String userId = jsonObject.getString("userId");
+        boolean isActive = jsonObject.getBoolean("isActive");
+        
+        // Update online users map
+        Map<String, String> currentUsers = onlineUsers.getValue();
+        if (currentUsers == null) {
+            currentUsers = new HashMap<>();
+        }
+        
+        if (isActive) {
+            // Add to online users
+            currentUsers.put(userId, userId);
+        } else {
+            // Remove from online users
+            currentUsers.remove(userId);
+        }
+        
+        // Update LiveData with new map
+        onlineUsers.postValue(currentUsers);
+        
+        // Create WebSocket event
+        JSONObject data = new JSONObject();
+        data.put("userId", userId);
+        data.put("isActive", isActive);
+        
+        WebSocketEvent event = new WebSocketEvent(
+                WebSocketEventType.USER_STATUS_CHANGE,
+                data.toString()
+        );
+        
+        // Notify listeners
+        eventLiveData.postValue(event);
     }
 }

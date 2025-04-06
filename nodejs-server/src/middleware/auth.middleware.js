@@ -14,28 +14,45 @@ const authenticate = async (req, res, next) => {
     const token = extractTokenFromHeader(authHeader);
     
     if (!token) {
+      console.log('No token provided in authorization header');
       return next(new AuthenticationError('No token provided'));
     }
     
     try {
+      console.log(`Authenticating request to ${req.originalUrl} with token: ${token.substring(0, 10)}...`);
       const decoded = verifyToken(token);
+      
+      // Validate token type if available (should be 'access')
+      if (decoded.type && decoded.type !== 'access') {
+        console.warn(`Invalid token type: ${decoded.type}, expected 'access'`);
+        return next(new AuthenticationError('Invalid token type. Please use an access token.'));
+      }
       
       // Get user from database
       const user = await db.User.findByPk(decoded.sub);
       if (!user) {
+        console.error(`User not found for ID: ${decoded.sub}`);
         return next(new AuthenticationError('User not found'));
       }
+      
+      // Update user's last active timestamp
+      await user.update({ lastActiveAt: new Date() });
+      
+      console.log(`Request authenticated for user: ${user.username} (${user.id})`);
       
       // Attach user to request
       req.user = user;
       next();
     } catch (error) {
       if (error.message === 'Token expired') {
+        console.log('Token expired error detected, returning TokenExpiredError');
         return next(new TokenExpiredError());
       }
+      console.warn(`Authentication error: ${error.message}`);
       return next(new AuthenticationError(error.message));
     }
   } catch (error) {
+    console.error(`Unexpected error in authentication middleware: ${error.message}`, error);
     next(error);
   }
 };

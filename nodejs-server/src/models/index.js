@@ -5,15 +5,15 @@ const initModels = require('./init-models');
 const mockDb = require('./mock');
 const basename = path.basename(__filename);
 
-// Determine if we're in mock mode
-const isMockMode = process.env.NODE_ENV === 'test' || process.env.USE_MOCK_DB === 'true';
+// Force database mode to always use real database, never mock
+const isMockMode = false;
 
 // Initialize db object
 const db = {};
 
 console.log(`Node environment: ${process.env.NODE_ENV}`);
 console.log(`Mock DB flag: ${process.env.USE_MOCK_DB}`);
-console.log(`Using mock mode: ${isMockMode}`);
+console.log(`Using mock mode: ${isMockMode} (forced to false)`);
 
 // Handle mock mode first before trying to connect to the database
 if (isMockMode) {

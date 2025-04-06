@@ -18,6 +18,9 @@ import com.nekkochan.onyxchat.data.User;
 import com.nekkochan.onyxchat.model.ConversationDisplay;
 import com.nekkochan.onyxchat.network.ChatService;
 import com.nekkochan.onyxchat.network.WebSocketClient;
+import com.nekkochan.onyxchat.network.ApiClient;
+import com.nekkochan.onyxchat.model.UserProfile;
+import com.nekkochan.onyxchat.model.FriendRequest;
 
 import java.security.KeyPair;
 import java.util.ArrayList;
@@ -25,6 +28,9 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
+import org.json.JSONException;
+import org.json.JSONObject;
 
 /**
  * ViewModel for the MainActivity
@@ -44,6 +50,11 @@ public class MainViewModel extends AndroidViewModel {
     private User currentUser;
     private LiveData<List<Contact>> activeContacts;
     
+    // Users and friend requests
+    private final MutableLiveData<List<UserProfile>> users = new MutableLiveData<>(new ArrayList<>());
+    private final MutableLiveData<List<FriendRequest>> receivedFriendRequests = new MutableLiveData<>(new ArrayList<>());
+    private final MutableLiveData<List<FriendRequest>> sentFriendRequests = new MutableLiveData<>(new ArrayList<>());
+    
     // Connection debouncing
     private long lastConnectionAttempt = 0;
     private static final long CONNECTION_DEBOUNCE_MS = 3000; // 3 second cooldown between attempts
@@ -55,6 +66,9 @@ public class MainViewModel extends AndroidViewModel {
     // Conversations list
     private final MutableLiveData<List<ConversationDisplay>> conversations = new MutableLiveData<>(new ArrayList<>());
 
+    /**
+     * Constructor for the ViewModel
+     */
     public MainViewModel(@NonNull Application application) {
         super(application);
         
@@ -95,6 +109,23 @@ public class MainViewModel extends AndroidViewModel {
                 
                 messages.add(chatMessage);
                 chatMessages.postValue(messages);
+            }
+        });
+        
+        // Listen for WebSocket events
+        chatService.getWebSocketClient().getEvents().observeForever(event -> {
+            if (event != null && event.getType() == WebSocketClient.WebSocketEventType.USER_STATUS_CHANGE) {
+                try {
+                    // Parse the event data
+                    JSONObject data = new JSONObject(event.getData());
+                    String userId = data.getString("userId");
+                    boolean isActive = data.getBoolean("isActive");
+                    
+                    // Update user in the list if it exists
+                    updateUserStatus(userId, isActive);
+                } catch (JSONException e) {
+                    Log.e(TAG, "Error parsing user status event", e);
+                }
             }
         });
         
@@ -567,5 +598,356 @@ public class MainViewModel extends AndroidViewModel {
      */
     public String getUserId() {
         return userAddress.getValue();
+    }
+
+    /**
+     * Fetch all users from the server
+     */
+    public void fetchUsers() {
+        if (currentUser == null) {
+            errorMessage.setValue("No current user");
+            return;
+        }
+        
+        isLoading.setValue(true);
+        
+        // Get API client
+        ApiClient apiClient = ApiClient.getInstance(getApplication());
+        
+        // Fetch users
+        apiClient.getUsers(new ApiClient.ApiCallback<ApiClient.UsersResponse>() {
+            @Override
+            public void onSuccess(ApiClient.UsersResponse response) {
+                List<UserProfile> usersList = new ArrayList<>();
+                
+                if (response.data != null && response.data.users != null) {
+                    for (ApiClient.UserProfile apiUser : response.data.users) {
+                        // Convert ApiClient.UserProfile to model.UserProfile
+                        UserProfile userProfile = new UserProfile(
+                            apiUser.id,
+                            apiUser.username,
+                            apiUser.displayName,
+                            apiUser.isActive,
+                            new Date() // We don't have lastActiveAt in the API response
+                        );
+                        
+                        // Check if this is already set in the response
+                        if (apiUser.friendStatus != null) {
+                            switch (apiUser.friendStatus) {
+                                case "contact":
+                                    userProfile.setFriendStatus(UserProfile.FriendStatus.CONTACT);
+                                    break;
+                                case "sent":
+                                    userProfile.setFriendStatus(UserProfile.FriendStatus.SENT);
+                                    break;
+                                case "received":
+                                    userProfile.setFriendStatus(UserProfile.FriendStatus.RECEIVED);
+                                    break;
+                                default:
+                                    userProfile.setFriendStatus(UserProfile.FriendStatus.NONE);
+                                    break;
+                            }
+                        }
+                        
+                        usersList.add(userProfile);
+                    }
+                }
+                
+                users.setValue(usersList);
+                setLoading(false);
+                clearErrorMessage();
+            }
+            
+            @Override
+            public void onFailure(String errorMessage) {
+                isLoading.postValue(false);
+                MainViewModel.this.errorMessage.postValue("Failed to fetch users: " + errorMessage);
+            }
+        });
+    }
+    
+    /**
+     * Get current friends request lists
+     */
+    public void getFriendRequests() {
+        if (currentUser == null) {
+            errorMessage.setValue("No current user");
+            return;
+        }
+        
+        isLoading.setValue(true);
+        
+        // Get API client
+        ApiClient apiClient = ApiClient.getInstance(getApplication());
+        
+        // Fetch friend requests
+        apiClient.getFriendRequests(new ApiClient.ApiCallback<ApiClient.FriendRequestsResponse>() {
+            @Override
+            public void onSuccess(ApiClient.FriendRequestsResponse response) {
+                List<FriendRequest> receivedList = new ArrayList<>();
+                List<FriendRequest> sentList = new ArrayList<>();
+                
+                if (response.data != null) {
+                    // Process received requests
+                    if (response.data.received != null) {
+                        for (ApiClient.FriendRequestsResponse.ReceivedRequest request : response.data.received) {
+                            // Convert ApiClient.UserProfile to model.UserProfile
+                            UserProfile senderProfile = new UserProfile(
+                                request.sender.id,
+                                request.sender.username,
+                                request.sender.displayName,
+                                request.sender.isActive,
+                                new Date() // Use current date since we don't have lastActiveAt
+                            );
+                            
+                            FriendRequest friendRequest = new FriendRequest(
+                                request.id,
+                                senderProfile,
+                                request.message,
+                                request.status,
+                                request.createdAt
+                            );
+                            receivedList.add(friendRequest);
+                        }
+                    }
+                    
+                    // Process sent requests
+                    if (response.data.sent != null) {
+                        for (ApiClient.FriendRequestsResponse.SentRequest request : response.data.sent) {
+                            // Convert ApiClient.UserProfile to model.UserProfile
+                            UserProfile receiverProfile = new UserProfile(
+                                request.receiver.id,
+                                request.receiver.username,
+                                request.receiver.displayName,
+                                request.receiver.isActive,
+                                new Date() // Use current date since we don't have lastActiveAt
+                            );
+                            
+                            FriendRequest friendRequest = new FriendRequest(
+                                request.id,
+                                receiverProfile,
+                                request.message,
+                                request.status,
+                                request.createdAt,
+                                true // Indicate this is a sent request
+                            );
+                            sentList.add(friendRequest);
+                        }
+                    }
+                }
+                
+                receivedFriendRequests.setValue(receivedList);
+                sentFriendRequests.setValue(sentList);
+                setLoading(false);
+                clearErrorMessage();
+            }
+            
+            @Override
+            public void onFailure(String errorMessage) {
+                isLoading.postValue(false);
+                MainViewModel.this.errorMessage.postValue("Failed to fetch friend requests: " + errorMessage);
+            }
+        });
+    }
+    
+    /**
+     * Send a friend request
+     */
+    public void sendFriendRequest(String receiverId, String message) {
+        if (currentUser == null) {
+            errorMessage.setValue("No current user");
+            return;
+        }
+        
+        isLoading.setValue(true);
+        
+        // Get API client
+        ApiClient apiClient = ApiClient.getInstance(getApplication());
+        
+        // Send friend request
+        apiClient.sendFriendRequest(receiverId, message, new ApiClient.ApiCallback<ApiClient.FriendRequestResponse>() {
+            @Override
+            public void onSuccess(ApiClient.FriendRequestResponse response) {
+                isLoading.postValue(false);
+                
+                // If auto-accepted (both parties sent requests to each other)
+                if (response.message.contains("was accepted")) {
+                    // Refresh contacts
+                    syncContacts();
+                }
+                
+                // Show success message
+                MainViewModel.this.errorMessage.postValue(response.message);
+                
+                // Refresh users and friend requests
+                fetchUsers();
+                getFriendRequests();
+            }
+            
+            @Override
+            public void onFailure(String errorMessage) {
+                isLoading.postValue(false);
+                MainViewModel.this.errorMessage.postValue("Failed to send friend request: " + errorMessage);
+            }
+        });
+    }
+    
+    /**
+     * Accept a friend request
+     */
+    public void acceptFriendRequest(String requestId) {
+        if (currentUser == null) {
+            errorMessage.setValue("No current user");
+            return;
+        }
+        
+        isLoading.setValue(true);
+        
+        // Get API client
+        ApiClient apiClient = ApiClient.getInstance(getApplication());
+        
+        // Accept friend request
+        apiClient.acceptFriendRequest(requestId, new ApiClient.ApiCallback<ApiClient.AcceptFriendResponse>() {
+            @Override
+            public void onSuccess(ApiClient.AcceptFriendResponse response) {
+                isLoading.postValue(false);
+                
+                // Show success message
+                MainViewModel.this.errorMessage.postValue("Friend request accepted");
+                
+                // Refresh contacts
+                syncContacts();
+                
+                // Refresh users and friend requests
+                fetchUsers();
+                getFriendRequests();
+            }
+            
+            @Override
+            public void onFailure(String errorMessage) {
+                isLoading.postValue(false);
+                MainViewModel.this.errorMessage.postValue("Failed to accept friend request: " + errorMessage);
+            }
+        });
+    }
+    
+    /**
+     * Reject a friend request
+     */
+    public void rejectFriendRequest(String requestId) {
+        if (currentUser == null) {
+            errorMessage.setValue("No current user");
+            return;
+        }
+        
+        isLoading.setValue(true);
+        
+        // Get API client
+        ApiClient apiClient = ApiClient.getInstance(getApplication());
+        
+        // Reject friend request
+        apiClient.rejectFriendRequest(requestId, new ApiClient.ApiCallback<ApiClient.BaseResponse>() {
+            @Override
+            public void onSuccess(ApiClient.BaseResponse response) {
+                isLoading.postValue(false);
+                
+                // Show success message
+                MainViewModel.this.errorMessage.postValue("Friend request rejected");
+                
+                // Refresh users and friend requests
+                fetchUsers();
+                getFriendRequests();
+            }
+            
+            @Override
+            public void onFailure(String errorMessage) {
+                isLoading.postValue(false);
+                MainViewModel.this.errorMessage.postValue("Failed to reject friend request: " + errorMessage);
+            }
+        });
+    }
+    
+    /**
+     * Cancel a sent friend request
+     */
+    public void cancelFriendRequest(String requestId) {
+        if (currentUser == null) {
+            errorMessage.setValue("No current user");
+            return;
+        }
+        
+        isLoading.setValue(true);
+        
+        // Get API client
+        ApiClient apiClient = ApiClient.getInstance(getApplication());
+        
+        // Cancel friend request
+        apiClient.cancelFriendRequest(requestId, new ApiClient.ApiCallback<ApiClient.BaseResponse>() {
+            @Override
+            public void onSuccess(ApiClient.BaseResponse response) {
+                isLoading.postValue(false);
+                
+                // Show success message
+                MainViewModel.this.errorMessage.postValue("Friend request cancelled");
+                
+                // Refresh users and friend requests
+                fetchUsers();
+                getFriendRequests();
+            }
+            
+            @Override
+            public void onFailure(String errorMessage) {
+                isLoading.postValue(false);
+                MainViewModel.this.errorMessage.postValue("Failed to cancel friend request: " + errorMessage);
+            }
+        });
+    }
+    
+    /**
+     * Get user list
+     */
+    public LiveData<List<UserProfile>> getUsers() {
+        return users;
+    }
+    
+    /**
+     * Get received friend requests
+     */
+    public LiveData<List<FriendRequest>> getReceivedFriendRequests() {
+        return receivedFriendRequests;
+    }
+    
+    /**
+     * Get sent friend requests
+     */
+    public LiveData<List<FriendRequest>> getSentFriendRequests() {
+        return sentFriendRequests;
+    }
+
+    /**
+     * Update the online status of a user in the users list
+     */
+    private void updateUserStatus(String userId, boolean isActive) {
+        List<UserProfile> currentUsers = users.getValue();
+        if (currentUsers != null) {
+            boolean updated = false;
+            
+            // Create a new list to update the LiveData
+            List<UserProfile> updatedUsers = new ArrayList<>();
+            
+            for (UserProfile user : currentUsers) {
+                if (user.getId().equals(userId)) {
+                    // Update the user's active status
+                    user.setActive(isActive);
+                    updated = true;
+                }
+                updatedUsers.add(user);
+            }
+            
+            // Only update the LiveData if a user was actually changed
+            if (updated) {
+                users.postValue(updatedUsers);
+            }
+        }
     }
 } 

@@ -207,9 +207,38 @@ public class MainActivity extends AppCompatActivity implements BottomNavigationV
             // Open media processing activity
             openMediaProcessing();
             return true;
+        } else if (id == R.id.action_test_token_refresh) {
+            // Test token refresh
+            testTokenRefresh();
+            return true;
         }
         
         return super.onOptionsItemSelected(item);
+    }
+    
+    /**
+     * Test token refresh functionality
+     */
+    private void testTokenRefresh() {
+        Log.d(TAG, "Testing token refresh");
+        Toast.makeText(this, "Testing token refresh...", Toast.LENGTH_SHORT).show();
+        
+        sessionManager.testTokenRefresh()
+            .thenAccept(success -> {
+                runOnUiThread(() -> {
+                    String message = success ? "Token refresh successful!" : "Token refresh failed!";
+                    Toast.makeText(MainActivity.this, message, Toast.LENGTH_LONG).show();
+                    Log.d(TAG, "Token refresh result: " + message);
+                });
+            })
+            .exceptionally(e -> {
+                runOnUiThread(() -> {
+                    String errorMsg = "Error: " + e.getMessage();
+                    Toast.makeText(MainActivity.this, errorMsg, Toast.LENGTH_LONG).show();
+                    Log.e(TAG, "Token refresh error", e);
+                });
+                return null;
+            });
     }
     
     /**

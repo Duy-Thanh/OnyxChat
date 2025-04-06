@@ -12,6 +12,16 @@
         android:title="@string/settings"
         app:showAsAction="never" />
     <item
+        android:id="@+id/action_toggle_theme"
+        android:icon="@android:drawable/ic_menu_day"
+        android:title="Toggle Theme"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/action_test_token_refresh"
+        android:icon="@android:drawable/ic_popup_sync"
+        android:title="Test Token Refresh"
+        app:showAsAction="never" />
+    <item
         android:id="@+id/action_logout"
         android:icon="@android:drawable/ic_lock_power_off"
         android:title="@string/action_logout"

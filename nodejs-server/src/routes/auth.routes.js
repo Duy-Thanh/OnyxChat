@@ -122,7 +122,7 @@ router.post('/register', [
 router.post('/login', [
   body('username')
     .notEmpty()
-    .withMessage('Username is required'),
+    .withMessage('Username or email is required'),
   body('password')
     .notEmpty()
     .withMessage('Password is required'),
@@ -131,9 +131,14 @@ router.post('/login', [
   try {
     const { username, password } = req.body;
     
-    // Find user by username
+    // Find user by username or email
     const user = await db.User.findOne({ 
-      where: { username }
+      where: {
+        [db.Sequelize.Op.or]: [
+          { username: username },
+          { email: username }  // Allow login with email in the username field
+        ]
+      }
     });
     
     if (!user) {
@@ -193,54 +198,105 @@ router.post('/refresh', [
   try {
     const { refreshToken } = req.body;
     
-    // Find token in database
-    const tokenDoc = await db.RefreshToken.findOne({ 
-      where: { token: refreshToken, revoked: false }
-    });
+    console.log(`Received refresh token request: ${refreshToken.substring(0, 10)}...`);
+    
+    // Make sure we're using the database version, not mock
+    console.log('Looking up token in SQL database using RefreshToken model');
+    
+    // Find token in database with detailed logging
+    let tokenDoc = null;
+    try {
+      // Log the SQL being executed
+      console.log(`SELECT * FROM refresh_tokens WHERE token = '${refreshToken.substring(0, 10)}...' AND revoked = false`);
+      
+      tokenDoc = await db.RefreshToken.findOne({ 
+        where: { token: refreshToken, revoked: false }
+      });
+      
+      if (tokenDoc) {
+        console.log(`Token found in database: ${JSON.stringify({
+          id: tokenDoc.id,
+          userId: tokenDoc.userId,
+          expiresAt: tokenDoc.expiresAt,
+          revoked: tokenDoc.revoked
+        })}`);
+      } else {
+        console.log(`Token not found in database: ${refreshToken.substring(0, 10)}...`);
+      }
+    } catch (dbError) {
+      console.error(`Database error when finding token: ${dbError.message}`);
+      console.error(dbError.stack);
+      return next(new Error(`Database error when finding token: ${dbError.message}`));
+    }
     
     if (!tokenDoc) {
+      console.log(`Refresh token not found in database or already revoked`);
       return next(new AuthenticationError('Invalid refresh token'));
     }
     
     // Check if token is expired
     if (new Date(tokenDoc.expiresAt) < new Date()) {
+      console.log(`Refresh token expired at ${tokenDoc.expiresAt}`);
       await tokenDoc.update({ revoked: true, revokedAt: new Date() });
       return next(new AuthenticationError('Refresh token expired'));
     }
     
-    // Verify token
+    // Verify token cryptographically
     let decoded;
     try {
       decoded = verifyToken(refreshToken, true);
+      console.log(`Refresh token verified successfully for user: ${decoded.sub}`);
     } catch (error) {
+      console.error(`Error verifying refresh token: ${error.message}`);
       await tokenDoc.update({ revoked: true, revokedAt: new Date() });
-      return next(new AuthenticationError('Invalid refresh token'));
+      return next(new AuthenticationError(`Invalid refresh token: ${error.message}`));
     }
     
     // Find user
     const user = await db.User.findByPk(decoded.sub);
     if (!user) {
+      console.error(`User not found for ID: ${decoded.sub}`);
       return next(new AuthenticationError('User not found'));
     }
+    
+    // Update user's last active time
+    await user.update({ lastActiveAt: new Date(), isActive: true });
     
     // Generate new tokens
     const accessToken = generateAccessToken(user.id);
     const newRefreshToken = generateRefreshToken(user.id);
     
+    console.log(`Generated new tokens for user ${user.id}: access=${accessToken.substring(0, 10)}..., refresh=${newRefreshToken.substring(0, 10)}...`);
+    
     // Revoke old token
-    await tokenDoc.update({ revoked: true, revokedAt: new Date() });
+    try {
+      await tokenDoc.update({ revoked: true, revokedAt: new Date() });
+      console.log(`Old token revoked: ${refreshToken.substring(0, 10)}...`);
+    } catch (updateError) {
+      console.error(`Error revoking old token: ${updateError.message}`);
+      // Continue anyway, this is not fatal
+    }
     
     // Store new refresh token
-    await db.RefreshToken.create({
-      token: newRefreshToken,
-      userId: user.id,
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
-    });
+    try {
+      const newTokenRecord = await db.RefreshToken.create({
+        token: newRefreshToken,
+        userId: user.id,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
+      });
+      console.log(`New token stored with ID: ${newTokenRecord.id}`);
+    } catch (createError) {
+      console.error(`Error storing new token: ${createError.message}`);
+      // This is more serious, but we can still return the token to the client
+      // They just won't be able to refresh it later
+    }
     
+    // Always include user data in the response
     res.json({
       status: 'success',
       message: 'Token refreshed successfully',
       data: {
+        user: user.toProfile(),
         tokens: {
           accessToken,
           refreshToken: newRefreshToken
@@ -248,6 +304,7 @@ router.post('/refresh', [
       }
     });
   } catch (error) {
+    console.error(`Error in refresh token endpoint: ${error.message}`, error);
     next(error);
   }
 });
