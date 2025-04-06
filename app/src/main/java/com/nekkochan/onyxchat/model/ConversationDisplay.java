@@ -8,15 +8,17 @@ import java.util.Date;
  */
 public class ConversationDisplay {
     private final String participantId;
+    private final String email;
     private final String displayName;
     private final String lastMessage;
     private final Date lastMessageTime;
     private final int unreadCount;
     private final boolean isOnline;
 
-    public ConversationDisplay(String participantId, String displayName, String lastMessage, 
+    public ConversationDisplay(String participantId, String email, String displayName, String lastMessage, 
                         Date lastMessageTime, int unreadCount, boolean isOnline) {
         this.participantId = participantId;
+        this.email = email;
         this.displayName = displayName;
         this.lastMessage = lastMessage;
         this.lastMessageTime = lastMessageTime;
@@ -26,6 +28,10 @@ public class ConversationDisplay {
 
     public String getParticipantId() {
         return participantId;
+    }
+    
+    public String getEmail() {
+        return email;
     }
 
     public String getDisplayName() {

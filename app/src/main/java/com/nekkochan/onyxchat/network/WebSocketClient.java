@@ -7,14 +7,21 @@ import android.os.Looper;
 import android.preference.PreferenceManager;
 import android.util.Log;
 
+import androidx.lifecycle.LiveData;
+import androidx.lifecycle.MutableLiveData;
+
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.nekkochan.onyxchat.util.UserSessionManager;
 import com.nekkochan.onyxchat.model.UserStatus;
+import com.nekkochan.onyxchat.util.UserSessionManager;
+
+import org.json.JSONException;
+import org.json.JSONObject;
 
 import java.io.EOFException;
 import java.io.IOException;
+import java.lang.ref.WeakReference;
 import java.net.SocketException;
 import java.security.KeyManagementException;
 import java.security.NoSuchAlgorithmException;
@@ -22,16 +29,31 @@ import java.security.SecureRandom;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.GregorianCalendar;
+import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.lang.ref.WeakReference;
-import java.util.Iterator;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.Map;
-import java.util.HashMap;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
+
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
+import okhttp3.WebSocket;
+import okhttp3.WebSocketListener;
+import okio.ByteString;
 
 import javax.net.ssl.HostnameVerifier;
 import javax.net.ssl.SSLContext;
@@ -337,7 +359,7 @@ public class WebSocketClient {
                 try {
                     // Use a blocking call to refresh token - this is safe in our reconnect methods
                     // which are already running in background threads
-                    boolean refreshSuccess = sessionManager.refreshToken().get();
+                    boolean refreshSuccess = sessionManager.refreshToken().get(10, TimeUnit.SECONDS);
                     if (refreshSuccess) {
                         Log.d(TAG, "Successfully refreshed token, proceeding with connection");
                         token = sessionManager.getAuthToken();
@@ -351,7 +373,12 @@ public class WebSocketClient {
                     }
                 } catch (Exception e) {
                     Log.e(TAG, "Error refreshing token", e);
-                    return false;
+                    
+                    // Schedule a retry after a delay instead of failing immediately
+                    Log.d(TAG, "Scheduling reconnect attempt after token refresh error");
+                    scheduleReconnect(RECONNECT_DELAY_MS);
+                    
+                    return true; // Return true as we've started the reconnect process
                 }
             } else {
                 // No refresh token available either

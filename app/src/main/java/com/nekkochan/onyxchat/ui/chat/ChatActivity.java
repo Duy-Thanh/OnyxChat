@@ -72,6 +72,10 @@ public class ChatActivity extends AppCompatActivity {
             return;
         }
         
+        // Check if contactId is an email address (contains @)
+        boolean isEmail = contactId.contains("@");
+        Log.d(TAG, "Opening chat with " + (isEmail ? "email: " : "userId: ") + contactId);
+        
         // Get view model
         viewModel = new ViewModelProvider(this).get(ChatViewModel.class);
         viewModel.setCurrentRecipient(contactId);

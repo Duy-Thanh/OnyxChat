@@ -2,6 +2,7 @@ package com.nekkochan.onyxchat.ui;
 
 import android.content.Intent;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuInflater;
@@ -191,7 +192,28 @@ public class ConversationListFragment extends Fragment implements ConversationAd
     public void onConversationClick(ConversationDisplay conversation) {
         // Open chat activity for the selected conversation
         Intent intent = new Intent(getActivity(), ChatActivity.class);
-        intent.putExtra(ChatActivity.EXTRA_CONTACT_ID, conversation.getParticipantId());
+        
+        // Try to use the best identifier available:
+        // 1. Email (preferred for API endpoints)
+        // 2. Username as fallback
+        // 3. UUID as last resort
+        String contactId = null;
+        
+        if (conversation.getEmail() != null && !conversation.getEmail().isEmpty()) {
+            // Best option: use email address
+            contactId = conversation.getEmail();
+            Log.d(TAG, "Using email for chat: " + contactId);
+        } else if (conversation.getDisplayName() != null && conversation.getDisplayName().contains("@")) {
+            // Second option: display name might be username with email format
+            contactId = conversation.getDisplayName();
+            Log.d(TAG, "Using display name as email for chat: " + contactId);
+        } else {
+            // Last resort: use UUID
+            contactId = conversation.getParticipantId();
+            Log.w(TAG, "Using UUID instead of email (not ideal): " + contactId);
+        }
+        
+        intent.putExtra(ChatActivity.EXTRA_CONTACT_ID, contactId);
         intent.putExtra(ChatActivity.EXTRA_CONTACT_NAME, conversation.getDisplayName());
         startActivity(intent);
     }

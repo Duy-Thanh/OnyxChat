@@ -626,6 +626,7 @@ public class MainViewModel extends AndroidViewModel {
                             
                             conversationList.add(new ConversationDisplay(
                                 conversation.getUserId(),
+                                conversation.getEmail(),
                                 displayName,
                                 conversation.getContent(),
                                 timestamp,
