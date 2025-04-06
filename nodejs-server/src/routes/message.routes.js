@@ -39,10 +39,20 @@ router.get('/', authenticate, async (req, res, next) => {
       limit: 100
     });
     
+    // Transform messages to include explicit timestamp field
+    const messagesWithTimestamp = messages.map(message => {
+      const messageObj = message.toJSON();
+      return {
+        ...messageObj,
+        timestamp: message.createdAt.getTime(), // Add explicit timestamp in milliseconds
+        formattedTime: message.createdAt.toISOString() // Add ISO formatted time
+      };
+    });
+    
     res.json({
       status: 'success',
       data: {
-        messages
+        messages: messagesWithTimestamp
       }
     });
   } catch (error) {
@@ -85,10 +95,20 @@ router.get('/with/:userId', authenticate, [
       order: [['createdAt', 'ASC']]
     });
     
+    // Transform messages to include explicit timestamp field
+    const messagesWithTimestamp = messages.map(message => {
+      const messageObj = message.toJSON();
+      return {
+        ...messageObj,
+        timestamp: message.createdAt.getTime(), // Add explicit timestamp in milliseconds
+        formattedTime: message.createdAt.toISOString() // Add ISO formatted time
+      };
+    });
+    
     res.json({
       status: 'success',
       data: {
-        messages,
+        messages: messagesWithTimestamp,
         user: otherUser.toProfile ? otherUser.toProfile() : {
           id: otherUser.id,
           username: otherUser.username,
@@ -124,10 +144,17 @@ router.get('/:id', authenticate, [
       return next(new ForbiddenError('You are not allowed to view this message'));
     }
     
+    // Add explicit timestamp fields
+    const messageWithTimestamp = {
+      ...message.toJSON(),
+      timestamp: message.createdAt.getTime(), // Add explicit timestamp in milliseconds
+      formattedTime: message.createdAt.toISOString() // Add ISO formatted time
+    };
+    
     res.json({
       status: 'success',
       data: {
-        message
+        message: messageWithTimestamp
       }
     });
   } catch (error) {
@@ -183,7 +210,8 @@ router.post('/', authenticate, [
             content: message.content,
             contentType: message.contentType,
             encrypted: message.encrypted,
-            timestamp: message.createdAt
+            timestamp: message.createdAt.getTime(), // Explicit timestamp in milliseconds
+            createdAt: message.createdAt.toISOString() // ISO formatted time
           }
         }));
       }
@@ -193,7 +221,11 @@ router.post('/', authenticate, [
       status: 'success',
       message: 'Message sent successfully',
       data: {
-        message
+        message: {
+          ...message.toJSON(),
+          timestamp: message.createdAt.getTime(), // Add explicit timestamp in milliseconds
+          formattedTime: message.createdAt.toISOString() // Add ISO formatted time
+        }
       }
     });
   } catch (error) {
@@ -349,43 +381,6 @@ router.delete('/:id', authenticate, [
 });
 
 /**
- * Create a new message
- * @route POST /api/messages
- */
-router.post("/", [authenticate], async (req, res) => {
-  try {
-    if (!req.body.recipientId || !req.body.content) {
-      return res.status(400).send({
-        message: "Content and recipientId are required!"
-      });
-    }
-
-    const newMessage = await db.Message.create({
-      senderId: req.userId,
-      recipientId: req.body.recipientId,
-      content: req.body.content,
-      encrypted: req.body.encrypted || false,
-      contentType: req.body.contentType || 'text',
-    });
-
-    res.status(201).send({
-      id: newMessage.id,
-      senderId: newMessage.senderId,
-      recipientId: newMessage.recipientId,
-      content: newMessage.content,
-      encrypted: newMessage.encrypted,
-      contentType: newMessage.contentType,
-      createdAt: newMessage.createdAt
-    });
-  } catch (err) {
-    console.error("Error creating message:", err);
-    res.status(500).send({
-      message: err.message || "Some error occurred while creating the message."
-    });
-  }
-});
-
-/**
  * Get messages between the current user and another user
  * @route GET /api/messages/:userId
  */
@@ -417,7 +412,17 @@ router.get("/:userId", [authenticate], async (req, res) => {
       order: [['createdAt', 'ASC']]
     });
     
-    res.status(200).send(messages);
+    // Transform messages to include explicit timestamp fields
+    const transformedMessages = messages.map(message => {
+      const messageObj = message.toJSON();
+      // Add explicit timestamp in milliseconds for client-side consistency
+      messageObj.timestamp = messageObj.createdAt.getTime();
+      // Add formatted time string for debugging and display
+      messageObj.formattedTime = messageObj.createdAt.toISOString();
+      return messageObj;
+    });
+    
+    res.status(200).send(transformedMessages);
   } catch (err) {
     console.error("Error retrieving messages:", err);
     res.status(500).send({
@@ -427,47 +432,8 @@ router.get("/:userId", [authenticate], async (req, res) => {
 });
 
 /**
- * Mark a message as read
- * @route PUT /api/messages/:id/read
- */
-router.put("/:id/read", [authenticate], async (req, res) => {
-  try {
-    const messageId = req.params.id;
-    
-    // Verify the message exists and is sent to this user
-    const message = await db.Message.findOne({
-      where: {
-        id: messageId,
-        recipientId: req.userId
-      }
-    });
-    
-    if (!message) {
-      return res.status(404).send({
-        message: "Message not found or not addressed to you."
-      });
-    }
-    
-    // Update the message
-    await message.update({
-      read: true,
-      readAt: new Date()
-    });
-    
-    res.status(200).send({
-      message: "Message marked as read successfully."
-    });
-  } catch (err) {
-    console.error("Error marking message as read:", err);
-    res.status(500).send({
-      message: err.message || "Some error occurred while updating the message."
-    });
-  }
-});
-
-/**
  * Get conversations list for the current user
- * @route GET /api/messages/conversations
+ * @route GET /api/messages/conversations/list
  */
 router.get("/conversations/list", [authenticate], async (req, res) => {
   try {
@@ -528,11 +494,28 @@ router.get("/conversations/list", [authenticate], async (req, res) => {
       unreadCountMap[count.senderId] = count.unread_count;
     });
     
-    // Enhance the conversations with unread counts
-    const enhancedConversations = conversations.map(conv => ({
-      ...conv,
-      unread_count: unreadCountMap[conv.user_id] || 0
-    }));
+    // Enhance the conversations with unread counts and explicit timestamps
+    const enhancedConversations = conversations.map(conv => {
+      // Add timestamp fields for consistent time display in the app
+      let timestamp;
+      let formattedTime;
+      
+      if (conv.createdAt) {
+        const date = new Date(conv.createdAt);
+        timestamp = date.getTime();
+        formattedTime = date.toISOString();
+      } else {
+        timestamp = Date.now();
+        formattedTime = new Date().toISOString();
+      }
+      
+      return {
+        ...conv,
+        unread_count: unreadCountMap[conv.user_id] || 0,
+        timestamp,
+        formattedTime
+      };
+    });
     
     res.status(200).send(enhancedConversations);
   } catch (err) {
@@ -582,11 +565,128 @@ router.get("/email/:email", authenticate, async (req, res) => {
       order: [['createdAt', 'ASC']]
     });
     
-    res.status(200).send(messages);
+    // Transform messages to include explicit timestamp fields
+    const transformedMessages = messages.map(message => {
+      const messageObj = message.toJSON();
+      // Add explicit timestamp in milliseconds for client-side consistency
+      messageObj.timestamp = messageObj.createdAt.getTime();
+      // Add formatted time string for debugging and display
+      messageObj.formattedTime = messageObj.createdAt.toISOString();
+      return messageObj;
+    });
+    
+    res.status(200).send(transformedMessages);
   } catch (err) {
     console.error("Error retrieving messages by email:", err);
     res.status(500).send({
       message: err.message || "Some error occurred while retrieving messages."
+    });
+  }
+});
+
+/**
+ * Create a new message
+ * @route POST /api/messages
+ */
+router.post("/", [authenticate], async (req, res) => {
+  try {
+    if (!req.body.recipientId || !req.body.content) {
+      return res.status(400).send({
+        message: "Content and recipientId are required!"
+      });
+    }
+
+    const newMessage = await db.Message.create({
+      senderId: req.userId,
+      recipientId: req.body.recipientId,
+      content: req.body.content,
+      encrypted: req.body.encrypted || false,
+      contentType: req.body.contentType || 'text',
+    });
+    
+    // Create response with explicit timestamp fields
+    const messageResponse = {
+      id: newMessage.id,
+      senderId: newMessage.senderId,
+      recipientId: newMessage.recipientId,
+      content: newMessage.content,
+      encrypted: newMessage.encrypted,
+      contentType: newMessage.contentType,
+      createdAt: newMessage.createdAt,
+      // Add explicit timestamp in milliseconds for client-side consistency
+      timestamp: newMessage.createdAt.getTime(),
+      // Add formatted time string for debugging and display
+      formattedTime: newMessage.createdAt.toISOString()
+    };
+
+    // If the recipient is online, send them a message via WebSocket
+    const recipientSocketId = onlineUsers[req.body.recipientId];
+    if (recipientSocketId) {
+      // Send message via WebSocket
+      io.to(recipientSocketId).emit('message', {
+        type: 'message',
+        senderId: req.userId,
+        recipientId: req.body.recipientId,
+        content: req.body.content,
+        encrypted: req.body.encrypted || false,
+        contentType: req.body.contentType || 'text',
+        timestamp: newMessage.createdAt.getTime(),
+        formattedTime: newMessage.createdAt.toISOString()
+      });
+    }
+
+    res.status(201).send(messageResponse);
+  } catch (err) {
+    console.error("Error creating message:", err);
+    res.status(500).send({
+      message: err.message || "Some error occurred while creating the message."
+    });
+  }
+});
+
+/**
+ * Mark a message as read
+ * @route PUT /api/messages/:id/read
+ */
+router.put("/:id/read", [authenticate], async (req, res) => {
+  try {
+    const messageId = req.params.id;
+    
+    // Verify the message exists and is sent to this user
+    const message = await db.Message.findOne({
+      where: {
+        id: messageId,
+        recipientId: req.userId
+      }
+    });
+    
+    if (!message) {
+      return res.status(404).send({
+        message: "Message not found or not addressed to you."
+      });
+    }
+    
+    // Update the message
+    await message.update({
+      read: true,
+      readAt: new Date()
+    });
+    
+    // Create response with explicit timestamp fields
+    const response = {
+      message: "Message marked as read successfully.",
+      id: message.id,
+      read: true,
+      readAt: message.readAt,
+      timestamp: message.readAt.getTime(),
+      formattedTime: message.readAt.toISOString()
+    };
+    
+    res.status(200).send(response);
+  } catch (err) {
+    console.error("Error marking message as read:", err);
+    res.status(500).send({
+      message: err.message || "Some error occurred while updating the message."
     });
   }
 });

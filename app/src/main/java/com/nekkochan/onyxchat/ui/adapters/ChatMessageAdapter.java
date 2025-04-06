@@ -28,16 +28,23 @@ public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.
     private final String currentUserId;
     private static final int VIEW_TYPE_SENT = 1;
     private static final int VIEW_TYPE_RECEIVED = 2;
-    private static final SimpleDateFormat TIME_FORMAT = new SimpleDateFormat("HH:mm", Locale.getDefault());
-    private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("MMM dd", Locale.getDefault());
     private static final long ANIMATION_DURATION = 300;
     private int lastAnimatedPosition = -1;
+    
+    // Consistent time formatter for the entire app
+    private static final SimpleDateFormat TIME_FORMATTER = new SimpleDateFormat("HH:mm", Locale.getDefault());
+    private static final SimpleDateFormat DATE_TIME_FORMATTER = new SimpleDateFormat("MMM dd, HH:mm", Locale.getDefault());
+    
+    static {
+        // Initialize formatters with device timezone
+        TimeZone deviceTimeZone = TimeZone.getDefault();
+        TIME_FORMATTER.setTimeZone(deviceTimeZone);
+        DATE_TIME_FORMATTER.setTimeZone(deviceTimeZone);
+        Log.d(TAG, "Initialized formatters with timezone: " + deviceTimeZone.getID());
+    }
 
     public ChatMessageAdapter(String currentUserId) {
         this.currentUserId = currentUserId;
-        // Ensure time format uses device timezone
-        TIME_FORMAT.setTimeZone(TimeZone.getDefault());
-        DATE_FORMAT.setTimeZone(TimeZone.getDefault());
     }
 
     @NonNull
@@ -94,9 +101,14 @@ public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.
             Log.d(TAG, "Adding " + newMessages.size() + " messages");
             for (ChatViewModel.ChatMessage message : newMessages) {
                 if (message.getTimestamp() != null) {
-                    Log.d(TAG, "Message timestamp: " + message.getTimestamp() + " (" + formatTime(message.getTimestamp()) + ")");
+                    String formattedTime = formatTimeConsistently(message.getTimestamp());
+                    Log.d(TAG, String.format("Message [%s] timestamp: %s -> %s [%d ms]", 
+                            message.getContent(),
+                            message.getTimestamp(),
+                            formattedTime,
+                            message.getTimestamp().getTime()));
                 } else {
-                    Log.d(TAG, "Message has null timestamp!");
+                    Log.d(TAG, "Message [" + message.getContent() + "] has null timestamp!");
                 }
             }
         }
@@ -106,31 +118,27 @@ public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.
     }
     
     /**
-     * Format a timestamp for display, ensuring proper timezone handling
+     * Format a time value consistently throughout the app
      * @param date The date to format
-     * @return Properly formatted time string
+     * @return The formatted time string in the standard format (HH:mm)
      */
-    private String formatTime(Date date) {
+    private static String formatTimeConsistently(Date date) {
         if (date == null) return "";
-        
-        // Create new formatter for thread safety
-        SimpleDateFormat timeFormat = new SimpleDateFormat("HH:mm", Locale.getDefault());
-        timeFormat.setTimeZone(TimeZone.getDefault());
-        return timeFormat.format(date);
+        synchronized (TIME_FORMATTER) {
+            return TIME_FORMATTER.format(date);
+        }
     }
     
     /**
-     * Format a date for display, ensuring proper timezone handling
+     * Format a date and time value consistently throughout the app
      * @param date The date to format
-     * @return Properly formatted date string
+     * @return The formatted date and time string in the standard format (MMM dd, HH:mm)
      */
-    private String formatDate(Date date) {
+    private static String formatDateTimeConsistently(Date date) {
         if (date == null) return "";
-        
-        // Create new formatter for thread safety
-        SimpleDateFormat dateFormat = new SimpleDateFormat("MMM dd", Locale.getDefault());
-        dateFormat.setTimeZone(TimeZone.getDefault());
-        return dateFormat.format(date);
+        synchronized (DATE_TIME_FORMATTER) {
+            return DATE_TIME_FORMATTER.format(date);
+        }
     }
     
     /**
@@ -146,6 +154,22 @@ public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.
         
         return cal1.get(Calendar.YEAR) == cal2.get(Calendar.YEAR) &&
                cal1.get(Calendar.DAY_OF_YEAR) == cal2.get(Calendar.DAY_OF_YEAR);
+    }
+    
+    /**
+     * Check if a date is today
+     * @param date The date to check
+     * @return true if the date is today, false otherwise
+     */
+    private boolean isToday(Date date) {
+        if (date == null) return false;
+        
+        Calendar today = Calendar.getInstance();
+        Calendar messageDate = Calendar.getInstance();
+        messageDate.setTime(date);
+        
+        return today.get(Calendar.YEAR) == messageDate.get(Calendar.YEAR) &&
+               today.get(Calendar.DAY_OF_YEAR) == messageDate.get(Calendar.DAY_OF_YEAR);
     }
     
     /**
@@ -177,7 +201,10 @@ public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.
             messageText.setText(message.getContent());
             
             // Log the time of this specific message
-            Log.d(TAG, "Binding message: " + message.getContent() + " with timestamp: " + message.getTimestamp());
+            Date timestamp = message.getTimestamp();
+            String formattedTime = formatTimeConsistently(timestamp);
+            Log.d(TAG, String.format("Binding message [%s]: timestamp=%s, formatted=%s, ms=%d", 
+                    message.getContent(), timestamp, formattedTime, timestamp.getTime()));
             
             // Manage message appearance based on sequence
             boolean isPartOfPreviousSequence = isPartOfSequence(message, previousMessage);
@@ -188,32 +215,21 @@ public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.
             timeText.setVisibility(showTime ? View.VISIBLE : View.GONE);
             
             // Format timestamp
-            if (showTime) {
-                // Check if the message timestamp is today
-                Calendar today = Calendar.getInstance();
-                Calendar messageDate = Calendar.getInstance();
-                messageDate.setTime(message.getTimestamp());
-                
-                // Log the calendar values for debugging
-                Log.d(TAG, "Today: " + today.get(Calendar.YEAR) + "-" + today.get(Calendar.DAY_OF_YEAR) + 
-                      " Message: " + messageDate.get(Calendar.YEAR) + "-" + messageDate.get(Calendar.DAY_OF_YEAR));
-                
-                boolean isToday = today.get(Calendar.YEAR) == messageDate.get(Calendar.YEAR) &&
-                                 today.get(Calendar.DAY_OF_YEAR) == messageDate.get(Calendar.DAY_OF_YEAR);
-                
-                String formattedTime;
-                if (isToday) {
+            if (showTime && timestamp != null) {
+                // Use consistent time formatting
+                String timeString;
+                if (isToday(timestamp)) {
                     // Only show time for today's messages
-                    formattedTime = formatTime(message.getTimestamp());
+                    timeString = formatTimeConsistently(timestamp);
                 } else {
                     // Show date and time for older messages
-                    formattedTime = formatDate(message.getTimestamp()) + " " + formatTime(message.getTimestamp());
+                    timeString = formatDateTimeConsistently(timestamp);
                 }
                 
                 // Log the formatted time
-                Log.d(TAG, "Formatted time: " + formattedTime);
+                Log.d(TAG, "Formatted time for message [" + message.getContent() + "]: " + timeString);
                 
-                timeText.setText(formattedTime);
+                timeText.setText(timeString);
             }
             
             // If available, adjust bubble corners based on sequence

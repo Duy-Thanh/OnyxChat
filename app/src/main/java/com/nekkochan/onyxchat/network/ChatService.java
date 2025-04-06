@@ -9,22 +9,30 @@ import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.nekkochan.onyxchat.util.UserSessionManager;
 import com.nekkochan.onyxchat.model.UserStatus;
 
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.TimeZone;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 import android.os.Message;
 
 import java.security.SecureRandom;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
-import java.util.concurrent.TimeUnit;
 
 import javax.net.ssl.HostnameVerifier;
 import javax.net.ssl.SSLContext;
@@ -130,159 +138,7 @@ public class ChatService {
             @Override
             public void onMessageReceived(String message) {
                 Log.d(TAG, "Received: " + message);
-                try {
-                    // Try to parse as JSON
-                    JsonObject jsonMessage = JsonParser.parseString(message).getAsJsonObject();
-                    
-                    // Process different types of messages
-                    if (jsonMessage.has("type")) {
-                        String type = jsonMessage.get("type").getAsString();
-                        
-                        if ("direct".equals(type)) {
-                            // Direct message received
-                            String sender = jsonMessage.get("sender").getAsString();
-                            String content = jsonMessage.get("content").getAsString();
-                            
-                            // Use server timestamp if available, otherwise use local time
-                            long timestamp = System.currentTimeMillis();
-                            if (jsonMessage.has("timestamp")) {
-                                try {
-                                    timestamp = jsonMessage.get("timestamp").getAsLong();
-                                    Log.d(TAG, "Using server timestamp: " + timestamp);
-                                } catch (Exception e) {
-                                    Log.e(TAG, "Error parsing timestamp, using system time", e);
-                                }
-                            }
-                            
-                            ChatMessage chatMessage = new ChatMessage(
-                                    ChatMessage.MessageType.DIRECT,
-                                    sender,
-                                    userId, // me as recipient
-                                    content,
-                                    timestamp
-                            );
-                            latestMessage.postValue(chatMessage);
-                        } else if ("status".equals(type)) {
-                            // User status message
-                            String statusUserId = jsonMessage.get("user").getAsString();
-                            String status = jsonMessage.get("status").getAsString();
-                            
-                            // Update online users map
-                            Map<String, UserStatus> users = onlineUsers.getValue();
-                            if (users == null) {
-                                users = new HashMap<>();
-                            }
-                            
-                            if ("online".equals(status)) {
-                                users.put(statusUserId, new UserStatus(true, null));
-                            } else if ("offline".equals(status)) {
-                                // Get the user's last active time if we have it
-                                users.put(statusUserId, new UserStatus(false, null));
-                            }
-                            
-                            onlineUsers.postValue(users);
-                            
-                            // Use server timestamp if available, otherwise use local time
-                            long timestamp = System.currentTimeMillis();
-                            if (jsonMessage.has("timestamp")) {
-                                try {
-                                    timestamp = jsonMessage.get("timestamp").getAsLong();
-                                } catch (Exception e) {
-                                    Log.e(TAG, "Error parsing timestamp, using system time", e);
-                                }
-                            }
-                            
-                            // Also post a system message about the status change
-                            ChatMessage chatMessage = new ChatMessage(
-                                    ChatMessage.MessageType.SYSTEM,
-                                    "server",
-                                    userId,
-                                    "User " + statusUserId + " is " + status,
-                                    timestamp
-                            );
-                            latestMessage.postValue(chatMessage);
-                        } else if ("echo".equals(type)) {
-                            // Echo message (confirmation of our message)
-                            String content = jsonMessage.get("content").getAsString();
-                            
-                            // Use server timestamp if available, otherwise use local time
-                            long timestamp = System.currentTimeMillis();
-                            if (jsonMessage.has("timestamp")) {
-                                try {
-                                    timestamp = jsonMessage.get("timestamp").getAsLong();
-                                } catch (Exception e) {
-                                    Log.e(TAG, "Error parsing timestamp, using system time", e);
-                                }
-                            }
-                            
-                            ChatMessage chatMessage = new ChatMessage(
-                                    ChatMessage.MessageType.ECHO,
-                                    userId, // me as sender
-                                    "server",
-                                    content,
-                                    timestamp
-                            );
-                            chatMessage.setSelf(true);
-                            latestMessage.postValue(chatMessage);
-                        } else if ("error".equals(type)) {
-                            // Error message
-                            String content = jsonMessage.get("content").getAsString();
-                            
-                            // Use server timestamp if available, otherwise use local time
-                            long timestamp = System.currentTimeMillis();
-                            if (jsonMessage.has("timestamp")) {
-                                try {
-                                    timestamp = jsonMessage.get("timestamp").getAsLong();
-                                } catch (Exception e) {
-                                    Log.e(TAG, "Error parsing timestamp, using system time", e);
-                                }
-                            }
-                            
-                            ChatMessage chatMessage = new ChatMessage(
-                                    ChatMessage.MessageType.ERROR,
-                                    "server",
-                                    userId,
-                                    content,
-                                    timestamp
-                            );
-                            latestMessage.postValue(chatMessage);
-                            
-                            // Also post to the error event stream
-                            chatEvents.postValue(new ChatEvent(ChatEventType.SERVER_ERROR, content));
-                        } else {
-                            // Other message types
-                            ChatMessage chatMessage = new ChatMessage(
-                                    ChatMessage.MessageType.SYSTEM,
-                                    "server",
-                                    userId,
-                                    message,
-                                    System.currentTimeMillis()
-                            );
-                            latestMessage.postValue(chatMessage);
-                        }
-                    } else {
-                        // Plain text message as a system message
-                        ChatMessage chatMessage = new ChatMessage(
-                                ChatMessage.MessageType.SYSTEM,
-                                "server",
-                                userId,
-                                message,
-                                System.currentTimeMillis()
-                        );
-                        latestMessage.postValue(chatMessage);
-                    }
-                } catch (Exception e) {
-                    // Not a JSON message, treat as a system message
-                    Log.d(TAG, "Not JSON: " + message);
-                    ChatMessage chatMessage = new ChatMessage(
-                            ChatMessage.MessageType.SYSTEM,
-                            "server",
-                            userId,
-                            message,
-                            System.currentTimeMillis()
-                    );
-                    latestMessage.postValue(chatMessage);
-                }
+                processMessage(message);
             }
             
             @Override
@@ -299,6 +155,179 @@ public class ChatService {
                 latestMessage.postValue(errorMessage);
             }
         });
+    }
+    
+    /**
+     * Process a new message from the server
+     * @param message The message content
+     */
+    private void processMessage(String message) {
+        try {
+            // Try to parse as JSON
+            JsonParser parser = new JsonParser();
+            JsonElement jsonElement = parser.parse(message);
+            
+            if (jsonElement.isJsonObject()) {
+                JsonObject jsonMessage = jsonElement.getAsJsonObject();
+                
+                String type = jsonMessage.get("type").getAsString();
+                Log.d(TAG, "Received message of type: " + type);
+                
+                // Extract and log timestamp for debugging
+                long messageTimestamp = System.currentTimeMillis();
+                boolean hasServerTimestamp = false;
+                
+                if (jsonMessage.has("timestamp")) {
+                    try {
+                        messageTimestamp = jsonMessage.get("timestamp").getAsLong();
+                        hasServerTimestamp = true;
+                        Log.d(TAG, "Message has server timestamp: " + messageTimestamp + 
+                                " (" + new Date(messageTimestamp) + ")");
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error parsing timestamp from server, using system time", e);
+                    }
+                } else if (jsonMessage.has("createdAt")) {
+                    try {
+                        // Try to parse ISO date string
+                        String timestampStr = jsonMessage.get("createdAt").getAsString();
+                        SimpleDateFormat iso8601Format = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US);
+                        iso8601Format.setTimeZone(TimeZone.getTimeZone("UTC"));
+                        Date date = iso8601Format.parse(timestampStr);
+                        if (date != null) {
+                            messageTimestamp = date.getTime();
+                            hasServerTimestamp = true;
+                            Log.d(TAG, "Message has createdAt timestamp: " + messageTimestamp + 
+                                    " (" + new Date(messageTimestamp) + ")");
+                        }
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error parsing createdAt timestamp from server, using system time", e);
+                    }
+                }
+                
+                if (!hasServerTimestamp) {
+                    Log.d(TAG, "No timestamp found in message, using local time: " + 
+                            messageTimestamp + " (" + new Date(messageTimestamp) + ")");
+                }
+
+                if ("message".equals(type)) {
+                    // Process chat message
+                    String senderId = jsonMessage.get("senderId").getAsString();
+                    String recipientId = jsonMessage.get("recipientId").getAsString();
+                    String content = jsonMessage.get("content").getAsString();
+                    
+                    // Check for formattedTime field from enhanced server
+                    if (jsonMessage.has("formattedTime")) {
+                        String formattedTime = jsonMessage.get("formattedTime").getAsString();
+                        Log.d(TAG, "Message has formatted time from server: " + formattedTime);
+                    }
+                    
+                    // Log the important message details including timestamp
+                    Log.d(TAG, String.format("Chat message: content=%s, senderId=%s, timestamp=%d (%s)", 
+                            content, senderId, messageTimestamp, new Date(messageTimestamp)));
+                    
+                    // Create message object
+                    ChatMessage chatMessage = new ChatMessage(
+                            ChatMessage.MessageType.MESSAGE,
+                            senderId,
+                            recipientId,
+                            content,
+                            messageTimestamp // Use parsed timestamp
+                    );
+                    
+                    // Mark if it's our own message reflected back
+                    chatMessage.setSelf(senderId.equals(userId));
+                    
+                    // Post to LiveData
+                    latestMessage.postValue(chatMessage);
+                } else if ("user_status".equals(type)) {
+                    // User status update
+                    String status = jsonMessage.get("status").getAsString();
+                    String statusUserId = jsonMessage.get("user_id").getAsString();
+                    
+                    // Create a system message about the status update
+                    ChatMessage chatMessage = new ChatMessage(
+                            ChatMessage.MessageType.SYSTEM,
+                            "server",
+                            userId,
+                            "User " + statusUserId + " is " + status,
+                            messageTimestamp
+                    );
+                    latestMessage.postValue(chatMessage);
+                } else if ("echo".equals(type)) {
+                    // Echo message (confirmation of our message)
+                    String content = jsonMessage.get("content").getAsString();
+                    
+                    // Log echo message details
+                    Log.d(TAG, String.format("Echo message: content=%s, timestamp=%d (%s)", 
+                            content, messageTimestamp, new Date(messageTimestamp)));
+                    
+                    ChatMessage chatMessage = new ChatMessage(
+                            ChatMessage.MessageType.ECHO,
+                            userId, // me as sender
+                            "server",
+                            content,
+                            messageTimestamp // Use parsed timestamp
+                    );
+                    chatMessage.setSelf(true);
+                    latestMessage.postValue(chatMessage);
+                } else if ("error".equals(type)) {
+                    // Error message
+                    String content = jsonMessage.get("content").getAsString();
+                    
+                    // Log error message details
+                    Log.d(TAG, String.format("Error message: content=%s, timestamp=%d (%s)", 
+                            content, messageTimestamp, new Date(messageTimestamp)));
+                    
+                    ChatMessage chatMessage = new ChatMessage(
+                            ChatMessage.MessageType.ERROR,
+                            "server",
+                            userId,
+                            content,
+                            messageTimestamp // Use parsed timestamp
+                    );
+                    latestMessage.postValue(chatMessage);
+                    
+                    // Also post to the error event stream
+                    chatEvents.postValue(new ChatEvent(ChatEventType.SERVER_ERROR, content));
+                } else {
+                    // Other message types
+                    Log.d(TAG, String.format("System message: content=%s, timestamp=%d (%s)", 
+                            message, messageTimestamp, new Date(messageTimestamp)));
+                    
+                    ChatMessage chatMessage = new ChatMessage(
+                            ChatMessage.MessageType.SYSTEM,
+                            "server",
+                            userId,
+                            message,
+                            messageTimestamp // Use parsed timestamp
+                    );
+                    latestMessage.postValue(chatMessage);
+                }
+            } else {
+                // Plain text message as a system message
+                Log.d(TAG, "Plain text message: " + message);
+                
+                ChatMessage chatMessage = new ChatMessage(
+                        ChatMessage.MessageType.SYSTEM,
+                        "server",
+                        userId,
+                        message,
+                        System.currentTimeMillis() // Use current time for non-JSON messages
+                );
+                latestMessage.postValue(chatMessage);
+            }
+        } catch (Exception e) {
+            // Not a JSON message, treat as a system message
+            Log.d(TAG, "Not JSON: " + message);
+            ChatMessage chatMessage = new ChatMessage(
+                    ChatMessage.MessageType.SYSTEM,
+                    "server",
+                    userId,
+                    message,
+                    System.currentTimeMillis() // Use current time for non-JSON messages
+            );
+            latestMessage.postValue(chatMessage);
+        }
     }
     
     /**
@@ -648,7 +677,8 @@ public class ChatService {
             DIRECT,
             ECHO,
             SYSTEM,
-            ERROR
+            ERROR,
+            MESSAGE
         }
         
         private final MessageType type;

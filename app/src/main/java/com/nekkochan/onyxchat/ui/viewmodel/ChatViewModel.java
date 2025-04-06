@@ -16,8 +16,12 @@ import com.nekkochan.onyxchat.network.ChatService;
 import com.nekkochan.onyxchat.network.WebSocketClient;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
 import java.util.List;
+import java.text.SimpleDateFormat;
+import java.util.Locale;
+import java.util.TimeZone;
 
 /**
  * ViewModel for the chat screen
@@ -30,6 +34,9 @@ public class ChatViewModel extends AndroidViewModel {
     private final MutableLiveData<List<ChatMessage>> chatMessages;
     private final String userId;
     private String currentRecipientId;
+    
+    private MutableLiveData<String> errorMessage = new MutableLiveData<>();
+    private MutableLiveData<Boolean> isLoading = new MutableLiveData<>(false);
     
     public ChatViewModel(@NonNull Application application) {
         super(application);
@@ -89,6 +96,10 @@ public class ChatViewModel extends AndroidViewModel {
      * Load messages between the current user and the specified recipient
      */
     private void loadMessages(String recipientId) {
+        isLoading.setValue(true);
+        
+        Log.d(TAG, "Loading messages for contact: " + recipientId);
+        
         // Clear existing messages first
         chatMessages.setValue(new ArrayList<>());
         
@@ -101,28 +112,67 @@ public class ChatViewModel extends AndroidViewModel {
                         List<ChatMessage> messages = new ArrayList<>();
                         
                         for (ApiClient.MessageResponse message : result) {
+                            // Log timestamp details for debugging
+                            Date createdAt = message.getCreatedAt();
+                            long timestamp = createdAt != null ? createdAt.getTime() : System.currentTimeMillis();
+                            
+                            Log.d(TAG, String.format(
+                                "Message from API - ID: %s, Content: %s, Timestamp: %d (%s)", 
+                                message.getId(), 
+                                message.getContent(),
+                                timestamp,
+                                createdAt != null ? formatDateForLogging(createdAt) : "null"));
+                            
                             // Convert API message to ChatMessage
                             messages.add(new ChatMessage(
                                 "DIRECT", // Assuming all are direct messages
                                 message.getSenderId(),
                                 message.getRecipientId(),
                                 message.getContent(),
-                                message.getCreatedAt()
+                                new Date(timestamp) // Ensure we use the server timestamp
                             ));
+                        }
+                        
+                        // Sort messages by timestamp
+                        Collections.sort(messages, (m1, m2) -> m1.getTimestamp().compareTo(m2.getTimestamp()));
+                        
+                        // Log the sorted message timestamps for debugging
+                        if (!messages.isEmpty()) {
+                            Log.d(TAG, "Loaded and sorted " + messages.size() + " messages");
+                            Log.d(TAG, "First message timestamp: " + formatDateForLogging(messages.get(0).getTimestamp()));
+                            Log.d(TAG, "Last message timestamp: " + formatDateForLogging(messages.get(messages.size() - 1).getTimestamp()));
+                        } else {
+                            Log.d(TAG, "No messages loaded from API");
                         }
                         
                         // Update UI on main thread
                         new Handler(Looper.getMainLooper()).post(() -> {
                             chatMessages.setValue(messages);
                         });
+                    } else {
+                        Log.e(TAG, "API returned null messages");
+                        errorMessage.setValue("Failed to load messages");
                     }
+                    isLoading.setValue(false);
                 }
 
                 @Override
-                public void onFailure(String errorMessage) {
-                    Log.e(TAG, "Error loading messages: " + errorMessage);
+                public void onFailure(String errorMsg) {
+                    Log.e(TAG, "Error loading messages: " + errorMsg);
+                    errorMessage.setValue(errorMsg);
+                    isLoading.setValue(false);
                 }
             });
+    }
+    
+    /**
+     * Format a date for consistent logging
+     */
+    private String formatDateForLogging(Date date) {
+        if (date == null) return "null";
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US);
+        sdf.setTimeZone(TimeZone.getDefault());
+        return sdf.format(date) + " [" + date.getTime() + "ms]";
     }
     
     /**
@@ -186,6 +236,22 @@ public class ChatViewModel extends AndroidViewModel {
      */
     public LiveData<List<ChatMessage>> getChatMessages() {
         return chatMessages;
+    }
+    
+    /**
+     * Get the error message
+     * @return LiveData containing the error message
+     */
+    public LiveData<String> getErrorMessage() {
+        return errorMessage;
+    }
+    
+    /**
+     * Get the loading state
+     * @return LiveData containing the loading state
+     */
+    public LiveData<Boolean> getIsLoading() {
+        return isLoading;
     }
     
     /**
