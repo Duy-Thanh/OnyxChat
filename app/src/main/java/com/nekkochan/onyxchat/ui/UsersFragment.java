@@ -25,9 +25,12 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.snackbar.Snackbar;
 import com.nekkochan.onyxchat.R;
 import com.nekkochan.onyxchat.model.UserProfile;
+import com.nekkochan.onyxchat.model.UserStatus;
 import com.nekkochan.onyxchat.ui.adapter.UserAdapter;
 import com.nekkochan.onyxchat.ui.chat.ChatActivity;
 import com.nekkochan.onyxchat.ui.viewmodel.MainViewModel;
+
+import java.util.Map;
 
 /**
  * Fragment for displaying all app users and friend discovery
@@ -125,6 +128,13 @@ public class UsersFragment extends Fragment {
         viewModel.getUsers().observe(getViewLifecycleOwner(), users -> {
             adapter.submitList(users);
             updateEmptyViewVisibility(users == null || users.isEmpty());
+        });
+        
+        // Observe online user statuses
+        viewModel.getUserStatuses().observe(getViewLifecycleOwner(), userStatuses -> {
+            if (userStatuses != null) {
+                adapter.updateUserStatuses(userStatuses);
+            }
         });
     }
     

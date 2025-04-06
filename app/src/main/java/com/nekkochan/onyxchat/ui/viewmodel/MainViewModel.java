@@ -21,6 +21,7 @@ import com.nekkochan.onyxchat.network.WebSocketClient;
 import com.nekkochan.onyxchat.network.ApiClient;
 import com.nekkochan.onyxchat.model.UserProfile;
 import com.nekkochan.onyxchat.model.FriendRequest;
+import com.nekkochan.onyxchat.model.UserStatus;
 
 import java.security.KeyPair;
 import java.util.ArrayList;
@@ -61,7 +62,7 @@ public class MainViewModel extends AndroidViewModel {
     
     // Chat state
     private final LiveData<Boolean> isChatConnected;
-    private final LiveData<Map<String, String>> onlineUsers;
+    private final LiveData<Map<String, UserStatus>> onlineUsers;
 
     // Conversations list
     private final MutableLiveData<List<ConversationDisplay>> conversations = new MutableLiveData<>(new ArrayList<>());
@@ -451,7 +452,7 @@ public class MainViewModel extends AndroidViewModel {
      */
     public boolean connectToChat() {
         // Check if we're already connected
-        if (isChatConnected().getValue() == Boolean.TRUE) {
+        if (isChatConnected.getValue() == Boolean.TRUE) {
             return true;
         }
         
@@ -512,24 +513,34 @@ public class MainViewModel extends AndroidViewModel {
      * @return LiveData containing the connection status
      */
     public LiveData<Boolean> isChatConnected() {
-        MutableLiveData<Boolean> result = new MutableLiveData<>();
-        
-        // Using observeForever is safe for threading
-        chatService.getConnectionState().observeForever(state -> {
-            boolean isConnected = state == WebSocketClient.WebSocketState.CONNECTED;
-            // Use postValue which is safe to call from any thread
-            result.postValue(isConnected);
-        });
-        
-        return result;
+        return isChatConnected;
     }
     
     /**
      * Get the online users
-     * @return LiveData containing the list of online users
+     * @return LiveData containing the list of online user IDs
      */
     public LiveData<List<String>> getOnlineUsers() {
-        return chatService.getOnlineUsersList();
+        // Update to extract the list of online users from the map
+        return Transformations.map(chatService.getOnlineUsers(), userMap -> {
+            if (userMap == null) return new ArrayList<>();
+            
+            List<String> onlineUserIds = new ArrayList<>();
+            for (Map.Entry<String, UserStatus> entry : userMap.entrySet()) {
+                if (entry.getValue().isOnline()) {
+                    onlineUserIds.add(entry.getKey());
+                }
+            }
+            return onlineUserIds;
+        });
+    }
+    
+    /**
+     * Get detailed user statuses
+     * @return LiveData containing map of user IDs to their status info
+     */
+    public LiveData<Map<String, UserStatus>> getUserStatuses() {
+        return onlineUsers;
     }
     
     /**

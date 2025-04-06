@@ -11,6 +11,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.nekkochan.onyxchat.util.UserSessionManager;
+import com.nekkochan.onyxchat.model.UserStatus;
 
 import java.io.EOFException;
 import java.io.IOException;
@@ -104,7 +105,7 @@ public class WebSocketClient {
     // LiveData objects for state and events
     private final MutableLiveData<WebSocketState> connectionState = new MutableLiveData<>(WebSocketState.DISCONNECTED);
     private final MutableLiveData<WebSocketEvent> eventLiveData = new MutableLiveData<>();
-    private final MutableLiveData<Map<String, String>> onlineUsers = new MutableLiveData<>(new HashMap<>());
+    private final MutableLiveData<Map<String, UserStatus>> onlineUsers = new MutableLiveData<>(new HashMap<>());
     
     /**
      * Enumeration for WebSocket connection states
@@ -159,10 +160,10 @@ public class WebSocketClient {
     }
     
     /**
-     * Get LiveData for online users
-     * @return LiveData containing a map of online users
+     * Get online users as LiveData
+     * @return LiveData map of user ID to status
      */
-    public LiveData<Map<String, String>> getOnlineUsers() {
+    public LiveData<Map<String, UserStatus>> getOnlineUsers() {
         return onlineUsers;
     }
     
@@ -975,6 +976,32 @@ public class WebSocketClient {
                 // Special handling for pong messages to update activity time
                 if (jsonMessage.has("type") && "pong".equals(jsonMessage.get("type").getAsString())) {
                     // We already recorded activity, just notify listeners
+                } else if (jsonMessage.has("type") && "USER_STATUS".equals(jsonMessage.get("type").getAsString())) {
+                    JsonObject userData = jsonMessage.getAsJsonObject("data");
+                    String statusUserId = userData.get("userId").getAsString();
+                    boolean isOnline = userData.get("isOnline").getAsBoolean();
+                    
+                    String lastActive = null;
+                    if (userData.has("lastActiveAt") && !userData.get("lastActiveAt").isJsonNull()) {
+                        lastActive = userData.get("lastActiveAt").getAsString();
+                    }
+                    
+                    // Update the online users map
+                    Map<String, UserStatus> currentUsers = onlineUsers.getValue();
+                    if (currentUsers == null) {
+                        currentUsers = new HashMap<>();
+                    } else {
+                        // Create a new map to trigger LiveData update
+                        currentUsers = new HashMap<>(currentUsers);
+                    }
+                    
+                    if (isOnline) {
+                        currentUsers.put(statusUserId, new UserStatus(true, null));
+                    } else {
+                        currentUsers.put(statusUserId, new UserStatus(false, lastActive));
+                    }
+                    
+                    onlineUsers.postValue(currentUsers);
                 }
                 
                 // Notify listeners for normal messages
@@ -1233,14 +1260,14 @@ public class WebSocketClient {
         boolean isActive = jsonObject.getBoolean("isActive");
         
         // Update online users map
-        Map<String, String> currentUsers = onlineUsers.getValue();
+        Map<String, UserStatus> currentUsers = onlineUsers.getValue();
         if (currentUsers == null) {
             currentUsers = new HashMap<>();
         }
         
         if (isActive) {
             // Add to online users
-            currentUsers.put(userId, userId);
+            currentUsers.put(userId, new UserStatus(true, null));
         } else {
             // Remove from online users
             currentUsers.remove(userId);

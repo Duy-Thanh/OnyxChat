@@ -8,6 +8,7 @@ import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.Button;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
@@ -38,6 +39,8 @@ public class ConversationListFragment extends Fragment implements ConversationAd
     private RecyclerView recyclerView;
     private TextView emptyView;
     private TextView statusTextView;
+    private TextView emptyDescriptionView;
+    private Button startChatButton;
     private ConversationAdapter adapter;
     
     @Override
@@ -80,6 +83,8 @@ public class ConversationListFragment extends Fragment implements ConversationAd
         recyclerView = view.findViewById(R.id.conversationsRecyclerView);
         emptyView = view.findViewById(R.id.emptyConversationsText);
         statusTextView = view.findViewById(R.id.chatStatusText);
+        emptyDescriptionView = view.findViewById(R.id.emptyConversationsDescription);
+        startChatButton = view.findViewById(R.id.startChatButton);
         
         // Setup recycler view
         recyclerView.setLayoutManager(new LinearLayoutManager(getContext()));
@@ -88,11 +93,15 @@ public class ConversationListFragment extends Fragment implements ConversationAd
         adapter = new ConversationAdapter(this);
         recyclerView.setAdapter(adapter);
         
+        // Set up click listener for start chat button
+        startChatButton.setOnClickListener(v -> showContactsForNewChat());
+        
         // Update connection status immediately
         updateConnectionStatus(viewModel.isChatConnected().getValue() == Boolean.TRUE);
         
         // Observe chat connection state
-        viewModel.isChatConnected().observe(getViewLifecycleOwner(), this::updateConnectionStatus);
+        viewModel.isChatConnected().observe(getViewLifecycleOwner(), isConnected -> 
+            updateConnectionStatus(isConnected));
         
         // Observe conversations
         viewModel.getConversations().observe(getViewLifecycleOwner(), this::updateConversations);
@@ -165,9 +174,13 @@ public class ConversationListFragment extends Fragment implements ConversationAd
         if (isEmpty) {
             recyclerView.setVisibility(View.GONE);
             emptyView.setVisibility(View.VISIBLE);
+            emptyDescriptionView.setVisibility(View.VISIBLE);
+            startChatButton.setVisibility(View.VISIBLE);
         } else {
             recyclerView.setVisibility(View.VISIBLE);
             emptyView.setVisibility(View.GONE);
+            emptyDescriptionView.setVisibility(View.GONE);
+            startChatButton.setVisibility(View.GONE);
         }
     }
     

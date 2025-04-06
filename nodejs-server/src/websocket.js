@@ -68,6 +68,110 @@ const handleMessage = async (userId, messageData, connectionId) => {
         }
         break;
         
+      case 'direct':
+        // Handle direct messages from older client versions
+        // Extract recipient and content properties directly from message
+        let recipientEmail = message.recipient; // This could be an email or username, not a UUID
+        const content = message.content;
+        
+        if (!recipientEmail || !content) {
+          console.log('Invalid direct message format:', message);
+          break;
+        }
+        
+        console.log(`Processing direct message to recipient: ${recipientEmail}`);
+        
+        // Special handling for .onion addresses which aren't in our database
+        if (recipientEmail.endsWith('.onion')) {
+          // Remove the .onion suffix for database lookup
+          recipientEmail = recipientEmail.replace('.onion', '');
+          console.log(`Removed .onion suffix for lookup, searching for: ${recipientEmail}`);
+        }
+        
+        // Look up the user ID by email or username before creating the message
+        let recipientUser;
+        try {
+          // Try to find user by email first
+          recipientUser = await db.User.findOne({
+            where: {
+              email: recipientEmail
+            }
+          });
+          
+          // If not found by email, try username
+          if (!recipientUser) {
+            recipientUser = await db.User.findOne({
+              where: {
+                username: recipientEmail
+              }
+            });
+          }
+          
+          if (!recipientUser) {
+            console.log(`Recipient not found in database: ${recipientEmail}`);
+            
+            // Send error response to sender
+            const senderConnections = clients.get(userId);
+            if (senderConnections) {
+              const senderConnection = senderConnections.find(conn => conn.connectionId === connectionId);
+              if (senderConnection && senderConnection.ws.readyState === 1) {
+                senderConnection.ws.send(JSON.stringify({
+                  type: 'ERROR',
+                  data: {
+                    message: `User with email or username "${recipientEmail}" not found.`,
+                    code: 'USER_NOT_FOUND',
+                    originalMessage: {
+                      type: 'direct',
+                      recipient: message.recipient,
+                      content: content.substring(0, 20) + (content.length > 20 ? '...' : '')
+                    }
+                  }
+                }));
+              }
+            }
+            break;
+          }
+          
+          console.log(`Found recipient user: ${recipientUser.username} (${recipientUser.id})`);
+          
+          // Now create the message with the proper UUID
+          const directMessage = await db.Message.create({
+            senderId: userId,
+            recipientId: recipientUser.id, // Use the UUID from the database
+            content: content,
+            encrypted: false,
+            contentType: 'text',
+          });
+          
+          console.log(`Created message from ${userId} to ${recipientUser.id}: ${directMessage.id}`);
+          
+          // Forward message to all recipient's devices if online
+          if (clients.has(recipientUser.id)) {
+            const recipientConnections = clients.get(recipientUser.id);
+            recipientConnections.forEach(connection => {
+              if (connection.ws.readyState === 1) { // WebSocket.OPEN
+                connection.ws.send(JSON.stringify({
+                  type: 'NEW_MESSAGE',
+                  data: {
+                    id: directMessage.id,
+                    senderId: userId,
+                    content: content,
+                    encrypted: false,
+                    contentType: 'text',
+                    timestamp: directMessage.createdAt
+                  }
+                }));
+              }
+            });
+            console.log(`Message forwarded to ${recipientConnections.length} active connections for ${recipientUser.username}`);
+          } else {
+            console.log(`Recipient ${recipientUser.username} is offline, message stored for later delivery`);
+          }
+        } catch (error) {
+          console.error('Error processing direct message:', error);
+        }
+        break;
+        
       case 'MESSAGE':
         // Save message to database
         const newMessage = await db.Message.create({
@@ -384,6 +488,16 @@ const notifyUserStatus = async (userId, isOnline) => {
       return;
     }
     
+    // Get the user's lastActiveAt timestamp first
+    const user = await db.User.findByPk(userId, {
+      attributes: ['lastActiveAt']
+    });
+    
+    if (!user) {
+      console.log(`User ${userId} not found when notifying status`);
+      return;
+    }
+    
     // Find user's contacts
     const contacts = await db.Contact.findAll({
       where: { userId }
@@ -400,6 +514,7 @@ const notifyUserStatus = async (userId, isOnline) => {
               data: {
                 userId,
                 isOnline,
+                lastActiveAt: user.lastActiveAt,
                 timestamp: new Date()
               }
             }));

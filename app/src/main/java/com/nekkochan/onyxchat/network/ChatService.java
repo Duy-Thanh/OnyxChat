@@ -12,6 +12,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.nekkochan.onyxchat.util.UserSessionManager;
+import com.nekkochan.onyxchat.model.UserStatus;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -48,7 +49,7 @@ public class ChatService {
     private final Context context;
     private final WebSocketClient webSocketClient;
     private final MutableLiveData<WebSocketClient.WebSocketState> connectionState;
-    private final MutableLiveData<Map<String, String>> onlineUsers;
+    private final MutableLiveData<Map<String, UserStatus>> onlineUsers;
     private final MutableLiveData<ChatMessage> latestMessage;
     private final MutableLiveData<ChatEvent> chatEvents;
     private final Gson gson = new Gson();
@@ -156,15 +157,16 @@ public class ChatService {
                             String status = jsonMessage.get("status").getAsString();
                             
                             // Update online users map
-                            Map<String, String> users = onlineUsers.getValue();
+                            Map<String, UserStatus> users = onlineUsers.getValue();
                             if (users == null) {
                                 users = new HashMap<>();
                             }
                             
                             if ("online".equals(status)) {
-                                users.put(statusUserId, status);
+                                users.put(statusUserId, new UserStatus(true, null));
                             } else if ("offline".equals(status)) {
-                                users.remove(statusUserId);
+                                // Get the user's last active time if we have it
+                                users.put(statusUserId, new UserStatus(false, null));
                             }
                             
                             onlineUsers.postValue(users);
@@ -485,7 +487,7 @@ public class ChatService {
      * Get online users as LiveData
      * @return LiveData map of user ID to status
      */
-    public LiveData<Map<String, String>> getOnlineUsers() {
+    public LiveData<Map<String, UserStatus>> getOnlineUsers() {
         return onlineUsers;
     }
     

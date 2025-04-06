@@ -18,8 +18,11 @@ import com.google.android.material.chip.Chip;
 import com.google.android.material.imageview.ShapeableImageView;
 import com.nekkochan.onyxchat.R;
 import com.nekkochan.onyxchat.model.UserProfile;
+import com.nekkochan.onyxchat.model.UserStatus;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Adapter for displaying users in a RecyclerView
@@ -28,6 +31,7 @@ public class UserAdapter extends ListAdapter<UserProfile, UserAdapter.UserViewHo
 
     private final OnUserClickListener chatClickListener;
     private final OnUserClickListener addFriendClickListener;
+    private Map<String, UserStatus> userStatusMap = new HashMap<>();
 
     /**
      * Interface for handling user clicks
@@ -152,14 +156,31 @@ public class UserAdapter extends ListAdapter<UserProfile, UserAdapter.UserViewHo
         private void updateOnlineStatus(boolean isActive) {
             statusChip.setVisibility(View.VISIBLE);
             
-            if (isActive) {
-                statusChip.setText(R.string.online);
-                statusChip.setChipBackgroundColor(
-                        ContextCompat.getColorStateList(itemView.getContext(), R.color.accent));
+            UserProfile user = getItem(getBindingAdapterPosition());
+            UserStatus status = userStatusMap.get(user.getId());
+            
+            if (status != null) {
+                // We have detailed status info
+                statusChip.setText(status.getFormattedStatus());
+                
+                if (status.isOnline()) {
+                    statusChip.setChipBackgroundColor(
+                            ContextCompat.getColorStateList(itemView.getContext(), R.color.status_online));
+                } else {
+                    statusChip.setChipBackgroundColor(
+                            ContextCompat.getColorStateList(itemView.getContext(), R.color.status_offline));
+                }
             } else {
-                statusChip.setText(R.string.offline);
-                statusChip.setChipBackgroundColor(
-                        ContextCompat.getColorStateList(itemView.getContext(), R.color.text_secondary_dark));
+                // Fall back to just showing online/offline
+                if (isActive) {
+                    statusChip.setText(R.string.online);
+                    statusChip.setChipBackgroundColor(
+                            ContextCompat.getColorStateList(itemView.getContext(), R.color.status_online));
+                } else {
+                    statusChip.setText(R.string.offline);
+                    statusChip.setChipBackgroundColor(
+                            ContextCompat.getColorStateList(itemView.getContext(), R.color.status_offline));
+                }
             }
         }
         
@@ -217,5 +238,16 @@ public class UserAdapter extends ListAdapter<UserProfile, UserAdapter.UserViewHo
             Bundle payload = (Bundle) payloads.get(0);
             holder.bind(getItem(position), payload);
         }
+    }
+
+    /**
+     * Update user statuses when they change
+     * @param userStatusMap Map of user IDs to their status info
+     */
+    public void updateUserStatuses(Map<String, UserStatus> userStatusMap) {
+        if (userStatusMap == null) return;
+        
+        this.userStatusMap = new HashMap<>(userStatusMap);
+        notifyItemRangeChanged(0, getItemCount(), new Bundle());
     }
 } 

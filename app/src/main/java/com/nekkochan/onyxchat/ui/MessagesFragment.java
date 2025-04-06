@@ -16,6 +16,8 @@ import androidx.lifecycle.ViewModelProvider;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import com.google.android.material.snackbar.Snackbar;
 import com.nekkochan.onyxchat.R;
 import com.nekkochan.onyxchat.network.ChatService;
 import com.nekkochan.onyxchat.ui.viewmodel.MainViewModel;
@@ -71,6 +73,9 @@ public class MessagesFragment extends Fragment {
         adapter = new ChatMessageAdapter();
         recyclerView.setAdapter(adapter);
         
+        // Initialize ViewModel
+        viewModel = new ViewModelProvider(requireActivity()).get(MainViewModel.class);
+        
         // Update connection status immediately
         updateConnectionStatus(viewModel.isChatConnected().getValue() == Boolean.TRUE);
         
@@ -78,7 +83,8 @@ public class MessagesFragment extends Fragment {
         sendButton.setOnClickListener(v -> sendMessage());
         
         // Observe chat connection state
-        viewModel.isChatConnected().observe(getViewLifecycleOwner(), this::updateConnectionStatus);
+        viewModel.isChatConnected().observe(getViewLifecycleOwner(), isConnected -> 
+            updateConnectionStatus(isConnected));
         
         // Observe chat messages
         viewModel.getChatMessages().observe(getViewLifecycleOwner(), this::updateMessages);
@@ -147,21 +153,32 @@ public class MessagesFragment extends Fragment {
     }
     
     /**
-     * Send a message to the current recipient
+     * Send a message
      */
     private void sendMessage() {
-        String messageText = messageInput.getText().toString().trim();
+        if (!isAdded()) return;
         
-        if (messageText.isEmpty()) {
+        String message = messageInput.getText().toString().trim();
+        if (message.isEmpty()) return;
+        
+        // Check if we have a connection
+        if (!viewModel.isChatConnected().getValue()) {
+            Toast.makeText(getContext(), "Not connected to chat server", Toast.LENGTH_SHORT).show();
+            
+            // Try to reconnect
+            if (viewModel.connectToChat()) {
+                Toast.makeText(getContext(), "Reconnecting...", Toast.LENGTH_SHORT).show();
+            }
             return;
         }
         
+        // Check if we have a recipient (if not in a group chat)
         boolean messageSent = false;
         
         if (currentRecipientId != null) {
-            messageSent = viewModel.sendDirectMessage(currentRecipientId, messageText);
+            messageSent = viewModel.sendDirectMessage(currentRecipientId, message);
         } else {
-            messageSent = viewModel.sendChatMessage(messageText);
+            messageSent = viewModel.sendChatMessage(message);
         }
         
         if (messageSent) {
