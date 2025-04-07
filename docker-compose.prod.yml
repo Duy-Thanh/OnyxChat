@@ -81,9 +81,17 @@ services:
       - RATE_LIMIT_WINDOW_MS=${RATE_LIMIT_WINDOW_MS:-900000}
       - RATE_LIMIT_MAX_REQUESTS=${RATE_LIMIT_MAX_REQUESTS:-100}
       - CORS_ORIGIN=${CORS_ORIGIN:-*}
+      - FILE_STORAGE_PATH=/app/uploads
+      - MAX_FILE_SIZE=209715200
     volumes:
-      - ./logs:/app/logs
-      - ./uploads:/app/uploads
+      - type: bind
+        source: ./uploads
+        target: /app/uploads
+      - type: bind
+        source: ./logs 
+        target: /app/logs
+    # Use the nodejs user directly
+    user: "1001:1001"
     restart: always
     depends_on:
       postgres:

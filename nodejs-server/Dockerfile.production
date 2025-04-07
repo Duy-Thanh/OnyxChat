@@ -42,6 +42,8 @@ COPY --from=builder --chown=nodejs:nodejs /app/package*.json ./
 
 # Create app directories with proper permissions
 RUN mkdir -p /app/logs /app/uploads && \
+    chmod 777 /app/uploads && \
+    chmod 755 /app/logs && \
     chown -R nodejs:nodejs /app
 
 # Copy entrypoint script
