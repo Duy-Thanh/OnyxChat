@@ -1490,7 +1490,21 @@ public class ApiClient {
         }
         
         try {
-            // Create a temp file
+            // Check if this is a file path URI
+            String scheme = uri.getScheme();
+            if ("file".equals(scheme) || scheme == null) {
+                // This is a file URI or a direct path, just use the path directly
+                String filePath = uri.getPath();
+                if (filePath != null) {
+                    File file = new File(filePath);
+                    if (file.exists() && file.isFile() && file.canRead()) {
+                        Log.d(TAG, "Using direct file path: " + filePath);
+                        return file;
+                    }
+                }
+            }
+            
+            // Get file name
             String fileName = getFileName(uri);
             if (fileName == null || fileName.isEmpty()) {
                 fileName = "temp_file";
@@ -1507,19 +1521,42 @@ public class ApiClient {
             File outputFile = File.createTempFile(fileName, fileExtension, outputDir);
             
             // Copy content to temp file
-            try (InputStream inputStream = sessionManager.getContext().getContentResolver().openInputStream(uri);
-                 OutputStream outputStream = new FileOutputStream(outputFile)) {
+            InputStream inputStream = null;
+            try {
+                // Try to get input stream based on URI scheme
+                if ("content".equals(scheme)) {
+                    inputStream = sessionManager.getContext().getContentResolver().openInputStream(uri);
+                } else if ("file".equals(scheme) || scheme == null) {
+                    String path = uri.getPath();
+                    if (path != null) {
+                        try {
+                            inputStream = new java.io.FileInputStream(new File(path));
+                        } catch (java.io.FileNotFoundException e) {
+                            Log.e(TAG, "File not found: " + path, e);
+                        }
+                    }
+                }
                 
                 if (inputStream == null) {
                     throw new IOException("Failed to open input stream for URI: " + uri);
                 }
                 
-                byte[] buffer = new byte[4096];
-                int bytesRead;
-                while ((bytesRead = inputStream.read(buffer)) != -1) {
-                    outputStream.write(buffer, 0, bytesRead);
+                try (OutputStream outputStream = new FileOutputStream(outputFile)) {
+                    byte[] buffer = new byte[4096];
+                    int bytesRead;
+                    while ((bytesRead = inputStream.read(buffer)) != -1) {
+                        outputStream.write(buffer, 0, bytesRead);
+                    }
+                    outputStream.flush();
                 }
-                outputStream.flush();
+            } finally {
+                if (inputStream != null) {
+                    try {
+                        inputStream.close();
+                    } catch (IOException e) {
+                        Log.e(TAG, "Error closing input stream", e);
+                    }
+                }
             }
             
             return outputFile;
