@@ -90,8 +90,7 @@ services:
       - type: bind
         source: ./logs 
         target: /app/logs
-    # Use the nodejs user directly
-    user: "1001:1001"
+    # Run as root - removing the user directive
     restart: always
     depends_on:
       postgres:
