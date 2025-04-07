@@ -19,6 +19,7 @@ import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -52,6 +53,7 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 import de.hdodenhof.circleimageview.CircleImageView;
+import androidx.cardview.widget.CardView;
 
 public class ChatActivity extends AppCompatActivity {
     
@@ -81,6 +83,13 @@ public class ChatActivity extends AppCompatActivity {
     private EmojiPopup emojiPopup;
     private Button emojiDoneButton;
     private Uri selectedFileUri;
+    
+    // Media status UI components
+    private CardView mediaStatusCard;
+    private ImageView mediaStatusIcon;
+    private TextView mediaStatusText;
+    private ProgressBar mediaStatusProgress;
+    private ImageButton mediaStatusCancel;
     
     // Activity result launcher for picking images
     private final ActivityResultLauncher<Intent> pickImageLauncher = 
@@ -159,6 +168,15 @@ public class ChatActivity extends AppCompatActivity {
         videoCallButton = findViewById(R.id.videoCallButton);
         chatSettingsButton = findViewById(R.id.chatSettingsButton);
         emojiDoneButton = findViewById(R.id.emojiDoneButton);
+        
+        // Initialize media status UI
+        mediaStatusCard = findViewById(R.id.mediaStatusCard);
+        mediaStatusIcon = findViewById(R.id.mediaStatusIcon);
+        mediaStatusText = findViewById(R.id.mediaStatusText);
+        mediaStatusProgress = findViewById(R.id.mediaStatusProgress);
+        mediaStatusCancel = findViewById(R.id.mediaStatusCancel);
+        
+        mediaStatusCancel.setOnClickListener(v -> hideMediaStatus());
         
         // Add logging to track timestamps of messages
         // Set up contact info in header format similar to Discover Users screen
@@ -582,14 +600,79 @@ public class ChatActivity extends AppCompatActivity {
     }
     
     /**
+     * Show the media processing status UI with the specified message
+     * 
+     * @param message Status message to show
+     * @param mediaType Type of media (video, image, document)
+     * @param isIndeterminate Whether the progress should be indeterminate
+     */
+    private void showMediaStatus(String message, String mediaType, boolean isIndeterminate) {
+        // Set the appropriate icon based on media type
+        if ("video".equals(mediaType)) {
+            mediaStatusIcon.setImageResource(R.drawable.ic_video);
+        } else if ("image".equals(mediaType)) {
+            mediaStatusIcon.setImageResource(R.drawable.ic_image);
+        } else if ("document".equals(mediaType)) {
+            mediaStatusIcon.setImageResource(R.drawable.ic_document);
+        }
+        
+        // Set the status text
+        mediaStatusText.setText(message);
+        
+        // Configure the progress bar
+        mediaStatusProgress.setIndeterminate(isIndeterminate);
+        
+        // Show the card if not already visible
+        if (mediaStatusCard.getVisibility() != View.VISIBLE) {
+            mediaStatusCard.setVisibility(View.VISIBLE);
+            
+            // Use animation to make it appear smoothly
+            mediaStatusCard.setAlpha(0f);
+            mediaStatusCard.animate()
+                    .alpha(1f)
+                    .setDuration(300)
+                    .start();
+        }
+    }
+    
+    /**
+     * Update the progress for the media status
+     * 
+     * @param progress Current progress value (0-100)
+     */
+    private void updateMediaStatusProgress(int progress) {
+        if (mediaStatusCard.getVisibility() == View.VISIBLE) {
+            mediaStatusProgress.setIndeterminate(false);
+            mediaStatusProgress.setProgress(progress);
+        }
+    }
+    
+    /**
+     * Hide the media status UI
+     */
+    private void hideMediaStatus() {
+        if (mediaStatusCard.getVisibility() == View.VISIBLE) {
+            mediaStatusCard.animate()
+                    .alpha(0f)
+                    .setDuration(300)
+                    .withEndAction(() -> mediaStatusCard.setVisibility(View.GONE))
+                    .start();
+        }
+    }
+    
+    /**
      * Process an image file
      */
     private void processImageFile(Uri imageUri) {
-        Toast.makeText(this, "Processing image...", Toast.LENGTH_SHORT).show();
+        // Show media status instead of toast
+        showMediaStatus("Processing image...", "image", true);
         
         // Start compressing in the background
         CompletableFuture<String> future = FileUtils.compressImage(this, imageUri);
         future.thenAcceptAsync(compressedPath -> {
+            // Hide the status UI before launching the new activity
+            hideMediaStatus();
+            
             // Launch media preview activity
             Intent intent = new Intent(this, MediaProcessingActivity.class);
             intent.putExtra(MediaProcessingActivity.EXTRA_MEDIA_URI, Uri.parse(compressedPath));
@@ -598,9 +681,17 @@ public class ChatActivity extends AppCompatActivity {
             startActivity(intent);
         }, runnable -> runOnUiThread(runnable))
         .exceptionally(ex -> {
-            // Handle error
+            // Handle error with media status UI
             runOnUiThread(() -> {
-                Toast.makeText(this, "Failed to process image: " + ex.getMessage(), Toast.LENGTH_SHORT).show();
+                mediaStatusProgress.setIndeterminate(false);
+                mediaStatusText.setText("Error: " + ex.getMessage());
+                
+                // Change UI to indicate error
+                mediaStatusCard.setCardBackgroundColor(getResources().getColor(R.color.error_red, null));
+                
+                // Auto-dismiss after 3 seconds
+                mediaStatusCard.postDelayed(this::hideMediaStatus, 3000);
+                
                 Log.e(TAG, "Error processing image", ex);
             });
             return null;
@@ -611,11 +702,15 @@ public class ChatActivity extends AppCompatActivity {
      * Process a video file
      */
     private void processVideoFile(Uri videoUri) {
-        Toast.makeText(this, "Processing video...", Toast.LENGTH_SHORT).show();
+        // Show media status instead of toast
+        showMediaStatus("Processing video...", "video", true);
         
         // Start compressing in the background
         CompletableFuture<String> future = FileUtils.compressVideo(this, videoUri);
         future.thenAcceptAsync(compressedPath -> {
+            // Hide the status UI before launching the new activity
+            hideMediaStatus();
+            
             // Launch media preview activity
             Intent intent = new Intent(this, MediaProcessingActivity.class);
             intent.putExtra(MediaProcessingActivity.EXTRA_MEDIA_URI, Uri.parse(compressedPath));
@@ -624,9 +719,17 @@ public class ChatActivity extends AppCompatActivity {
             startActivity(intent);
         }, runnable -> runOnUiThread(runnable))
         .exceptionally(ex -> {
-            // Handle error
+            // Handle error with media status UI
             runOnUiThread(() -> {
-                Toast.makeText(this, "Failed to process video: " + ex.getMessage(), Toast.LENGTH_SHORT).show();
+                mediaStatusProgress.setIndeterminate(false);
+                mediaStatusText.setText("Error: " + ex.getMessage());
+                
+                // Change UI to indicate error
+                mediaStatusCard.setCardBackgroundColor(getResources().getColor(R.color.error_red, null));
+                
+                // Auto-dismiss after 3 seconds
+                mediaStatusCard.postDelayed(this::hideMediaStatus, 3000);
+                
                 Log.e(TAG, "Error processing video", ex);
             });
             return null;
@@ -637,9 +740,15 @@ public class ChatActivity extends AppCompatActivity {
      * Process a document file
      */
     private void processDocumentFile(Uri documentUri) {
+        // Show media status
+        showMediaStatus("Processing document...", "document", true);
+        
         // For documents, we don't need to compress, just copy to app's cache
         String filePath = FileUtils.getPath(this, documentUri);
         if (filePath != null) {
+            // Hide the status UI before launching the new activity
+            hideMediaStatus();
+            
             // Launch media processing activity directly
             Intent intent = new Intent(this, MediaProcessingActivity.class);
             intent.putExtra(MediaProcessingActivity.EXTRA_MEDIA_URI, Uri.parse(filePath));
@@ -647,7 +756,15 @@ public class ChatActivity extends AppCompatActivity {
             intent.putExtra(MediaProcessingActivity.EXTRA_CHAT_ID, contactId);
             startActivity(intent);
         } else {
-            Toast.makeText(this, "Failed to process document", Toast.LENGTH_SHORT).show();
+            // Show error in media status
+            mediaStatusProgress.setIndeterminate(false);
+            mediaStatusText.setText("Error: Failed to process document");
+            
+            // Change UI to indicate error
+            mediaStatusCard.setCardBackgroundColor(getResources().getColor(R.color.error_red, null));
+            
+            // Auto-dismiss after 3 seconds
+            mediaStatusCard.postDelayed(this::hideMediaStatus, 3000);
         }
     }
     
