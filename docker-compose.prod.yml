@@ -87,9 +87,17 @@ services:
       - type: bind
         source: ./uploads
         target: /app/uploads
+        read_only: false
+        bind:
+          create_host_path: true
+          selinux: "z"
       - type: bind
         source: ./logs 
         target: /app/logs
+        read_only: false
+        bind:
+          create_host_path: true
+          selinux: "z"
     # Run as root - removing the user directive
     restart: always
     depends_on:
