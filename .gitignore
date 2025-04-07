@@ -13,7 +13,8 @@
 .externalNativeBuild
 .cxx
 local.properties
-/home/nekkochan/AndroidStudioProjects/onyxchat/logs‌/*
+/home/nekkochan/AndroidStudioProjects/onyxchat/logs‌/combined.log
+/home/nekkochan/AndroidStudioProjects/onyxchat/logs/error.log
 /nodejs-server/node_modules/.bin/color-support
 /nodejs-server/node_modules/.bin/mime
 /nodejs-server/node_modules/.bin/mkdirp
