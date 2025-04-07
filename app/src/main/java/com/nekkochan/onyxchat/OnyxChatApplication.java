@@ -3,7 +3,7 @@ package com.nekkochan.onyxchat;
 import android.app.Application;
 import android.util.Log;
 
-import com.nekkochan.onyxchat.util.EmojiUtils;
+import com.nekkochan.onyxchat.utils.EmojiUtils;
 
 /**
  * Main application class for OnyxChat

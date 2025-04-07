@@ -14,6 +14,7 @@ import android.view.View;
 import android.view.ViewParent;
 import android.widget.EditText;
 import android.widget.ImageButton;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -32,10 +33,10 @@ import com.google.android.material.bottomsheet.BottomSheetDialog;
 import com.google.android.material.chip.Chip;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.nekkochan.onyxchat.R;
-import com.nekkochan.onyxchat.ui.MediaProcessingActivity;
+import com.nekkochan.onyxchat.ui.media.MediaProcessingActivity;
 import com.nekkochan.onyxchat.ui.adapters.ChatMessageAdapter;
 import com.nekkochan.onyxchat.ui.viewmodel.ChatViewModel;
-import com.nekkochan.onyxchat.util.EmojiUtils;
+import com.nekkochan.onyxchat.utils.EmojiUtils;
 import com.nekkochan.onyxchat.utils.FileUtils;
 import com.nekkochan.onyxchat.utils.MimeTypeUtils;
 import com.vanniktech.emoji.EmojiPopup;
@@ -202,7 +203,7 @@ public class ChatActivity extends AppCompatActivity {
         });
         
         // Set up emoji support
-        emojiPopup = EmojiUtils.setupEmojiPopup(findViewById(android.R.id.content), messageInput, emojiButton);
+        emojiPopup = EmojiUtils.setupEmojiPopup(this, findViewById(android.R.id.content), messageInput, (ImageView) emojiButton);
         
         // Watch for scrolling to show/hide scroll button
         recyclerView.addOnScrollListener(new RecyclerView.OnScrollListener() {
@@ -489,9 +490,9 @@ public class ChatActivity extends AppCompatActivity {
         future.thenAcceptAsync(compressedPath -> {
             // Launch media preview activity
             Intent intent = new Intent(this, MediaProcessingActivity.class);
-            intent.putExtra(MediaProcessingActivity.EXTRA_FILE_PATH, compressedPath);
-            intent.putExtra(MediaProcessingActivity.EXTRA_FILE_TYPE, "image");
-            intent.putExtra(MediaProcessingActivity.EXTRA_RECIPIENT_ID, contactId);
+            intent.putExtra(MediaProcessingActivity.EXTRA_MEDIA_URI, Uri.parse(compressedPath));
+            intent.putExtra(MediaProcessingActivity.EXTRA_MEDIA_TYPE, MediaProcessingActivity.MEDIA_TYPE_IMAGE);
+            intent.putExtra(MediaProcessingActivity.EXTRA_CHAT_ID, contactId);
             startActivity(intent);
         }, runnable -> runOnUiThread(runnable))
         .exceptionally(ex -> {
@@ -515,9 +516,9 @@ public class ChatActivity extends AppCompatActivity {
         future.thenAcceptAsync(compressedPath -> {
             // Launch media preview activity
             Intent intent = new Intent(this, MediaProcessingActivity.class);
-            intent.putExtra(MediaProcessingActivity.EXTRA_FILE_PATH, compressedPath);
-            intent.putExtra(MediaProcessingActivity.EXTRA_FILE_TYPE, "video");
-            intent.putExtra(MediaProcessingActivity.EXTRA_RECIPIENT_ID, contactId);
+            intent.putExtra(MediaProcessingActivity.EXTRA_MEDIA_URI, Uri.parse(compressedPath));
+            intent.putExtra(MediaProcessingActivity.EXTRA_MEDIA_TYPE, MediaProcessingActivity.MEDIA_TYPE_VIDEO);
+            intent.putExtra(MediaProcessingActivity.EXTRA_CHAT_ID, contactId);
             startActivity(intent);
         }, runnable -> runOnUiThread(runnable))
         .exceptionally(ex -> {
@@ -539,9 +540,9 @@ public class ChatActivity extends AppCompatActivity {
         if (filePath != null) {
             // Launch media processing activity directly
             Intent intent = new Intent(this, MediaProcessingActivity.class);
-            intent.putExtra(MediaProcessingActivity.EXTRA_FILE_PATH, filePath);
-            intent.putExtra(MediaProcessingActivity.EXTRA_FILE_TYPE, "document");
-            intent.putExtra(MediaProcessingActivity.EXTRA_RECIPIENT_ID, contactId);
+            intent.putExtra(MediaProcessingActivity.EXTRA_MEDIA_URI, Uri.parse(filePath));
+            intent.putExtra(MediaProcessingActivity.EXTRA_MEDIA_TYPE, "document");
+            intent.putExtra(MediaProcessingActivity.EXTRA_CHAT_ID, contactId);
             startActivity(intent);
         } else {
             Toast.makeText(this, "Failed to process document", Toast.LENGTH_SHORT).show();

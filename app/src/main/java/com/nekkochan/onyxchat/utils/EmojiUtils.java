@@ -17,6 +17,8 @@ import com.vanniktech.emoji.google.GoogleEmojiProvider;
  */
 public class EmojiUtils {
 
+    private static EmojiPopup emojiPopup; // Store the active emoji popup
+
     /**
      * Initialize emoji support for the application
      * @param context Application context
@@ -39,13 +41,30 @@ public class EmojiUtils {
      * @return EmojiPopup instance
      */
     public static EmojiPopup setupEmojiPopup(Context context, View rootView, EditText editText, ImageView emojiButton) {
-        EmojiPopup popup = EmojiPopup.Builder.fromRootView(rootView)
+        emojiPopup = EmojiPopup.Builder.fromRootView(rootView)
                 .setOnEmojiPopupShownListener(() -> emojiButton.setSelected(true))
                 .setOnEmojiPopupDismissListener(() -> emojiButton.setSelected(false))
                 .build(editText);
                 
-        emojiButton.setOnClickListener(v -> popup.toggle());
+        emojiButton.setOnClickListener(v -> emojiPopup.toggle());
         
-        return popup;
+        return emojiPopup;
+    }
+    
+    /**
+     * Dismiss the active emoji popup if it's showing
+     */
+    public static void dismissEmojiPopup() {
+        if (emojiPopup != null && emojiPopup.isShowing()) {
+            emojiPopup.dismiss();
+        }
+    }
+    
+    /**
+     * Check if the emoji popup is currently showing
+     * @return true if the popup is showing, false otherwise
+     */
+    public static boolean isEmojiPopupShowing() {
+        return emojiPopup != null && emojiPopup.isShowing();
     }
 } 

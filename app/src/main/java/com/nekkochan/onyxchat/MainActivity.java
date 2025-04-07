@@ -253,7 +253,7 @@ public class MainActivity extends AppCompatActivity implements BottomNavigationV
      * Open the media processing activity
      */
     public void openMediaProcessing() {
-        Intent intent = new Intent(this, com.nekkochan.onyxchat.ui.MediaProcessingActivity.class);
+        Intent intent = new Intent(this, com.nekkochan.onyxchat.ui.media.MediaProcessingActivity.class);
         startActivity(intent);
     }
     
