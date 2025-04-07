@@ -1336,23 +1336,30 @@ public class ApiClient {
     }
     
     /**
-     * Upload media file to the server
+     * Upload media to the server
+     * 
      * @param fileUri URI of the file to upload
      * @param mimeType MIME type of the file
-     * @param callback Callback for the response
+     * @param callback Callback to handle response
      */
     public void uploadMedia(Uri fileUri, String mimeType, ApiCallback<MediaUploadResponse> callback) {
-        if (apiService == null) {
-            Log.e(TAG, "API service not initialized");
-            callback.onFailure("API service not initialized");
+        if (fileUri == null) {
+            callback.onFailure("Invalid file URI");
             return;
         }
-
+        
+        if (mimeType == null || mimeType.isEmpty()) {
+            mimeType = "application/octet-stream"; // Default MIME type if none provided
+        }
+        
+        final String finalMimeType = mimeType;
+        
+        // Upload the file in a background thread
         executor.execute(() -> {
             try {
                 // Get file name from URI
                 String fileName = getFileName(fileUri);
-                Log.d(TAG, "Uploading file: " + fileName + " with MIME type: " + mimeType);
+                Log.d(TAG, "Uploading file: " + fileName + " with MIME type: " + finalMimeType);
                 
                 // Convert Uri to File
                 File file = createTempFileFromUri(fileUri);
@@ -1363,7 +1370,7 @@ public class ApiClient {
                 
                 // Create RequestBody from file
                 RequestBody requestFile = RequestBody.create(
-                        MediaType.parse(mimeType),
+                        MediaType.parse(finalMimeType),
                         file
                 );
                 
@@ -1402,7 +1409,15 @@ public class ApiClient {
      */
     private String getFileName(Uri uri) {
         String result = null;
-        if (uri.getScheme().equals("content")) {
+        if (uri == null) {
+            return "unknown_file";
+        }
+        
+        String scheme = uri.getScheme();
+        if (scheme == null) {
+            // No scheme, try to get the last path segment
+            result = uri.getLastPathSegment();
+        } else if (scheme.equals("content")) {
             try (Cursor cursor = sessionManager.getContext().getContentResolver()
                     .query(uri, null, null, null, null)) {
                 if (cursor != null && cursor.moveToFirst()) {
@@ -1414,18 +1429,43 @@ public class ApiClient {
             } catch (Exception e) {
                 Log.e(TAG, "Error getting file name from URI", e);
             }
+        } else if (scheme.equals("file")) {
+            result = uri.getLastPathSegment();
         }
+        
         if (result == null) {
             result = uri.getLastPathSegment();
         }
-        return result != null ? result : "file." + mimeTypeToExtension(uri);
+        
+        // Final fallback
+        if (result == null) {
+            try {
+                result = "file." + mimeTypeToExtension(uri);
+            } catch (Exception e) {
+                Log.e(TAG, "Error determining file extension", e);
+                result = "unknown_file";
+            }
+        }
+        
+        return result;
     }
     
     /**
      * Convert URI to file extension based on MIME type
      */
     private String mimeTypeToExtension(Uri uri) {
-        String mimeType = sessionManager.getContext().getContentResolver().getType(uri);
+        if (uri == null) {
+            return "bin";
+        }
+        
+        String mimeType = null;
+        try {
+            mimeType = sessionManager.getContext().getContentResolver().getType(uri);
+        } catch (Exception e) {
+            Log.e(TAG, "Error getting MIME type", e);
+            return "bin";
+        }
+        
         if (mimeType == null) return "bin";
         
         switch (mimeType) {
@@ -1444,9 +1484,18 @@ public class ApiClient {
      * Create a temporary file from a content URI
      */
     private File createTempFileFromUri(Uri uri) {
+        if (uri == null) {
+            Log.e(TAG, "Cannot create temp file from null URI");
+            return null;
+        }
+        
         try {
             // Create a temp file
             String fileName = getFileName(uri);
+            if (fileName == null || fileName.isEmpty()) {
+                fileName = "temp_file";
+            }
+            
             String fileExtension = "";
             int dotIndex = fileName.lastIndexOf(".");
             if (dotIndex > 0) {

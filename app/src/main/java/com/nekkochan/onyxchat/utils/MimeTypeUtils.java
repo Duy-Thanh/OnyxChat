@@ -49,12 +49,28 @@ public class MimeTypeUtils {
     public static String getMimeType(Context context, Uri uri) {
         String mimeType = null;
         
-        if (uri.getScheme().equals(ContentResolver.SCHEME_CONTENT)) {
+        if (uri == null || context == null) {
+            return null;
+        }
+        
+        String scheme = uri.getScheme();
+        if (scheme == null) {
+            // Try to determine mime type from uri path if scheme is null
+            String path = uri.getPath();
+            if (path != null) {
+                return getMimeTypeFromPath(path);
+            }
+            return null;
+        }
+        
+        if (scheme.equals(ContentResolver.SCHEME_CONTENT)) {
             ContentResolver contentResolver = context.getContentResolver();
             mimeType = contentResolver.getType(uri);
-        } else if (uri.getScheme().equals("file")) {
+        } else if (scheme.equals("file")) {
             String fileExtension = MimeTypeMap.getFileExtensionFromUrl(uri.toString());
-            mimeType = MimeTypeMap.getSingleton().getMimeTypeFromExtension(fileExtension.toLowerCase());
+            if (fileExtension != null) {
+                mimeType = MimeTypeMap.getSingleton().getMimeTypeFromExtension(fileExtension.toLowerCase());
+            }
         }
         
         return mimeType;

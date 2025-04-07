@@ -227,14 +227,36 @@ public class MediaProcessingActivity extends AppCompatActivity {
         // Get the caption if any
         String caption = captionInput.getText().toString().trim();
         
-        // Get MIME type
-        String mimeType = MimeTypeUtils.getMimeType(this, mediaUri);
+        // Safety check for media URI
+        if (mediaUri == null) {
+            Toast.makeText(this, "Error: Invalid media", Toast.LENGTH_SHORT).show();
+            progressBar.setVisibility(View.GONE);
+            sendButton.setEnabled(true);
+            return;
+        }
+        
+        // Get MIME type with fallback to default
+        String mimeType = null;
+        try {
+            mimeType = MimeTypeUtils.getMimeType(this, mediaUri);
+        } catch (Exception e) {
+            Log.e(TAG, "Error determining mime type", e);
+        }
+        
         if (mimeType == null) {
-            mimeType = "application/octet-stream";
+            // Fallback based on media type
+            if (MEDIA_TYPE_IMAGE.equals(mediaType)) {
+                mimeType = "image/jpeg";
+            } else if (MEDIA_TYPE_VIDEO.equals(mediaType)) {
+                mimeType = "video/mp4";
+            } else {
+                mimeType = "application/octet-stream";
+            }
         }
         
         // Upload to server
-        apiClient.uploadMedia(mediaUri, mimeType, new ApiClient.ApiCallback<ApiClient.MediaUploadResponse>() {
+        final String finalMimeType = mimeType; // For use in lambda
+        apiClient.uploadMedia(mediaUri, finalMimeType, new ApiClient.ApiCallback<ApiClient.MediaUploadResponse>() {
             @Override
             public void onSuccess(ApiClient.MediaUploadResponse response) {
                 // Media uploaded successfully
