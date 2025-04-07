@@ -2,6 +2,7 @@ package com.nekkochan.onyxchat.ui.chat;
 
 import android.Manifest;
 import android.app.Activity;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.net.Uri;
@@ -12,6 +13,8 @@ import android.util.Log;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewParent;
+import android.view.inputmethod.InputMethodManager;
+import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.ImageView;
@@ -71,6 +74,7 @@ public class ChatActivity extends AppCompatActivity {
     private ImageButton videoCallButton;
     private ImageButton chatSettingsButton;
     private EmojiPopup emojiPopup;
+    private Button emojiDoneButton;
     private Uri selectedFileUri;
     
     // Activity result launcher for picking images
@@ -149,6 +153,7 @@ public class ChatActivity extends AppCompatActivity {
         voiceCallButton = findViewById(R.id.voiceCallButton);
         videoCallButton = findViewById(R.id.videoCallButton);
         chatSettingsButton = findViewById(R.id.chatSettingsButton);
+        emojiDoneButton = findViewById(R.id.emojiDoneButton);
         
         // Add logging to track timestamps of messages
         // Set up contact info in header format similar to Discover Users screen
@@ -202,8 +207,99 @@ public class ChatActivity extends AppCompatActivity {
             }
         });
         
-        // Set up emoji support
-        emojiPopup = EmojiUtils.setupEmojiPopup(this, findViewById(android.R.id.content), messageInput, (ImageView) emojiButton);
+        // Prevent automatic keyboard display and focus issues
+        messageInput.clearFocus();
+        
+        // Prevent keyboard from showing automatically when emoji is displayed
+        messageInput.setShowSoftInputOnFocus(false);
+        
+        // Add custom control for keyboard show/hide based on emoji popup state
+        messageInput.setOnFocusChangeListener((v, hasFocus) -> {
+            Log.d(TAG, "Message input focus changed: " + hasFocus);
+            if (hasFocus) {
+                if (EmojiUtils.isEmojiPopupShowing()) {
+                    // If emoji popup is showing, prevent keyboard
+                    Log.d(TAG, "Preventing keyboard from showing during emoji popup");
+                    messageInput.setShowSoftInputOnFocus(false);
+                    ((InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE))
+                        .hideSoftInputFromWindow(messageInput.getWindowToken(), 0);
+                } else {
+                    // If emoji popup is not showing, allow keyboard
+                    Log.d(TAG, "Allowing keyboard to show (no emoji popup)");
+                    messageInput.setShowSoftInputOnFocus(true);
+                    ((InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE))
+                        .showSoftInput(messageInput, 0);
+                }
+            }
+        });
+        
+        // Custom click listener for message input to manage keyboard/emoji state
+        messageInput.setOnClickListener(v -> {
+            if (EmojiUtils.isEmojiPopupShowing()) {
+                // If emoji popup is showing, don't show keyboard
+                Log.d(TAG, "Message input clicked while emoji showing - suppressing keyboard");
+                messageInput.setShowSoftInputOnFocus(false);
+            } else {
+                // Normal behavior - show keyboard
+                Log.d(TAG, "Message input clicked - showing keyboard");
+                messageInput.setShowSoftInputOnFocus(true);
+            }
+        });
+        
+        // Set up emoji support 
+        emojiButton.setOnClickListener(null);
+        Log.d(TAG, "Setting up emoji popup");
+        
+        // Wait for layout to be completely ready
+        findViewById(android.R.id.content).postDelayed(() -> {
+            // Set up emoji popup after layout is ready to ensure it works right away
+            emojiPopup = EmojiUtils.setupEmojiPopup(this, findViewById(android.R.id.content), messageInput, (ImageView) emojiButton);
+            Log.d(TAG, "Emoji popup setup complete");
+            
+            // Set up tap outside to dismiss
+            View rootView = findViewById(android.R.id.content);
+            rootView.setOnTouchListener((v, event) -> {
+                if (EmojiUtils.isEmojiPopupShowing()) {
+                    // Get tap coordinates
+                    float x = event.getX();
+                    float y = event.getY();
+                    
+                    // Check if tap is in the message input area (we don't want to dismiss if tapping there)
+                    int[] messageInputLocation = new int[2];
+                    messageInput.getLocationOnScreen(messageInputLocation);
+                    
+                    boolean isTapInMessageInput = 
+                        x >= messageInputLocation[0] && 
+                        x <= messageInputLocation[0] + messageInput.getWidth() &&
+                        y >= messageInputLocation[1] && 
+                        y <= messageInputLocation[1] + messageInput.getHeight();
+                    
+                    // Check if tap is in the emoji button
+                    int[] emojiButtonLocation = new int[2];
+                    emojiButton.getLocationOnScreen(emojiButtonLocation);
+                    
+                    boolean isTapOnEmojiButton = 
+                        x >= emojiButtonLocation[0] && 
+                        x <= emojiButtonLocation[0] + emojiButton.getWidth() &&
+                        y >= emojiButtonLocation[1] && 
+                        y <= emojiButtonLocation[1] + emojiButton.getHeight();
+                    
+                    // Dismiss if tap is outside message input and emoji button
+                    if (!isTapInMessageInput && !isTapOnEmojiButton) {
+                        Log.d(TAG, "Tap outside - dismissing emoji popup");
+                        EmojiUtils.dismissEmojiPopup();
+                        return true; // Consume the event
+                    }
+                }
+                return false; // Pass through if not handling
+            });
+            
+            // Set up the Done button for dismissing emoji popup
+            emojiDoneButton.setOnClickListener(v -> {
+                Log.d(TAG, "Done button clicked - dismissing emoji popup");
+                EmojiUtils.dismissEmojiPopup();
+            });
+        }, 300);
         
         // Watch for scrolling to show/hide scroll button
         recyclerView.addOnScrollListener(new RecyclerView.OnScrollListener() {
