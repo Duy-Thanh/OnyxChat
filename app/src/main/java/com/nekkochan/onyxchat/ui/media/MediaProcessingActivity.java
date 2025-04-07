@@ -59,6 +59,9 @@ public class MediaProcessingActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         
+        // Set content view first before accessing window controller to avoid NPE
+        setContentView(R.layout.activity_media_processing);
+        
         // Configure window to properly handle system bars
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             getWindow().setDecorFitsSystemWindows(false);
@@ -74,8 +77,6 @@ public class MediaProcessingActivity extends AppCompatActivity {
                     View.SYSTEM_UI_FLAG_LAYOUT_STABLE |
                     View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN);
         }
-        
-        setContentView(R.layout.activity_media_processing);
         
         // Set up the toolbar
         Toolbar toolbar = findViewById(R.id.toolbar);
