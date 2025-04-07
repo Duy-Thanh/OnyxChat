@@ -116,4 +116,8 @@ dependencies {
 
     // FFmpeg Kit for media processing
     implementation 'com.arthenica:ffmpeg-kit-full:6.0.LTS'
+
+    // ExoPlayer dependencies
+    implementation 'com.google.android.exoplayer:exoplayer-core:2.19.1'
+    implementation 'com.google.android.exoplayer:exoplayer-ui:2.19.1'
 }

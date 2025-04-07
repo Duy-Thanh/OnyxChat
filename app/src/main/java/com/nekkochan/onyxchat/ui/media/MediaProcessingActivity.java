@@ -1,7 +1,14 @@
 package com.nekkochan.onyxchat.ui.media;
 
+import android.graphics.Matrix;
+import android.graphics.SurfaceTexture;
+import android.media.MediaMetadataRetriever;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.view.Surface;
+import android.view.TextureView;
 import android.view.View;
 import android.widget.ImageView;
 import android.widget.VideoView;
@@ -16,17 +23,29 @@ import android.os.Build;
 import android.view.WindowManager;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
+import android.widget.FrameLayout;
+import android.view.Gravity;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
 
+import com.google.android.exoplayer2.ExoPlayer;
+import com.google.android.exoplayer2.MediaItem;
+import com.google.android.exoplayer2.Player;
+import com.google.android.exoplayer2.ui.PlayerView;
+
 import com.nekkochan.onyxchat.R;
 import com.nekkochan.onyxchat.network.ApiClient;
+import com.nekkochan.onyxchat.utils.FileUtils;
 import com.nekkochan.onyxchat.utils.MediaUtils;
 import com.nekkochan.onyxchat.utils.MimeTypeUtils;
 import com.nekkochan.onyxchat.ui.chat.ChatMessageItem;
 import com.nekkochan.onyxchat.ui.viewmodel.ChatViewModel;
 import com.nekkochan.onyxchat.ui.viewmodel.MainViewModel;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Activity for processing images and videos before sending
@@ -43,17 +62,26 @@ public class MediaProcessingActivity extends AppCompatActivity {
     public static final String MEDIA_TYPE_DOCUMENT = "document";
     
     private ImageView imagePreview;
-    private VideoView videoPreview;
+    private PlayerView videoPreview;
     private Button sendButton;
     private Button cancelButton;
     private TextView captionInput;
     private ProgressBar progressBar;
     private TextView documentInfo;
+    private ImageView playPauseButton;
     
     private Uri mediaUri;
     private String mediaType;
     private String chatId;
     private ApiClient apiClient;
+    
+    // ExoPlayer related fields
+    private ExoPlayer player;
+    private boolean isPlaying = false;
+    
+    // Fallback related fields
+    private VideoView standardVideoView;
+    private boolean isUsingFallback = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -92,6 +120,12 @@ public class MediaProcessingActivity extends AppCompatActivity {
         captionInput = findViewById(R.id.captionInput);
         progressBar = findViewById(R.id.progressBar);
         documentInfo = findViewById(R.id.documentInfo);
+        playPauseButton = findViewById(R.id.playPauseButton);
+        
+        // Set play/pause button click listener
+        if (playPauseButton != null) {
+            playPauseButton.setOnClickListener(v -> togglePlayback());
+        }
         
         // Get API client
         apiClient = ApiClient.getInstance(this);
@@ -138,6 +172,9 @@ public class MediaProcessingActivity extends AppCompatActivity {
         imagePreview.setVisibility(View.VISIBLE);
         videoPreview.setVisibility(View.GONE);
         documentInfo.setVisibility(View.GONE);
+        if (playPauseButton != null) {
+            playPauseButton.setVisibility(View.GONE);
+        }
         
         try {
             imagePreview.setImageURI(mediaUri);
@@ -149,37 +186,169 @@ public class MediaProcessingActivity extends AppCompatActivity {
     }
     
     /**
-     * Set up video preview
+     * Set up video preview with ExoPlayer
      */
     private void setupVideoPreview() {
         imagePreview.setVisibility(View.GONE);
         videoPreview.setVisibility(View.VISIBLE);
         documentInfo.setVisibility(View.GONE);
+        if (playPauseButton != null) {
+            playPauseButton.setVisibility(View.VISIBLE);
+            playPauseButton.setImageResource(R.drawable.ic_play);
+        }
+        
+        // Show loading initially
+        progressBar.setVisibility(View.VISIBLE);
         
         try {
-            videoPreview.setVideoURI(mediaUri);
+            // Initialize ExoPlayer
+            initializePlayer();
+        } catch (Exception e) {
+            Log.e(TAG, "Error setting up video preview", e);
+            // Fallback to standard VideoView
+            useStandardVideoViewFallback();
+        }
+    }
+    
+    /**
+     * Initialize ExoPlayer for video playback
+     */
+    private void initializePlayer() {
+        // Create a player instance
+        player = new ExoPlayer.Builder(this).build();
+        
+        // Attach player to the view
+        videoPreview.setPlayer(player);
+        
+        // Configure player
+        player.setRepeatMode(Player.REPEAT_MODE_ONE);
+        
+        // Add a listener to update the play/pause button
+        player.addListener(new Player.Listener() {
+            @Override
+            public void onPlaybackStateChanged(int state) {
+                if (state == Player.STATE_READY) {
+                    progressBar.setVisibility(View.GONE);
+                } else if (state == Player.STATE_BUFFERING) {
+                    progressBar.setVisibility(View.VISIBLE);
+                }
+            }
             
-            // Set up media controller for video
+            @Override
+            public void onIsPlayingChanged(boolean isCurrentlyPlaying) {
+                isPlaying = isCurrentlyPlaying;
+                updatePlayPauseButton();
+            }
+        });
+        
+        // Create a MediaItem from the URI
+        MediaItem mediaItem = MediaItem.fromUri(mediaUri);
+        
+        // Set the media item to play
+        player.setMediaItem(mediaItem);
+        
+        // Prepare the player
+        player.prepare();
+        
+        // Don't start playing automatically, wait for user to press play
+        player.setPlayWhenReady(false);
+    }
+    
+    /**
+     * Update the play/pause button based on playback state
+     */
+    private void updatePlayPauseButton() {
+        if (playPauseButton != null) {
+            playPauseButton.setImageResource(isPlaying ? R.drawable.ic_pause : R.drawable.ic_play);
+        }
+    }
+    
+    /**
+     * Toggle video playback (play/pause)
+     */
+    private void togglePlayback() {
+        if (isUsingFallback) {
+            // Handle fallback VideoView
+            if (standardVideoView != null) {
+                if (standardVideoView.isPlaying()) {
+                    standardVideoView.pause();
+                    playPauseButton.setImageResource(R.drawable.ic_play);
+                } else {
+                    standardVideoView.start();
+                    playPauseButton.setImageResource(R.drawable.ic_pause);
+                }
+            }
+        } else if (player != null) {
+            // Handle ExoPlayer
+            if (player.isPlaying()) {
+                player.pause();
+            } else {
+                player.play();
+            }
+        }
+    }
+    
+    /**
+     * Fallback to standard Android VideoView if ExoPlayer fails
+     */
+    private void useStandardVideoViewFallback() {
+        try {
+            // Hide our ExoPlayer view
+            videoPreview.setVisibility(View.GONE);
+            
+            // Show play/pause button
+            if (playPauseButton != null) {
+                playPauseButton.setVisibility(View.VISIBLE);
+                playPauseButton.setImageResource(R.drawable.ic_play);
+            }
+            
+            // Hide progress temporarily
+            progressBar.setVisibility(View.GONE);
+            
+            // Create a VideoView dynamically
+            standardVideoView = new VideoView(this);
+            standardVideoView.setLayoutParams(new FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    Gravity.CENTER));
+            
+            // Add to the container
+            FrameLayout container = findViewById(R.id.mediaPreviewContainer);
+            container.addView(standardVideoView);
+            
+            // Set up the video view
+            standardVideoView.setVideoURI(mediaUri);
             MediaController mediaController = new MediaController(this);
-            mediaController.setAnchorView(videoPreview);
-            videoPreview.setMediaController(mediaController);
+            mediaController.setAnchorView(standardVideoView);
+            standardVideoView.setMediaController(mediaController);
             
-            // Start video playback when ready
-            videoPreview.setOnPreparedListener(mp -> {
+            // Show progress during preparation
+            progressBar.setVisibility(View.VISIBLE);
+            
+            // Start when ready
+            standardVideoView.setOnPreparedListener(mp -> {
+                progressBar.setVisibility(View.GONE);
                 mp.setLooping(true);
-                videoPreview.start();
+                // Don't start automatically
+                playPauseButton.setVisibility(View.VISIBLE);
             });
             
-            videoPreview.setOnErrorListener((mp, what, extra) -> {
-                Log.e(TAG, "Video playback error: " + what);
+            // Show error message if playback fails
+            standardVideoView.setOnErrorListener((mp, what, extra) -> {
+                progressBar.setVisibility(View.GONE);
                 Toast.makeText(this, "Error playing video", Toast.LENGTH_SHORT).show();
                 return true;
             });
             
-            videoPreview.requestFocus();
+            standardVideoView.requestFocus();
+            
+            // Save state for cleanup
+            isUsingFallback = true;
+            
         } catch (Exception e) {
-            Log.e(TAG, "Error loading video", e);
-            Toast.makeText(this, "Error loading video", Toast.LENGTH_SHORT).show();
+            Log.e(TAG, "Error setting up fallback video view", e);
+            progressBar.setVisibility(View.GONE);
+            Toast.makeText(this, "Unable to preview video", Toast.LENGTH_SHORT).show();
             finish();
         }
     }
@@ -191,6 +360,9 @@ public class MediaProcessingActivity extends AppCompatActivity {
         imagePreview.setVisibility(View.GONE);
         videoPreview.setVisibility(View.GONE);
         documentInfo.setVisibility(View.VISIBLE);
+        if (playPauseButton != null) {
+            playPauseButton.setVisibility(View.GONE);
+        }
         
         try {
             // Show document information
@@ -200,8 +372,8 @@ public class MediaProcessingActivity extends AppCompatActivity {
             
             documentInfo.setText(String.format("%s (%s)", fileName, formattedSize));
         } catch (Exception e) {
-            Log.e(TAG, "Error loading document info", e);
-            Toast.makeText(this, "Error loading document", Toast.LENGTH_SHORT).show();
+            Log.e(TAG, "Error showing document info", e);
+            Toast.makeText(this, "Error showing document info", Toast.LENGTH_SHORT).show();
             finish();
         }
     }
@@ -307,16 +479,39 @@ public class MediaProcessingActivity extends AppCompatActivity {
     @Override
     protected void onPause() {
         super.onPause();
-        if (videoPreview.isPlaying()) {
-            videoPreview.pause();
+        if (isUsingFallback && standardVideoView != null) {
+            standardVideoView.pause();
+        } else if (player != null) {
+            player.pause();
+        }
+    }
+    
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (player != null) {
+            // Do not auto-resume playback
         }
     }
     
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        if (videoPreview != null) {
-            videoPreview.stopPlayback();
+        releasePlayer();
+        if (isUsingFallback && standardVideoView != null) {
+            standardVideoView.stopPlayback();
+            standardVideoView = null;
+        }
+    }
+    
+    /**
+     * Release ExoPlayer resources
+     */
+    private void releasePlayer() {
+        if (player != null) {
+            player.stop();
+            player.release();
+            player = null;
         }
     }
     

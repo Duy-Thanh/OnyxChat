@@ -393,10 +393,10 @@ public class ChatActivity extends AppCompatActivity {
         messageInput.addTextChangedListener(new TextWatcher() {
             @Override
             public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
-            
+
             @Override
             public void onTextChanged(CharSequence s, int start, int before, int count) {}
-            
+
             @Override
             public void afterTextChanged(Editable s) {
                 // Only enable send button if we have text AND are connected
@@ -423,7 +423,7 @@ public class ChatActivity extends AppCompatActivity {
                     int lastItem = adapter.getItemCount() - 1;
                     
                     if (lastVisiblePosition >= lastItem - 2) {
-                        recyclerView.scrollToPosition(chatMessages.size() - 1);
+                recyclerView.scrollToPosition(chatMessages.size() - 1);
                     } else {
                         scrollDownButton.setVisibility(View.VISIBLE);
                     }

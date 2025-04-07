@@ -430,7 +430,25 @@ public class MediaUtils {
      */
     public static String getFileName(Context context, Uri uri) {
         String result = null;
-        if (uri.getScheme().equals(ContentResolver.SCHEME_CONTENT)) {
+        if (uri == null) {
+            return "unknown_file";
+        }
+        
+        String scheme = uri.getScheme();
+        if (scheme == null) {
+            // Handle file paths without scheme
+            String path = uri.getPath();
+            if (path != null) {
+                int cut = path.lastIndexOf('/');
+                if (cut != -1) {
+                    return path.substring(cut + 1);
+                }
+                return path;
+            }
+            return "unknown_file";
+        }
+        
+        if (scheme.equals(ContentResolver.SCHEME_CONTENT)) {
             try (Cursor cursor = context.getContentResolver().query(uri, null, null, null, null)) {
                 if (cursor != null && cursor.moveToFirst()) {
                     int nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
@@ -444,11 +462,21 @@ public class MediaUtils {
         }
         if (result == null) {
             result = uri.getPath();
-            int cut = result != null ? result.lastIndexOf('/') : -1;
-            if (cut != -1) {
-                result = result.substring(cut + 1);
+            if (result != null) {
+                int cut = result.lastIndexOf('/');
+                if (cut != -1) {
+                    result = result.substring(cut + 1);
+                }
             }
         }
+        
+        // If still null, generate a default name with timestamp
+        if (result == null) {
+            String mimeType = getMimeType(context, uri);
+            String extension = getExtensionFromMimeType(mimeType);
+            result = "file_" + System.currentTimeMillis() + "." + extension;
+        }
+        
         return result;
     }
     

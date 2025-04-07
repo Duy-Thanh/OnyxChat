@@ -21,6 +21,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.FileInputStream;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
@@ -130,6 +131,26 @@ public class FileUtils {
      * @return The file path or null if failed
      */
     private static String copyFileToCache(Context context, Uri uri) {
+        if (uri == null) {
+            Log.e(TAG, "Cannot copy null URI to cache");
+            return null;
+        }
+
+        String scheme = uri.getScheme();
+        
+        // If it's already a file path with no scheme or "file" scheme
+        if (scheme == null || "file".equals(scheme)) {
+            String filePath = uri.getPath();
+            if (filePath != null) {
+                File file = new File(filePath);
+                if (file.exists() && file.canRead()) {
+                    return filePath;
+                } else {
+                    Log.e(TAG, "File doesn't exist or can't be read: " + filePath);
+                }
+            }
+        }
+        
         try {
             String fileName = getFileName(context, uri);
             File cacheDir = new File(context.getCacheDir(), "media_files");
@@ -138,21 +159,46 @@ public class FileUtils {
             }
             
             File outputFile = new File(cacheDir, fileName);
-            try (InputStream inputStream = context.getContentResolver().openInputStream(uri);
-                 FileOutputStream outputStream = new FileOutputStream(outputFile)) {
-                
-                if (inputStream == null) {
-                    return null;
+            
+            // If this is a content URI, use ContentResolver
+            if ("content".equals(scheme)) {
+                try (InputStream inputStream = context.getContentResolver().openInputStream(uri);
+                     FileOutputStream outputStream = new FileOutputStream(outputFile)) {
+                    
+                    if (inputStream == null) {
+                        return null;
+                    }
+                    
+                    byte[] buffer = new byte[4 * 1024]; // 4k buffer
+                    int read;
+                    while ((read = inputStream.read(buffer)) != -1) {
+                        outputStream.write(buffer, 0, read);
+                    }
+                    outputStream.flush();
+                    return outputFile.getAbsolutePath();
                 }
-                
-                byte[] buffer = new byte[4 * 1024]; // 4k buffer
-                int read;
-                while ((read = inputStream.read(buffer)) != -1) {
-                    outputStream.write(buffer, 0, read);
+            } 
+            // For file URIs, use regular File IO
+            else if (scheme == null || "file".equals(scheme)) {
+                String filePath = uri.getPath();
+                if (filePath != null) {
+                    File inputFile = new File(filePath);
+                    
+                    try (FileInputStream inputStream = new FileInputStream(inputFile);
+                         FileOutputStream outputStream = new FileOutputStream(outputFile)) {
+                        
+                        byte[] buffer = new byte[4 * 1024];
+                        int read;
+                        while ((read = inputStream.read(buffer)) != -1) {
+                            outputStream.write(buffer, 0, read);
+                        }
+                        outputStream.flush();
+                        return outputFile.getAbsolutePath();
+                    }
                 }
-                outputStream.flush();
-                return outputFile.getAbsolutePath();
             }
+            
+            return null;
         } catch (IOException e) {
             Log.e(TAG, "Error copying file to cache", e);
             return null;
