@@ -192,9 +192,10 @@ public class MediaProcessingActivity extends AppCompatActivity {
         imagePreview.setVisibility(View.GONE);
         videoPreview.setVisibility(View.VISIBLE);
         documentInfo.setVisibility(View.GONE);
+        
+        // Hide custom play/pause button since we're using ExoPlayer controls
         if (playPauseButton != null) {
-            playPauseButton.setVisibility(View.VISIBLE);
-            playPauseButton.setImageResource(R.drawable.ic_play);
+            playPauseButton.setVisibility(View.GONE);
         }
         
         // Show loading initially
@@ -223,12 +224,14 @@ public class MediaProcessingActivity extends AppCompatActivity {
         // Configure player
         player.setRepeatMode(Player.REPEAT_MODE_ONE);
         
-        // Add a listener to update the play/pause button
+        // Add a listener to update UI
         player.addListener(new Player.Listener() {
             @Override
             public void onPlaybackStateChanged(int state) {
                 if (state == Player.STATE_READY) {
                     progressBar.setVisibility(View.GONE);
+                    // Update send button when video is ready
+                    updateSendButtonState(true);
                 } else if (state == Player.STATE_BUFFERING) {
                     progressBar.setVisibility(View.VISIBLE);
                 }
@@ -237,7 +240,6 @@ public class MediaProcessingActivity extends AppCompatActivity {
             @Override
             public void onIsPlayingChanged(boolean isCurrentlyPlaying) {
                 isPlaying = isCurrentlyPlaying;
-                updatePlayPauseButton();
             }
         });
         
@@ -255,11 +257,11 @@ public class MediaProcessingActivity extends AppCompatActivity {
     }
     
     /**
-     * Update the play/pause button based on playback state
+     * Update the send button state based on media readiness
      */
-    private void updatePlayPauseButton() {
-        if (playPauseButton != null) {
-            playPauseButton.setImageResource(isPlaying ? R.drawable.ic_pause : R.drawable.ic_play);
+    private void updateSendButtonState(boolean enabled) {
+        if (sendButton != null) {
+            sendButton.setEnabled(enabled);
         }
     }
     
@@ -272,9 +274,11 @@ public class MediaProcessingActivity extends AppCompatActivity {
             if (standardVideoView != null) {
                 if (standardVideoView.isPlaying()) {
                     standardVideoView.pause();
+                    playPauseButton.setVisibility(View.VISIBLE);
                     playPauseButton.setImageResource(R.drawable.ic_play);
                 } else {
                     standardVideoView.start();
+                    playPauseButton.setVisibility(View.VISIBLE);
                     playPauseButton.setImageResource(R.drawable.ic_pause);
                 }
             }

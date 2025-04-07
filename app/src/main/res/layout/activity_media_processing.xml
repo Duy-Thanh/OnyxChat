@@ -42,13 +42,16 @@
             android:visibility="visible"
             tools:visibility="visible" />
 
-        <!-- Video Preview - replaced TextureView with ExoPlayer's PlayerView -->
+        <!-- Video Preview - use ExoPlayer with visible controllers -->
         <com.google.android.exoplayer2.ui.PlayerView
             android:id="@+id/videoPreview"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:layout_gravity="center"
-            app:use_controller="false"
+            app:use_controller="true"
+            app:controller_layout_id="@layout/exo_playback_control_view"
+            app:show_timeout="3000"
+            app:hide_on_touch="false"
             app:resize_mode="fit"
             android:visibility="gone"
             tools:visibility="gone" />
