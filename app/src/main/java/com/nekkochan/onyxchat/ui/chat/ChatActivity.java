@@ -63,6 +63,16 @@ public class ChatActivity extends AppCompatActivity {
     private static final int MEDIA_MAX_SIZE_MB = 500;
     private static final int PERMISSION_REQUEST_MEDIA = 100;
     
+    // Constants for saving instance state
+    private static final String KEY_IS_PROCESSING_MEDIA = "is_processing_media";
+    private static final String KEY_PROCESSING_MEDIA_TYPE = "processing_media_type";
+    private static final String KEY_PROCESSING_MEDIA_MESSAGE = "processing_media_message";
+    
+    // Media processing state variables
+    private boolean isProcessingMedia = false;
+    private String processingMediaType = null;
+    private String processingMediaMessage = null;
+    
     private ChatViewModel viewModel;
     private RecyclerView recyclerView;
     private EditText messageInput;
@@ -123,6 +133,18 @@ public class ChatActivity extends AppCompatActivity {
             }
         }
     });
+    
+    @Override
+    protected void onSaveInstanceState(@NonNull Bundle outState) {
+        super.onSaveInstanceState(outState);
+        
+        // Save media processing state
+        outState.putBoolean(KEY_IS_PROCESSING_MEDIA, isProcessingMedia);
+        if (isProcessingMedia) {
+            outState.putString(KEY_PROCESSING_MEDIA_TYPE, processingMediaType);
+            outState.putString(KEY_PROCESSING_MEDIA_MESSAGE, processingMediaMessage);
+        }
+    }
     
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -413,6 +435,34 @@ public class ChatActivity extends AppCompatActivity {
         if (viewModel.isChatConnected().getValue() != Boolean.TRUE) {
             viewModel.connectToChat();
         }
+        
+        // Restore media processing state if needed
+        if (savedInstanceState != null) {
+            isProcessingMedia = savedInstanceState.getBoolean(KEY_IS_PROCESSING_MEDIA, false);
+            if (isProcessingMedia) {
+                processingMediaType = savedInstanceState.getString(KEY_PROCESSING_MEDIA_TYPE);
+                processingMediaMessage = savedInstanceState.getString(KEY_PROCESSING_MEDIA_MESSAGE);
+                
+                // Restore the UI state
+                showMediaStatus(processingMediaMessage, processingMediaType, true);
+            }
+        }
+    }
+    
+    @Override
+    protected void onResume() {
+        super.onResume();
+        
+        // Check if there's an ongoing media processing
+        if (FileUtils.isMediaProcessing) {
+            // Show the media processing UI
+            showMediaStatus("Processing " + FileUtils.currentProcessingType + "...", 
+                            FileUtils.currentProcessingType, true);
+        } else if (isProcessingMedia) {
+            // If our activity thinks we're processing but FileUtils doesn't,
+            // the processing likely finished while we were away
+            hideMediaStatus();
+        }
     }
     
     @Override
@@ -607,6 +657,11 @@ public class ChatActivity extends AppCompatActivity {
      * @param isIndeterminate Whether the progress should be indeterminate
      */
     private void showMediaStatus(String message, String mediaType, boolean isIndeterminate) {
+        // Save the current processing state
+        isProcessingMedia = true;
+        processingMediaType = mediaType;
+        processingMediaMessage = message;
+        
         // Set the appropriate icon based on media type
         if ("video".equals(mediaType)) {
             mediaStatusIcon.setImageResource(R.drawable.ic_video);
@@ -651,6 +706,11 @@ public class ChatActivity extends AppCompatActivity {
      * Hide the media status UI
      */
     private void hideMediaStatus() {
+        // Clear the processing state
+        isProcessingMedia = false;
+        processingMediaType = null;
+        processingMediaMessage = null;
+        
         if (mediaStatusCard.getVisibility() == View.VISIBLE) {
             mediaStatusCard.animate()
                     .alpha(0f)

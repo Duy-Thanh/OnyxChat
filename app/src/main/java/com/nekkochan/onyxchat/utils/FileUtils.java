@@ -33,6 +33,11 @@ public class FileUtils {
     private static final int VIDEO_BITRATE = 1500000; // 1.5 Mbps for videos
     private static final int MAX_FILE_SIZE_MB = 15; // 15 MB max file size
 
+    // Static variables to track processing state
+    public static boolean isMediaProcessing = false;
+    public static String currentProcessingType = null;
+    public static String currentMediaUri = null;
+
     /**
      * Get a file path from a Uri
      * 
@@ -294,6 +299,115 @@ public class FileUtils {
     }
     
     /**
+     * Execute an FFmpeg command asynchronously
+     *
+     * @param command The FFmpeg command
+     * @param outputPath The output file path
+     * @param future The CompletableFuture to complete when done
+     */
+    private static void executeFFmpegAsync(String command, String outputPath, CompletableFuture<String> future) {
+        Log.d(TAG, "Executing FFmpeg command: " + command);
+        
+        // Set the processing state to true
+        isMediaProcessing = true;
+        
+        FFmpegSession session = FFmpegKit.executeAsync(command, session1 -> {
+            if (ReturnCode.isSuccess(session1.getReturnCode())) {
+                Log.d(TAG, "FFmpeg process completed successfully");
+                future.complete(outputPath);
+                // Clear the processing state
+                isMediaProcessing = false;
+            } else if (ReturnCode.isCancel(session1.getReturnCode())) {
+                Log.d(TAG, "FFmpeg process canceled");
+                future.completeExceptionally(new IOException("Process canceled"));
+                // Clear the processing state
+                isMediaProcessing = false;
+            } else {
+                Log.e(TAG, "FFmpeg process failed with state: " + session1.getState() + 
+                        " and return code: " + session1.getReturnCode());
+                if (command.contains("-c:v mpeg4") || command.contains("-c:v libx264")) {
+                    // Try fallback with copy codec (no transcoding)
+                    // Remove all filters when using copy to avoid conflicts
+                    String fallbackCommand = command
+                        .replaceAll("-c:v \\w+", "-c:v copy")
+                        .replaceAll("-vf [^ ]+", "") // Remove video filters
+                        .replaceAll("-b:v [^ ]+", "") // Remove bitrate
+                        .replaceAll("-maxrate [^ ]+", "") // Remove maxrate
+                        .replaceAll("-bufsize [^ ]+", ""); // Remove bufsize
+                    
+                    Log.d(TAG, "Trying fallback command: " + fallbackCommand);
+                    
+                    FFmpegSession fallbackSession = FFmpegKit.executeAsync(fallbackCommand, session2 -> {
+                        if (ReturnCode.isSuccess(session2.getReturnCode())) {
+                            Log.d(TAG, "Fallback FFmpeg process completed successfully");
+                            future.complete(outputPath);
+                            // Clear the processing state
+                            isMediaProcessing = false;
+                        } else {
+                            Log.e(TAG, "Fallback FFmpeg process also failed with state: " + 
+                                    session2.getState() + " and return code: " + session2.getReturnCode());
+                            
+                            // Try one more fallback with just basic copy
+                            String simpleFallbackCmd = String.format(
+                                "-i %s -c copy -y %s",
+                                command.substring(command.indexOf("-i ") + 3, command.indexOf(" -c:v")),
+                                command.substring(command.lastIndexOf(" -y ") + 4));
+                            
+                            Log.d(TAG, "Trying simple fallback command: " + simpleFallbackCmd);
+                            
+                            FFmpegSession finalFallbackSession = FFmpegKit.executeAsync(simpleFallbackCmd, session3 -> {
+                                if (ReturnCode.isSuccess(session3.getReturnCode())) {
+                                    Log.d(TAG, "Simple fallback FFmpeg process completed successfully");
+                                    future.complete(outputPath);
+                                } else {
+                                    Log.e(TAG, "All FFmpeg fallbacks failed");
+                                    future.completeExceptionally(new IOException("Process failed with return code: " + 
+                                            session1.getReturnCode()));
+                                }
+                                // Clear the processing state (whether it succeeded or failed)
+                                isMediaProcessing = false;
+                            }, log -> {
+                                Log.d(TAG, "Simple fallback FFmpeg log: " + log.getMessage());
+                            }, null);
+                            
+                            if (finalFallbackSession == null) {
+                                future.completeExceptionally(new IOException("Failed to start final fallback FFmpeg process"));
+                                // Clear the processing state
+                                isMediaProcessing = false;
+                            }
+                        }
+                    }, log -> {
+                        Log.d(TAG, "Fallback FFmpeg log: " + log.getMessage());
+                    }, null);
+                    
+                    if (fallbackSession == null) {
+                        future.completeExceptionally(new IOException("Failed to start fallback FFmpeg process"));
+                        // Clear the processing state
+                        isMediaProcessing = false;
+                    }
+                } else {
+                    future.completeExceptionally(new IOException("Process failed with return code: " + 
+                            session1.getReturnCode()));
+                    // Clear the processing state
+                    isMediaProcessing = false;
+                }
+            }
+        }, log -> {
+            // FFmpeg logs
+            Log.d(TAG, "FFmpeg log: " + log.getMessage());
+        }, statistics -> {
+            // Progress updates if needed
+            // We can use statistics.getTime() to get the progress time in milliseconds
+        });
+        
+        if (session == null) {
+            future.completeExceptionally(new IOException("Failed to start FFmpeg process"));
+            // Clear the processing state
+            isMediaProcessing = false;
+        }
+    }
+    
+    /**
      * Compress an image file using FFmpeg
      *
      * @param context The context
@@ -309,16 +423,20 @@ public class FileUtils {
             return future;
         }
         
+        // Set the processing state
+        isMediaProcessing = true;
+        currentProcessingType = "image";
+        currentMediaUri = sourceUri.toString();
+        
         try {
             String fileName = getFileName(context, sourceUri);
             String extension = fileName.substring(fileName.lastIndexOf("."));
             File outputFile = createTempFile(context, "img", extension);
             
-            // Properly quote file paths to handle spaces and special characters
+            // Fix the filter syntax by properly escaping quotes
             String quotedSourcePath = "\"" + sourcePath + "\"";
             String quotedOutputPath = "\"" + outputFile.getAbsolutePath() + "\"";
             
-            // Fix the filter syntax by properly escaping quotes
             String ffmpegCmd = String.format("-i %s -vf \"scale=min(%d\\,iw):-1\" -quality 85 -y %s",
                     quotedSourcePath, MAX_IMAGE_DIMENSION, quotedOutputPath);
             
@@ -327,6 +445,8 @@ public class FileUtils {
             return future;
         } catch (IOException e) {
             future.completeExceptionally(e);
+            // Clear the processing state
+            isMediaProcessing = false;
             return future;
         }
     }
@@ -346,6 +466,11 @@ public class FileUtils {
             future.completeExceptionally(new IOException("Could not find file path"));
             return future;
         }
+        
+        // Set the processing state
+        isMediaProcessing = true;
+        currentProcessingType = "video";
+        currentMediaUri = sourceUri.toString();
         
         try {
             File outputFile = createTempFile(context, "video", ".mp4");
@@ -372,97 +497,9 @@ public class FileUtils {
             return future;
         } catch (IOException e) {
             future.completeExceptionally(e);
+            // Clear the processing state
+            isMediaProcessing = false;
             return future;
-        }
-    }
-    
-    /**
-     * Execute an FFmpeg command asynchronously
-     *
-     * @param command The FFmpeg command
-     * @param outputPath The output file path
-     * @param future The CompletableFuture to complete when done
-     */
-    private static void executeFFmpegAsync(String command, String outputPath, CompletableFuture<String> future) {
-        Log.d(TAG, "Executing FFmpeg command: " + command);
-        
-        FFmpegSession session = FFmpegKit.executeAsync(command, session1 -> {
-            if (ReturnCode.isSuccess(session1.getReturnCode())) {
-                Log.d(TAG, "FFmpeg process completed successfully");
-                future.complete(outputPath);
-            } else if (ReturnCode.isCancel(session1.getReturnCode())) {
-                Log.d(TAG, "FFmpeg process canceled");
-                future.completeExceptionally(new IOException("Process canceled"));
-            } else {
-                Log.e(TAG, "FFmpeg process failed with state: " + session1.getState() + 
-                        " and return code: " + session1.getReturnCode());
-                if (command.contains("-c:v mpeg4") || command.contains("-c:v libx264")) {
-                    // Try fallback with copy codec (no transcoding)
-                    // Remove all filters when using copy to avoid conflicts
-                    String fallbackCommand = command
-                        .replaceAll("-c:v \\w+", "-c:v copy")
-                        .replaceAll("-vf [^ ]+", "") // Remove video filters
-                        .replaceAll("-b:v [^ ]+", "") // Remove bitrate
-                        .replaceAll("-maxrate [^ ]+", "") // Remove maxrate
-                        .replaceAll("-bufsize [^ ]+", ""); // Remove bufsize
-                    
-                    Log.d(TAG, "Trying fallback command: " + fallbackCommand);
-                    
-                    FFmpegSession fallbackSession = FFmpegKit.executeAsync(fallbackCommand, session2 -> {
-                        if (ReturnCode.isSuccess(session2.getReturnCode())) {
-                            Log.d(TAG, "Fallback FFmpeg process completed successfully");
-                            future.complete(outputPath);
-                        } else {
-                            Log.e(TAG, "Fallback FFmpeg process also failed with state: " + 
-                                    session2.getState() + " and return code: " + session2.getReturnCode());
-                            
-                            // Try one more fallback with just basic copy
-                            String simpleFallbackCmd = String.format(
-                                "-i %s -c copy -y %s",
-                                command.substring(command.indexOf("-i ") + 3, command.indexOf(" -c:v")),
-                                command.substring(command.lastIndexOf(" -y ") + 4));
-                            
-                            Log.d(TAG, "Trying simple fallback command: " + simpleFallbackCmd);
-                            
-                            FFmpegSession finalFallbackSession = FFmpegKit.executeAsync(simpleFallbackCmd, session3 -> {
-                                if (ReturnCode.isSuccess(session3.getReturnCode())) {
-                                    Log.d(TAG, "Simple fallback FFmpeg process completed successfully");
-                                    future.complete(outputPath);
-                                } else {
-                                    Log.e(TAG, "All FFmpeg fallbacks failed");
-                                    future.completeExceptionally(new IOException("Process failed with return code: " + 
-                                            session1.getReturnCode()));
-                                }
-                            }, log -> {
-                                Log.d(TAG, "Simple fallback FFmpeg log: " + log.getMessage());
-                            }, null);
-                            
-                            if (finalFallbackSession == null) {
-                                future.completeExceptionally(new IOException("Failed to start final fallback FFmpeg process"));
-                            }
-                        }
-                    }, log -> {
-                        Log.d(TAG, "Fallback FFmpeg log: " + log.getMessage());
-                    }, null);
-                    
-                    if (fallbackSession == null) {
-                        future.completeExceptionally(new IOException("Failed to start fallback FFmpeg process"));
-                    }
-                } else {
-                    future.completeExceptionally(new IOException("Process failed with return code: " + 
-                            session1.getReturnCode()));
-                }
-            }
-        }, log -> {
-            // FFmpeg logs
-            Log.d(TAG, "FFmpeg log: " + log.getMessage());
-        }, statistics -> {
-            // Progress updates if needed
-            // We can use statistics.getTime() to get the progress time in milliseconds
-        });
-        
-        if (session == null) {
-            future.completeExceptionally(new IOException("Failed to start FFmpeg process"));
         }
     }
     
