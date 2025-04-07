@@ -1,6 +1,7 @@
 package com.nekkochan.onyxchat.ui.adapters;
 
 import android.content.Intent;
+import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.util.Log;
 import android.view.LayoutInflater;
@@ -11,11 +12,14 @@ import android.widget.ImageView;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.cardview.widget.CardView;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.bumptech.glide.Glide;
 import com.bumptech.glide.request.RequestOptions;
+import com.bumptech.glide.request.target.Target;
+import com.bumptech.glide.request.transition.DrawableCrossFadeFactory;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -30,6 +34,14 @@ import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 import java.util.TimeZone;
+
+import com.bumptech.glide.load.DataSource;
+import com.bumptech.glide.load.engine.GlideException;
+import com.bumptech.glide.request.RequestListener;
+import com.bumptech.glide.request.target.Target;
+
+import org.json.JSONException;
+import org.json.JSONObject;
 
 public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.ChatMessageViewHolder> {
     private static final String TAG = "ChatMessageAdapter";
@@ -199,17 +211,39 @@ public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.
      */
     private MediaContent parseMediaContent(String content) {
         try {
-            JsonObject jsonObject = JsonParser.parseString(content).getAsJsonObject();
+            Log.d(TAG, "Attempting to parse message content: " + content);
             
-            if (jsonObject.has("type") && jsonObject.has("url")) {
-                String type = jsonObject.get("type").getAsString();
-                String url = jsonObject.get("url").getAsString();
-                String caption = jsonObject.has("caption") ? jsonObject.get("caption").getAsString() : "";
+            // First try parsing as direct JSON
+            try {
+                JSONObject jsonObject = new JSONObject(content);
+                if (jsonObject.has("type") && jsonObject.has("url")) {
+                    String type = jsonObject.getString("type");
+                    String url = jsonObject.getString("url");
+                    String caption = jsonObject.optString("caption", "");
+                    
+                    Log.d(TAG, String.format("Successfully parsed media message - Type: %s, URL: %s, Caption: %s", 
+                        type, url, caption));
+                    
+                    return new MediaContent(type, url, caption);
+                }
+            } catch (JSONException e) {
+                // If direct JSON parsing fails, try with JsonParser
+                JsonObject jsonObject = JsonParser.parseString(content).getAsJsonObject();
                 
-                return new MediaContent(type, url, caption);
+                if (jsonObject.has("type") && jsonObject.has("url")) {
+                    String type = jsonObject.get("type").getAsString();
+                    String url = jsonObject.get("url").getAsString();
+                    String caption = jsonObject.has("caption") ? jsonObject.get("caption").getAsString() : "";
+                    
+                    Log.d(TAG, String.format("Successfully parsed media message (using JsonParser) - Type: %s, URL: %s, Caption: %s", 
+                        type, url, caption));
+                    
+                    return new MediaContent(type, url, caption);
+                }
             }
         } catch (Exception e) {
-            Log.d(TAG, "Not a valid media message: " + e.getMessage());
+            Log.e(TAG, "Failed to parse media message: " + e.getMessage());
+            Log.e(TAG, "Raw content was: " + content);
         }
         
         return null;
@@ -253,6 +287,7 @@ public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.
             if (mediaContent != null) {
                 // This is a media message
                 if (mediaContent.type.equalsIgnoreCase("VIDEO")) {
+                    Log.d(TAG, "Setting up video message view with URL: " + mediaContent.url);
                     // Set up video message view
                     messageText.setVisibility(View.GONE);
                     mediaImageView.setVisibility(View.VISIBLE);
@@ -263,25 +298,38 @@ public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.
                             .load(mediaContent.url)
                             .apply(RequestOptions.centerCropTransform())
                             .thumbnail(0.1f)
+                            .listener(new RequestListener<Drawable>() {
+                                @Override
+                                public boolean onLoadFailed(@Nullable GlideException e, Object model, Target<Drawable> target, boolean isFirstResource) {
+                                    Log.e(TAG, "Failed to load video thumbnail: " + (e != null ? e.getMessage() : "unknown error"));
+                                    Log.e(TAG, "Video URL was: " + mediaContent.url);
+                                    return false;
+                                }
+
+                                @Override
+                                public boolean onResourceReady(Drawable resource, Object model, Target<Drawable> target, DataSource dataSource, boolean isFirstResource) {
+                                    Log.d(TAG, "Successfully loaded video thumbnail for URL: " + mediaContent.url);
+                                    return false;
+                                }
+                            })
                             .into(mediaImageView);
                             
-                    // Set click listener to open video
-                    mediaImageView.setOnClickListener(v -> {
+                    // Make sure the play button is visible and properly styled
+                    playButtonView.setVisibility(View.VISIBLE);
+                    playButtonView.setAlpha(1.0f);
+                    
+                    // Set click listeners for both the image and play button
+                    View.OnClickListener videoClickListener = v -> {
+                        Log.d(TAG, "Video clicked, opening MediaViewerActivity with URL: " + mediaContent.url);
                         Intent intent = new Intent(itemView.getContext(), MediaViewerActivity.class);
                         intent.putExtra("mediaUrl", mediaContent.url);
                         intent.putExtra("mediaType", "VIDEO");
                         intent.putExtra("mediaSenderId", message.getSenderId());
                         itemView.getContext().startActivity(intent);
-                    });
+                    };
                     
-                    playButtonView.setOnClickListener(v -> {
-                        Intent intent = new Intent(itemView.getContext(), MediaViewerActivity.class);
-                        intent.putExtra("mediaUrl", mediaContent.url);
-                        intent.putExtra("mediaType", "VIDEO");
-                        intent.putExtra("mediaSenderId", message.getSenderId());
-                        itemView.getContext().startActivity(intent);
-                    });
-                    
+                    mediaImageView.setOnClickListener(videoClickListener);
+                    playButtonView.setOnClickListener(videoClickListener);
                 } else if (mediaContent.type.equalsIgnoreCase("IMAGE")) {
                     // Set up image message view
                     messageText.setVisibility(View.GONE);

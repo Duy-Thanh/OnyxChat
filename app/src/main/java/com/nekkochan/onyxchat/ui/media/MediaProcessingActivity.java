@@ -47,6 +47,8 @@ import java.io.File;
 import java.io.IOException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import org.json.JSONObject;
+
 /**
  * Activity for processing images and videos before sending
  */
@@ -450,21 +452,38 @@ public class MediaProcessingActivity extends AppCompatActivity {
                 }
                 
                 // Create a JSON content with media information
-                String contentJson = String.format(
-                    "{\"url\":\"%s\",\"filename\":\"%s\",\"caption\":\"%s\",\"type\":\"%s\"}",
-                    mediaUrl, fileName, caption, messageType.toString()
-                );
-                
-                // Get ChatViewModel to send the message
-                ChatViewModel viewModel = new ChatViewModel(getApplication());
-                viewModel.setCurrentRecipient(chatId);
-                viewModel.sendMessage(contentJson, messageType);
-                
-                // Finish activity
-                runOnUiThread(() -> {
-                    Toast.makeText(MediaProcessingActivity.this, "Media sent", Toast.LENGTH_SHORT).show();
-                    finish();
-                });
+                JSONObject contentJson = new JSONObject();
+                try {
+                    contentJson.put("url", mediaUrl);
+                    contentJson.put("type", messageType.toString());
+                    contentJson.put("filename", fileName);
+                    if (!caption.isEmpty()) {
+                        contentJson.put("caption", caption);
+                    }
+                    
+                    // Log the created JSON for debugging
+                    String jsonContent = contentJson.toString();
+                    Log.d(TAG, "Created media message JSON: " + jsonContent);
+                    
+                    // Get ChatViewModel to send the message
+                    ChatViewModel viewModel = new ChatViewModel(getApplication());
+                    viewModel.setCurrentRecipient(chatId);
+                    viewModel.sendMessage(jsonContent, messageType);
+                    
+                    // Finish activity
+                    runOnUiThread(() -> {
+                        Toast.makeText(MediaProcessingActivity.this, "Media sent", Toast.LENGTH_SHORT).show();
+                        finish();
+                    });
+                } catch (Exception e) {
+                    Log.e(TAG, "Error creating media message JSON", e);
+                    runOnUiThread(() -> {
+                        progressBar.setVisibility(View.GONE);
+                        sendButton.setEnabled(true);
+                        Toast.makeText(MediaProcessingActivity.this, 
+                                "Failed to send media: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                    });
+                }
             }
             
             @Override
