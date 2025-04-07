@@ -314,8 +314,12 @@ public class FileUtils {
             String extension = fileName.substring(fileName.lastIndexOf("."));
             File outputFile = createTempFile(context, "img", extension);
             
+            // Properly quote file paths to handle spaces and special characters
+            String quotedSourcePath = "\"" + sourcePath + "\"";
+            String quotedOutputPath = "\"" + outputFile.getAbsolutePath() + "\"";
+            
             String ffmpegCmd = String.format("-i %s -vf scale='min(%d,iw):-1' -quality 85 -y %s",
-                    sourcePath, MAX_IMAGE_DIMENSION, outputFile.getAbsolutePath());
+                    quotedSourcePath, MAX_IMAGE_DIMENSION, quotedOutputPath);
             
             executeFFmpegAsync(ffmpegCmd, outputFile.getAbsolutePath(), future);
             
@@ -345,17 +349,21 @@ public class FileUtils {
         try {
             File outputFile = createTempFile(context, "video", ".mp4");
             
+            // Properly quote file paths to handle spaces and special characters
+            String quotedSourcePath = "\"" + sourcePath + "\"";
+            String quotedOutputPath = "\"" + outputFile.getAbsolutePath() + "\"";
+            
             // FFmpeg command to compress video
             String ffmpegCmd = String.format(
                     "-i %s -c:v libx264 -preset medium -b:v %d -maxrate %d " +
                     "-bufsize %d -vf scale='min(%d,iw):-2' -c:a aac -b:a 128k " +
                     "-movflags +faststart -y %s",
-                    sourcePath, 
+                    quotedSourcePath, 
                     VIDEO_BITRATE, 
                     VIDEO_BITRATE * 2, 
                     VIDEO_BITRATE * 4,
                     MAX_IMAGE_DIMENSION,
-                    outputFile.getAbsolutePath());
+                    quotedOutputPath);
             
             executeFFmpegAsync(ffmpegCmd, outputFile.getAbsolutePath(), future);
             
