@@ -13,6 +13,7 @@
 .externalNativeBuild
 .cxx
 local.properties
+/home/nekkochan/AndroidStudioProjects/onyxchat/logs‌/*
 /nodejs-server/node_modules/.bin/color-support
 /nodejs-server/node_modules/.bin/mime
 /nodejs-server/node_modules/.bin/mkdirp
@@ -8254,3 +8255,4 @@ local.properties
 /nodejs-server/node_modules/is-arrayish/yarn-error.log
 /nodejs-server/node_modules/@colors/colors/lib/custom/zalgo.js
 /nodejs-server/node_modules/@colors/colors/lib/maps/zebra.js
+/uploads/e1da34cf-316c-4653-8a42-2fce0848873e.mp4
