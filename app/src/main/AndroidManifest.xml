@@ -139,6 +139,14 @@
             android:label="Edit Media"
             android:theme="@style/Theme.OnyxChat.MediaProcessing" />
         
+        <!-- Media Viewer Activity -->
+        <activity
+            android:name=".ui.media.MediaViewerActivity"
+            android:exported="false"
+            android:parentActivityName=".ui.chat.ChatActivity"
+            android:label="Media Viewer"
+            android:theme="@style/Theme.OnyxChat.FullscreenMedia" />
+        
     </application>
 
 </manifest>

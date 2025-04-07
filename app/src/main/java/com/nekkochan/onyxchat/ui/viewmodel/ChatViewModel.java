@@ -24,6 +24,8 @@ import java.text.SimpleDateFormat;
 import java.util.Locale;
 import java.util.TimeZone;
 
+import org.json.JSONObject;
+
 /**
  * ViewModel for the chat screen
  */
@@ -217,26 +219,71 @@ public class ChatViewModel extends AndroidViewModel {
      * @return true if the message was sent successfully
      */
     public boolean sendChatMessage(String message) {
-        return chatService.sendMessage(message);
+        if (currentRecipientId == null || currentRecipientId.isEmpty()) {
+            return false;
+        }
+        return sendDirectMessage(currentRecipientId, message);
     }
     
     /**
-     * Send a message with custom type to the current recipient
-     * @param content Message content (text or JSON for media)
-     * @param messageType Type of message (TEXT, IMAGE, VIDEO, etc.)
-     * @return true if the message was sent successfully
+     * Send a media message to the current recipient
      */
-    public boolean sendMessage(String content, ChatMessageItem.MessageType messageType) {
-        if (currentRecipientId == null || content == null) {
+    public boolean sendMediaMessage(String mediaUrl, String mediaType, String caption) {
+        if (currentRecipientId == null || currentRecipientId.isEmpty()) {
             return false;
         }
         
-        // For media messages, the content is already a JSON string with media info
-        // For text messages, we just send the text directly
-        // The server and receiver will handle the message based on the content format
+        try {
+            // Create a JSON object for the media message
+            JSONObject mediaContent = new JSONObject();
+            mediaContent.put("type", mediaType);
+            mediaContent.put("url", mediaUrl);
+            if (caption != null && !caption.isEmpty()) {
+                mediaContent.put("caption", caption);
+            }
+            
+            return sendMessage(mediaContent.toString(), ChatMessageItem.MessageType.valueOf(mediaType));
+        } catch (Exception e) {
+            Log.e(TAG, "Error creating media message", e);
+            errorMessage.setValue("Failed to send media: " + e.getMessage());
+            return false;
+        }
+    }
+    
+    /**
+     * Send a message with specific content type
+     */
+    public boolean sendMessage(String content, ChatMessageItem.MessageType messageType) {
+        if (currentRecipientId == null || currentRecipientId.isEmpty()) {
+            return false;
+        }
         
-        Log.d(TAG, "Sending message of type " + messageType + " to " + currentRecipientId);
-        return chatService.sendDirectMessage(currentRecipientId, content);
+        // Send the message to the recipient
+        boolean sent = chatService.sendDirectMessage(currentRecipientId, content);
+        
+        if (sent) {
+            // Add to local messages (optimistic update)
+            List<ChatMessage> messages = chatMessages.getValue();
+            if (messages == null) {
+                messages = new ArrayList<>();
+            }
+            
+            Date now = new Date();
+            messages.add(new ChatMessage(
+                messageType.name(),
+                userId,
+                currentRecipientId,
+                content,
+                now
+            ));
+            
+            // Update LiveData
+            chatMessages.setValue(messages);
+        } else {
+            errorMessage.setValue("Failed to send message");
+        }
+        
+        return sent;
     }
     
     /**

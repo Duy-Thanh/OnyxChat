@@ -1,17 +1,26 @@
 package com.nekkochan.onyxchat.ui.adapters;
 
+import android.content.Intent;
+import android.net.Uri;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.animation.AlphaAnimation;
+import android.widget.ImageView;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.cardview.widget.CardView;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.bumptech.glide.Glide;
+import com.bumptech.glide.request.RequestOptions;
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.nekkochan.onyxchat.R;
+import com.nekkochan.onyxchat.ui.media.MediaViewerActivity;
 import com.nekkochan.onyxchat.ui.viewmodel.ChatViewModel;
 
 import java.text.SimpleDateFormat;
@@ -185,20 +194,134 @@ public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.
         return sameSender && closeTime && isSameDay(current, other);
     }
     
+    /**
+     * Parse a message to determine if it contains media content
+     */
+    private MediaContent parseMediaContent(String content) {
+        try {
+            JsonObject jsonObject = JsonParser.parseString(content).getAsJsonObject();
+            
+            if (jsonObject.has("type") && jsonObject.has("url")) {
+                String type = jsonObject.get("type").getAsString();
+                String url = jsonObject.get("url").getAsString();
+                String caption = jsonObject.has("caption") ? jsonObject.get("caption").getAsString() : "";
+                
+                return new MediaContent(type, url, caption);
+            }
+        } catch (Exception e) {
+            Log.d(TAG, "Not a valid media message: " + e.getMessage());
+        }
+        
+        return null;
+    }
+    
+    /**
+     * Media content holder class
+     */
+    private static class MediaContent {
+        String type;
+        String url;
+        String caption;
+        
+        MediaContent(String type, String url, String caption) {
+            this.type = type;
+            this.url = url;
+            this.caption = caption;
+        }
+    }
+    
     class ChatMessageViewHolder extends RecyclerView.ViewHolder {
         private final TextView messageText;
         private final TextView timeText;
         private final CardView messageCardView;
+        private final ImageView mediaImageView;
+        private final ImageView playButtonView;
         
         public ChatMessageViewHolder(@NonNull View itemView) {
             super(itemView);
             messageText = itemView.findViewById(R.id.message_text);
             timeText = itemView.findViewById(R.id.message_time);
             messageCardView = itemView.findViewById(R.id.messageCardView);
+            mediaImageView = itemView.findViewById(R.id.media_image_view);
+            playButtonView = itemView.findViewById(R.id.play_button);
         }
         
         public void bind(ChatViewModel.ChatMessage message, ChatViewModel.ChatMessage previousMessage, ChatViewModel.ChatMessage nextMessage) {
-            messageText.setText(message.getContent());
+            // Try to parse media content
+            MediaContent mediaContent = parseMediaContent(message.getContent());
+            
+            if (mediaContent != null) {
+                // This is a media message
+                if (mediaContent.type.equalsIgnoreCase("VIDEO")) {
+                    // Set up video message view
+                    messageText.setVisibility(View.GONE);
+                    mediaImageView.setVisibility(View.VISIBLE);
+                    playButtonView.setVisibility(View.VISIBLE);
+                    
+                    // Set video thumbnail
+                    Glide.with(itemView.getContext())
+                            .load(mediaContent.url)
+                            .apply(RequestOptions.centerCropTransform())
+                            .thumbnail(0.1f)
+                            .into(mediaImageView);
+                            
+                    // Set click listener to open video
+                    mediaImageView.setOnClickListener(v -> {
+                        Intent intent = new Intent(itemView.getContext(), MediaViewerActivity.class);
+                        intent.putExtra("mediaUrl", mediaContent.url);
+                        intent.putExtra("mediaType", "VIDEO");
+                        intent.putExtra("mediaSenderId", message.getSenderId());
+                        itemView.getContext().startActivity(intent);
+                    });
+                    
+                    playButtonView.setOnClickListener(v -> {
+                        Intent intent = new Intent(itemView.getContext(), MediaViewerActivity.class);
+                        intent.putExtra("mediaUrl", mediaContent.url);
+                        intent.putExtra("mediaType", "VIDEO");
+                        intent.putExtra("mediaSenderId", message.getSenderId());
+                        itemView.getContext().startActivity(intent);
+                    });
+                    
+                } else if (mediaContent.type.equalsIgnoreCase("IMAGE")) {
+                    // Set up image message view
+                    messageText.setVisibility(View.GONE);
+                    mediaImageView.setVisibility(View.VISIBLE);
+                    playButtonView.setVisibility(View.GONE);
+                    
+                    // Load image
+                    Glide.with(itemView.getContext())
+                            .load(mediaContent.url)
+                            .apply(RequestOptions.centerCropTransform())
+                            .into(mediaImageView);
+                            
+                    // Set click listener to open image
+                    mediaImageView.setOnClickListener(v -> {
+                        Intent intent = new Intent(itemView.getContext(), MediaViewerActivity.class);
+                        intent.putExtra("mediaUrl", mediaContent.url);
+                        intent.putExtra("mediaType", "IMAGE");
+                        intent.putExtra("mediaSenderId", message.getSenderId());
+                        itemView.getContext().startActivity(intent);
+                    });
+                } else {
+                    // Unknown media type - show caption or url as text
+                    messageText.setVisibility(View.VISIBLE);
+                    mediaImageView.setVisibility(View.GONE);
+                    playButtonView.setVisibility(View.GONE);
+                    
+                    messageText.setText(mediaContent.caption.isEmpty() 
+                            ? mediaContent.url : mediaContent.caption);
+                }
+            } else {
+                // Regular text message
+                messageText.setText(message.getContent());
+                messageText.setVisibility(View.VISIBLE);
+                if (mediaImageView != null) {
+                    mediaImageView.setVisibility(View.GONE);
+                }
+                if (playButtonView != null) {
+                    playButtonView.setVisibility(View.GONE);
+                }
+            }
             
             // Log the time of this specific message
             Date timestamp = message.getTimestamp();
@@ -253,7 +376,7 @@ public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.
                         messageCardView.setLayoutParams(params);
                     }
                 } catch (Exception e) {
-                    // Fallback silently if this doesn't work
+                    Log.e(TAG, "Failed to adjust message margins", e);
                 }
             }
         }

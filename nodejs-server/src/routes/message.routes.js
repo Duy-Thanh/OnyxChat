@@ -596,12 +596,30 @@ router.post("/", [authenticate], async (req, res) => {
       });
     }
 
+    // Check if content is JSON for media messages
+    let contentType = req.body.contentType || 'text';
+    let content = req.body.content;
+    let isMediaContent = false;
+
+    // Try to parse as JSON for media content
+    try {
+      const contentObj = JSON.parse(content);
+      if (contentObj.type && contentObj.url) {
+        // This is a media message
+        isMediaContent = true;
+        contentType = contentObj.type.toLowerCase();
+      }
+    } catch (e) {
+      // Not JSON, assume regular text
+    }
+
+    // Create the message
     const newMessage = await db.Message.create({
       senderId: req.userId,
       recipientId: req.body.recipientId,
-      content: req.body.content,
+      content: content,
       encrypted: req.body.encrypted || false,
-      contentType: req.body.contentType || 'text',
+      contentType: contentType,
     });
     
     // Create response with explicit timestamp fields
@@ -627,9 +645,9 @@ router.post("/", [authenticate], async (req, res) => {
         type: 'message',
         senderId: req.userId,
         recipientId: req.body.recipientId,
-        content: req.body.content,
+        content: content,
         encrypted: req.body.encrypted || false,
-        contentType: req.body.contentType || 'text',
+        contentType: contentType,
         timestamp: newMessage.createdAt.getTime(),
         formattedTime: newMessage.createdAt.toISOString()
       });
