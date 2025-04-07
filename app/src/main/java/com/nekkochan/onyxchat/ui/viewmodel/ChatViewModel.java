@@ -306,6 +306,15 @@ public class ChatViewModel extends AndroidViewModel {
     }
     
     /**
+     * Force a refresh of messages for the current recipient
+     */
+    public void refreshMessages() {
+        if (currentRecipientId != null && !currentRecipientId.isEmpty()) {
+            loadMessages(currentRecipientId);
+        }
+    }
+    
+    /**
      * Get the error message
      * @return LiveData containing the error message
      */

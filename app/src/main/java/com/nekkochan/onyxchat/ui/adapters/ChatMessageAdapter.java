@@ -64,6 +64,8 @@ public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.
         Log.d(TAG, "Initialized formatters with timezone: " + deviceTimeZone.getID());
     }
 
+    private final com.google.gson.JsonParser jsonParser = new com.google.gson.JsonParser();
+
     public ChatMessageAdapter(String currentUserId) {
         this.currentUserId = currentUserId;
     }
@@ -210,36 +212,34 @@ public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.
      * Parse a message to determine if it contains media content
      */
     private MediaContent parseMediaContent(String content) {
+        // Quick check to avoid trying to parse regular text messages as JSON
+        if (content == null || content.isEmpty()) {
+            return null;
+        }
+        
+        // Only attempt to parse as JSON if the content starts with a curly brace
+        // This prevents regular text messages from causing parse errors
+        if (!content.trim().startsWith("{")) {
+            return null;
+        }
+        
         try {
             Log.d(TAG, "Attempting to parse message content: " + content);
             
-            // First try parsing as direct JSON
-            try {
-                JSONObject jsonObject = new JSONObject(content);
-                if (jsonObject.has("type") && jsonObject.has("url")) {
-                    String type = jsonObject.getString("type");
-                    String url = jsonObject.getString("url");
-                    String caption = jsonObject.optString("caption", "");
-                    
-                    Log.d(TAG, String.format("Successfully parsed media message - Type: %s, URL: %s, Caption: %s", 
-                        type, url, caption));
-                    
-                    return new MediaContent(type, url, caption);
-                }
-            } catch (JSONException e) {
-                // If direct JSON parsing fails, try with JsonParser
-                JsonObject jsonObject = JsonParser.parseString(content).getAsJsonObject();
+            // Try with JsonParser
+            com.google.gson.stream.JsonReader reader = new com.google.gson.stream.JsonReader(new java.io.StringReader(content));
+            reader.setLenient(true);
+            JsonObject jsonObject = jsonParser.parse(reader).getAsJsonObject();
+            
+            if (jsonObject.has("type") && jsonObject.has("url")) {
+                String type = jsonObject.get("type").getAsString();
+                String url = jsonObject.get("url").getAsString();
+                String caption = jsonObject.has("caption") ? jsonObject.get("caption").getAsString() : "";
                 
-                if (jsonObject.has("type") && jsonObject.has("url")) {
-                    String type = jsonObject.get("type").getAsString();
-                    String url = jsonObject.get("url").getAsString();
-                    String caption = jsonObject.has("caption") ? jsonObject.get("caption").getAsString() : "";
-                    
-                    Log.d(TAG, String.format("Successfully parsed media message (using JsonParser) - Type: %s, URL: %s, Caption: %s", 
-                        type, url, caption));
-                    
-                    return new MediaContent(type, url, caption);
-                }
+                Log.d(TAG, String.format("Successfully parsed media message (using JsonParser) - Type: %s, URL: %s, Caption: %s", 
+                    type, url, caption));
+                
+                return new MediaContent(type, url, caption);
             }
         } catch (Exception e) {
             Log.e(TAG, "Failed to parse media message: " + e.getMessage());

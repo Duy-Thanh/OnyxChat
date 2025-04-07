@@ -453,14 +453,19 @@ public class ChatActivity extends AppCompatActivity {
     protected void onResume() {
         super.onResume();
         
-        // Check if there's an ongoing media processing
-        if (FileUtils.isMediaProcessing) {
-            // Show the media processing UI
-            showMediaStatus("Processing " + FileUtils.currentProcessingType + "...", 
-                            FileUtils.currentProcessingType, true);
+        // Refresh messages when activity comes to foreground
+        if (viewModel != null) {
+            viewModel.refreshMessages();
+        }
+        
+        // Also check for media processing state
+        if (FileUtils.isMediaProcessing()) {
+            // Show media status UI with the current processing type
+            String mediaType = FileUtils.getMediaProcessingType();
+            String statusMessage = "Processing " + mediaType + "...";
+            showMediaStatus(statusMessage, mediaType, true);
         } else if (isProcessingMedia) {
-            // If our activity thinks we're processing but FileUtils doesn't,
-            // the processing likely finished while we were away
+            // If we think we're processing but FileUtils disagrees, hide the UI
             hideMediaStatus();
         }
     }

@@ -463,38 +463,81 @@ public class ChatNotificationService extends Service {
      * Show a notification for a new message
      */
     private void showMessageNotification(ChatService.ChatMessage message) {
-        // Don't show notifications for our own messages
-        if (message.isSelf()) {
+        if (message == null || message.getSenderId() == null) {
             return;
         }
         
+        // Don't show notifications for our own messages
+        if (message.isSelf() || message.getSenderId().equals(sessionManager.getUserId())) {
+            return;
+        }
+        
+        // Only show notifications for direct messages (not system or error messages)
+        if (message.getType() != ChatService.ChatMessage.MessageType.DIRECT &&
+            message.getType() != ChatService.ChatMessage.MessageType.MESSAGE) {
+            return;
+        }
+        
+        // Get sender name from contacts DB or use ID if not found
+        String senderName = message.getSenderId();
+        
+        // Create a unique notification ID for this conversation
+        int notificationId = senderName.hashCode();
+        
         // Create an intent to open the chat with this sender
-        Intent chatIntent = new Intent(this, ChatActivity.class);
-        chatIntent.putExtra("userId", message.getSenderId());
-        chatIntent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        Intent intent = new Intent(this, ChatActivity.class);
+        intent.putExtra(ChatActivity.EXTRA_CONTACT_ID, message.getSenderId());
+        intent.putExtra(ChatActivity.EXTRA_CONTACT_NAME, senderName);
+        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         
         PendingIntent pendingIntent = PendingIntent.getActivity(
                 this,
-                0,
-                chatIntent,
+                notificationId,
+                intent,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
         );
         
+        // Get message content to display in notification
+        String content = message.getContent();
+        String messageContent = content;
+        
+        // Check if this is a media message (JSON)
+        if (content != null && content.startsWith("{") && content.endsWith("}")) {
+            try {
+                // Parse the JSON to get the media type
+                org.json.JSONObject jsonObject = new org.json.JSONObject(content);
+                if (jsonObject.has("type")) {
+                    String mediaType = jsonObject.getString("type");
+                    String caption = jsonObject.optString("caption", "");
+                    
+                    if (!caption.isEmpty()) {
+                        messageContent = caption;
+                    } else {
+                        messageContent = "📎 " + mediaType + " message";
+                    }
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Error parsing media message", e);
+            }
+        }
+        
         // Build the notification
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, MESSAGE_CHANNEL_ID)
-                .setSmallIcon(R.drawable.ic_notification)
-                .setContentTitle("New message from " + message.getSenderId())
-                .setContentText(message.getContent())
+                .setSmallIcon(R.drawable.ic_message_notification)
+                .setContentTitle(senderName)
+                .setContentText(messageContent)
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+                .setAutoCancel(true)
                 .setContentIntent(pendingIntent)
-                .setAutoCancel(true);
+                .setDefaults(NotificationCompat.DEFAULT_ALL);
         
         // Show the notification
         NotificationManagerCompat notificationManager = NotificationManagerCompat.from(this);
         try {
-            notificationManager.notify(nextNotificationId++, builder.build());
+            notificationManager.notify(notificationId, builder.build());
         } catch (SecurityException e) {
-            Log.e(TAG, "No permission to show notification", e);
+            Log.e(TAG, "Unable to show notification: " + e.getMessage());
         }
     }
     

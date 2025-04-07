@@ -8257,3 +8257,5 @@ local.properties
 /nodejs-server/node_modules/@colors/colors/lib/custom/zalgo.js
 /nodejs-server/node_modules/@colors/colors/lib/maps/zebra.js
 /uploads/e1da34cf-316c-4653-8a42-2fce0848873e.mp4
+/logs/combined.log
+/logs/error.log

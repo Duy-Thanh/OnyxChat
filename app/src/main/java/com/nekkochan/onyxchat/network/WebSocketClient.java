@@ -606,42 +606,60 @@ public class WebSocketClient {
      * Attempt to reconnect immediately
      */
     private void attemptReconnect() {
-        if (reconnecting.compareAndSet(false, true)) {
-            Log.d(TAG, "Attempting reconnect, attempt " + (reconnectAttempts + 1));
+        // Avoid multiple reconnections in progress
+        if (reconnecting.getAndSet(true)) {
+            Log.d(TAG, "Reconnect already in progress, skipping");
+            return;
+        }
+        
+        try {
+            // Check if this is a valid reconnect time
+            long currentTime = System.currentTimeMillis();
+            if (currentTime - lastConnectAttemptTime < RECONNECT_COOLDOWN_MS) {
+                // Too soon after last attempt - wait a bit
+                reconnecting.set(false);
+                Log.d(TAG, "Attempted reconnect too soon after previous attempt, skipping");
+                return;
+            }
             
-            // Increment the reconnect attempts counter
-            reconnectAttempts++;
+            // Increment consecutive attempts counter
+            consecutiveAttempts++;
             
-            // Try to reconnect after a short delay
-            new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                try {
-                    // Try to connect
-                    boolean success = startConnection();
-                    
-                    // Reset reconnecting flag
-                    reconnecting.set(false);
-                    
-                    // If connection failed, schedule another attempt with backoff
-                    if (!success) {
-                        // Calculate next delay using exponential backoff
-                        long nextDelay = Math.min(
-                            RECONNECT_DELAY_MS * (long)Math.pow(1.5, Math.min(reconnectAttempts, 10)),
-                            MAX_BACKOFF_SECONDS * 1000
-                        );
-                        scheduleReconnect(nextDelay);
-                    }
-                } catch (Exception e) {
-                    Log.e(TAG, "Error attempting reconnect", e);
-                    reconnecting.set(false);
-                    
-                    // Schedule another attempt even after an exception
-                    long nextDelay = Math.min(
-                        RECONNECT_DELAY_MS * 2,
-                        MAX_BACKOFF_SECONDS * 1000
-                    );
-                    scheduleReconnect(nextDelay);
-                }
-            }, RECONNECT_DELAY_MS);
+            // If we have too many consecutive attempts, introduce a longer delay
+            if (consecutiveAttempts > MAX_CONSECUTIVE_ATTEMPTS) {
+                Log.w(TAG, "Too many consecutive reconnect attempts, backing off");
+                long delay = Math.min(30000, RECONNECT_DELAY_MS * (long)Math.pow(1.5, consecutiveAttempts - MAX_CONSECUTIVE_ATTEMPTS));
+                scheduleReconnect(delay);
+                reconnecting.set(false);
+                return;
+            }
+            
+            Log.d(TAG, "Attempting to reconnect, attempt #" + reconnectAttempts);
+            
+            // Record this attempt time
+            lastConnectAttemptTime = currentTime;
+            
+            // Start connection
+            boolean started = startConnection();
+            if (started) {
+                reconnectAttempts++;
+                Log.d(TAG, "Reconnection attempt started");
+            } else {
+                Log.e(TAG, "Reconnection attempt failed to start");
+                
+                // Schedule another attempt with exponential backoff
+                long delay = Math.min(30000, RECONNECT_DELAY_MS * (long)Math.pow(1.5, Math.min(reconnectAttempts, 10)));
+                
+                // Add some random jitter to avoid thundering herd problem
+                delay += new Random().nextInt(1000);
+                
+                Log.d(TAG, "Scheduling reconnect in " + delay + "ms");
+                scheduleReconnect(delay);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error in reconnect attempt", e);
+        } finally {
+            reconnecting.set(false);
         }
     }
     
@@ -700,30 +718,41 @@ public class WebSocketClient {
     }
     
     /**
-     * Send a direct message to a specific user
-     * 
-     * @param recipientId the ID of the recipient
-     * @param message the message content
+     * Send a direct message to a specific recipient
+     * @param recipientId the recipient's ID
+     * @param message the message to send
      * @return true if the message was sent, false otherwise
      */
     public boolean sendDirectMessage(String recipientId, String message) {
-        if (webSocket == null || state != WebSocketState.CONNECTED) {
-            Log.e(TAG, "Cannot send direct message: not connected");
+        if (state != WebSocketState.CONNECTED) {
+            Log.w(TAG, "Cannot send direct message, websocket is not connected");
+            return false;
+        }
+        
+        if (message == null || message.isEmpty()) {
+            Log.w(TAG, "Cannot send empty message");
+            return false;
+        }
+        
+        if (recipientId == null || recipientId.isEmpty()) {
+            Log.w(TAG, "Cannot send message to empty recipient");
             return false;
         }
         
         try {
-            JsonObject json = new JsonObject();
-            json.addProperty("type", "direct");
-            json.addProperty("recipient", recipientId);
-            json.addProperty("content", message);
+            // Create a JSON message
+            JSONObject messageJson = new JSONObject();
+            messageJson.put("type", "direct_message");
+            messageJson.put("recipientId", recipientId);
+            messageJson.put("content", message);
+            messageJson.put("timestamp", System.currentTimeMillis());
             
-            performMemoryCleanupIfNeeded();
-            
-            // Use getGson() helper method instead of directly accessing gson
-            return webSocket.send(getGson().toJson(json));
-        } catch (Exception e) {
-            Log.e(TAG, "Error sending direct message", e);
+            // Convert to string and send
+            String messageStr = messageJson.toString();
+            Log.d(TAG, "Sending direct message to " + recipientId + ": " + messageStr);
+            return send(messageStr);
+        } catch (JSONException e) {
+            Log.e(TAG, "Error creating direct message JSON", e);
             return false;
         }
     }
