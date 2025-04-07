@@ -137,7 +137,7 @@
             android:exported="false"
             android:parentActivityName=".ui.chat.ChatActivity"
             android:label="Edit Media"
-            android:theme="@style/Theme.OnyxChat.NoActionBar" />
+            android:theme="@style/Theme.OnyxChat.MediaProcessing" />
         
     </application>
 

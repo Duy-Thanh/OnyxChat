@@ -79,6 +79,14 @@
         <item name="windowNoTitle">true</item>
     </style>
 
+    <!-- Media Processing theme -->
+    <style name="Theme.OnyxChat.MediaProcessing" parent="Theme.OnyxChat.NoActionBar">
+        <item name="android:statusBarColor">@color/colorPrimaryDark</item>
+        <item name="android:windowTranslucentStatus">false</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:fitsSystemWindows">true</item>
+    </style>
+
     <!-- Text Appearances -->
     <style name="TextAppearance.App.Headline" parent="TextAppearance.MaterialComponents.Headline6">
         <item name="fontFamily">sans-serif</item>
