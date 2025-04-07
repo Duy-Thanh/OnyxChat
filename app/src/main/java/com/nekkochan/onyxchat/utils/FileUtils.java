@@ -13,17 +13,25 @@ import android.provider.OpenableColumns;
 import android.text.TextUtils;
 import android.util.Log;
 
+import com.arthenica.ffmpegkit.FFmpegKit;
+import com.arthenica.ffmpegkit.FFmpegSession;
+import com.arthenica.ffmpegkit.ReturnCode;
+
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Utility class for file operations
  */
 public class FileUtils {
     private static final String TAG = "FileUtils";
+    private static final int MAX_IMAGE_DIMENSION = 1280; // Maximum width/height for images
+    private static final int VIDEO_BITRATE = 1500000; // 1.5 Mbps for videos
+    private static final int MAX_FILE_SIZE_MB = 15; // 15 MB max file size
 
     /**
      * Get a file path from a Uri
@@ -264,5 +272,176 @@ public class FileUtils {
      */
     private static boolean isGooglePhotosUri(Uri uri) {
         return "com.google.android.apps.photos.content".equals(uri.getAuthority());
+    }
+
+    /**
+     * Create a temporary file for media attachments
+     *
+     * @param context The context
+     * @param prefix File name prefix
+     * @param extension File extension with dot
+     * @return The temporary file
+     * @throws IOException If file creation fails
+     */
+    public static File createTempFile(Context context, String prefix, String extension) throws IOException {
+        File cacheDir = new File(context.getCacheDir(), "attachments");
+        if (!cacheDir.exists()) {
+            cacheDir.mkdirs();
+        }
+        
+        String fileName = prefix + "_" + UUID.randomUUID().toString() + extension;
+        return new File(cacheDir, fileName);
+    }
+    
+    /**
+     * Compress an image file using FFmpeg
+     *
+     * @param context The context
+     * @param sourceUri The source image Uri
+     * @return CompletableFuture with the compressed file path
+     */
+    public static CompletableFuture<String> compressImage(Context context, Uri sourceUri) {
+        CompletableFuture<String> future = new CompletableFuture<>();
+        String sourcePath = getPath(context, sourceUri);
+        
+        if (sourcePath == null) {
+            future.completeExceptionally(new IOException("Could not find file path"));
+            return future;
+        }
+        
+        try {
+            String fileName = getFileName(context, sourceUri);
+            String extension = fileName.substring(fileName.lastIndexOf("."));
+            File outputFile = createTempFile(context, "img", extension);
+            
+            String ffmpegCmd = String.format("-i %s -vf scale='min(%d,iw):-1' -quality 85 -y %s",
+                    sourcePath, MAX_IMAGE_DIMENSION, outputFile.getAbsolutePath());
+            
+            executeFFmpegAsync(ffmpegCmd, outputFile.getAbsolutePath(), future);
+            
+            return future;
+        } catch (IOException e) {
+            future.completeExceptionally(e);
+            return future;
+        }
+    }
+    
+    /**
+     * Compress a video file using FFmpeg
+     *
+     * @param context The context
+     * @param sourceUri The source video Uri
+     * @return CompletableFuture with the compressed file path
+     */
+    public static CompletableFuture<String> compressVideo(Context context, Uri sourceUri) {
+        CompletableFuture<String> future = new CompletableFuture<>();
+        String sourcePath = getPath(context, sourceUri);
+        
+        if (sourcePath == null) {
+            future.completeExceptionally(new IOException("Could not find file path"));
+            return future;
+        }
+        
+        try {
+            File outputFile = createTempFile(context, "video", ".mp4");
+            
+            // FFmpeg command to compress video
+            String ffmpegCmd = String.format(
+                    "-i %s -c:v libx264 -preset medium -b:v %d -maxrate %d " +
+                    "-bufsize %d -vf scale='min(%d,iw):-2' -c:a aac -b:a 128k " +
+                    "-movflags +faststart -y %s",
+                    sourcePath, 
+                    VIDEO_BITRATE, 
+                    VIDEO_BITRATE * 2, 
+                    VIDEO_BITRATE * 4,
+                    MAX_IMAGE_DIMENSION,
+                    outputFile.getAbsolutePath());
+            
+            executeFFmpegAsync(ffmpegCmd, outputFile.getAbsolutePath(), future);
+            
+            return future;
+        } catch (IOException e) {
+            future.completeExceptionally(e);
+            return future;
+        }
+    }
+    
+    /**
+     * Execute an FFmpeg command asynchronously
+     *
+     * @param command The FFmpeg command
+     * @param outputPath The output file path
+     * @param future The CompletableFuture to complete when done
+     */
+    private static void executeFFmpegAsync(String command, String outputPath, CompletableFuture<String> future) {
+        Log.d(TAG, "Executing FFmpeg command: " + command);
+        
+        FFmpegSession session = FFmpegKit.executeAsync(command, session1 -> {
+            if (ReturnCode.isSuccess(session1.getReturnCode())) {
+                Log.d(TAG, "FFmpeg process completed successfully");
+                future.complete(outputPath);
+            } else if (ReturnCode.isCancel(session1.getReturnCode())) {
+                Log.d(TAG, "FFmpeg process canceled");
+                future.completeExceptionally(new IOException("Process canceled"));
+            } else {
+                Log.e(TAG, "FFmpeg process failed with state: " + session1.getState() + 
+                        " and return code: " + session1.getReturnCode());
+                future.completeExceptionally(new IOException("Process failed with return code: " + 
+                        session1.getReturnCode()));
+            }
+        }, log -> {
+            // FFmpeg logs
+            Log.d(TAG, "FFmpeg log: " + log.getMessage());
+        }, statistics -> {
+            // Progress updates if needed
+            // We can use statistics.getTime() to get the progress time in milliseconds
+        });
+        
+        if (session == null) {
+            future.completeExceptionally(new IOException("Failed to start FFmpeg process"));
+        }
+    }
+    
+    /**
+     * Check if a file exceeds the maximum allowed size
+     *
+     * @param context The context
+     * @param uri The file Uri
+     * @return True if the file size is valid, false otherwise
+     */
+    public static boolean isFileSizeValid(Context context, Uri uri) {
+        try {
+            long fileSize = getFileSize(context, uri);
+            return MimeTypeUtils.isFileSizeValid(fileSize, MAX_FILE_SIZE_MB);
+        } catch (Exception e) {
+            Log.e(TAG, "Error checking file size", e);
+            return false;
+        }
+    }
+    
+    /**
+     * Get the size of a file from Uri
+     *
+     * @param context The context
+     * @param uri The file Uri
+     * @return The file size in bytes
+     */
+    public static long getFileSize(Context context, Uri uri) {
+        try (Cursor cursor = context.getContentResolver().query(uri, null, null, null, null)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                int sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE);
+                if (sizeIndex != -1) {
+                    return cursor.getLong(sizeIndex);
+                }
+            }
+        }
+        
+        // If unable to query the size, get it from the file
+        String path = getPath(context, uri);
+        if (path != null) {
+            return new File(path).length();
+        }
+        
+        return 0;
     }
 } 

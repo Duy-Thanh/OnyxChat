@@ -186,4 +186,18 @@
     <string name="danger_zone">Danger Zone</string>
     <string name="clear_chat">Clear Chat History</string>
     <string name="block_contact">Block Contact</string>
+    
+    <!-- Chat attachment strings -->
+    <string name="add_attachment">Add Attachment</string>
+    <string name="photos">Photos</string>
+    <string name="camera">Camera</string>
+    <string name="files">Files</string>
+    <string name="select_emoji">Select Emoji</string>
+    <string name="photo">Photo</string>
+    <string name="video">Video</string>
+    <string name="document">Document</string>
+    <string name="file_size_too_large">File size exceeds the maximum limit of %1$d MB</string>
+    <string name="file_unsupported_type">Unsupported file type</string>
+    <string name="permission_required">Permission required</string>
+    <string name="storage_permission_required">Storage permission is required to access media files</string>
 </resources>

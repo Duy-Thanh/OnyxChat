@@ -17,6 +17,14 @@ import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
+import android.content.ContentResolver;
+import android.database.Cursor;
+import android.provider.MediaStore;
+import android.provider.OpenableColumns;
+import android.webkit.MimeTypeMap;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.util.UUID;
 
 /**
  * Utility class for media processing operations using FFmpeg
@@ -307,5 +315,218 @@ public class MediaUtils {
     public interface MediaProcessCallback {
         void onSuccess(Uri outputUri);
         void onError(String errorMessage);
+    }
+
+    /**
+     * Check if a file's size is within the specified limit
+     * @param context Application context
+     * @param uri File URI to check
+     * @param maxSizeMB Maximum file size in megabytes
+     * @return true if file size is within limits, false otherwise
+     */
+    public static boolean isFileSizeValid(Context context, Uri uri, int maxSizeMB) {
+        try {
+            long fileSize = getFileSize(context, uri);
+            long maxSizeBytes = maxSizeMB * 1024 * 1024L; // Convert MB to bytes
+            return fileSize <= maxSizeBytes;
+        } catch (Exception e) {
+            Log.e(TAG, "Error checking file size", e);
+            return false;
+        }
+    }
+    
+    /**
+     * Get the size of a file from its URI
+     * @param context Application context
+     * @param uri File URI
+     * @return File size in bytes
+     */
+    public static long getFileSize(Context context, Uri uri) {
+        long fileSize = 0;
+        try {
+            ContentResolver contentResolver = context.getContentResolver();
+            Cursor cursor = contentResolver.query(uri, null, null, null, null);
+            if (cursor != null) {
+                int sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE);
+                cursor.moveToFirst();
+                if (sizeIndex != -1) {
+                    fileSize = cursor.getLong(sizeIndex);
+                }
+                cursor.close();
+            } else {
+                // If cursor is null, try to get file size using other method
+                try (InputStream inputStream = contentResolver.openInputStream(uri)) {
+                    if (inputStream != null) {
+                        fileSize = inputStream.available();
+                    }
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error getting file size", e);
+        }
+        return fileSize;
+    }
+    
+    /**
+     * Get MIME type of a file from its URI
+     * @param context Application context
+     * @param uri File URI
+     * @return MIME type of the file
+     */
+    public static String getMimeType(Context context, Uri uri) {
+        String mimeType = null;
+        if (uri.getScheme().equals(ContentResolver.SCHEME_CONTENT)) {
+            ContentResolver contentResolver = context.getContentResolver();
+            mimeType = contentResolver.getType(uri);
+        } else {
+            String fileExtension = MimeTypeMap.getFileExtensionFromUrl(uri.toString());
+            mimeType = MimeTypeMap.getSingleton().getMimeTypeFromExtension(fileExtension.toLowerCase());
+        }
+        return mimeType;
+    }
+    
+    /**
+     * Copy file from URI to app's cache directory
+     * @param context Application context
+     * @param uri Source file URI
+     * @return File object pointing to the copied file
+     * @throws IOException If file copying fails
+     */
+    public static File copyFileToCache(Context context, Uri uri) throws IOException {
+        ContentResolver contentResolver = context.getContentResolver();
+        String fileName = getFileName(context, uri);
+        
+        // Create a unique file name if original is not available
+        if (fileName == null) {
+            String mimeType = getMimeType(context, uri);
+            String extension = getExtensionFromMimeType(mimeType);
+            fileName = UUID.randomUUID().toString() + "." + extension;
+        }
+        
+        File destinationFile = new File(context.getCacheDir(), fileName);
+        
+        try (InputStream inputStream = contentResolver.openInputStream(uri);
+             FileOutputStream outputStream = new FileOutputStream(destinationFile)) {
+            
+            if (inputStream == null) {
+                throw new IOException("Failed to open input stream");
+            }
+            
+            byte[] buffer = new byte[4096];
+            int read;
+            while ((read = inputStream.read(buffer)) != -1) {
+                outputStream.write(buffer, 0, read);
+            }
+            outputStream.flush();
+            return destinationFile;
+        }
+    }
+    
+    /**
+     * Get the original file name from URI
+     * @param context Application context
+     * @param uri File URI
+     * @return Original file name or null if not available
+     */
+    public static String getFileName(Context context, Uri uri) {
+        String result = null;
+        if (uri.getScheme().equals(ContentResolver.SCHEME_CONTENT)) {
+            try (Cursor cursor = context.getContentResolver().query(uri, null, null, null, null)) {
+                if (cursor != null && cursor.moveToFirst()) {
+                    int nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
+                    if (nameIndex != -1) {
+                        result = cursor.getString(nameIndex);
+                    }
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Failed to get filename", e);
+            }
+        }
+        if (result == null) {
+            result = uri.getPath();
+            int cut = result != null ? result.lastIndexOf('/') : -1;
+            if (cut != -1) {
+                result = result.substring(cut + 1);
+            }
+        }
+        return result;
+    }
+    
+    /**
+     * Get file extension from MIME type
+     * @param mimeType MIME type string
+     * @return File extension corresponding to the MIME type
+     */
+    private static String getExtensionFromMimeType(String mimeType) {
+        if (mimeType == null) return "bin";
+        
+        String[] parts = mimeType.split("/");
+        if (parts.length < 2) return "bin";
+        
+        String subType = parts[1];
+        switch (subType) {
+            case "jpeg":
+                return "jpg";
+            case "png":
+                return "png";
+            case "gif":
+                return "gif";
+            case "mp4":
+                return "mp4";
+            case "3gpp":
+                return "3gp";
+            case "quicktime":
+                return "mov";
+            case "pdf":
+                return "pdf";
+            case "msword":
+                return "doc";
+            case "vnd.openxmlformats-officedocument.wordprocessingml.document":
+                return "docx";
+            default:
+                // Try to use the subtype as extension
+                if (subType.contains("+")) {
+                    return subType.split("\\+")[0];
+                }
+                return subType;
+        }
+    }
+    
+    /**
+     * Check if a MIME type represents an image
+     * @param mimeType MIME type to check
+     * @return true if the MIME type is for an image, false otherwise
+     */
+    public static boolean isImageMimeType(String mimeType) {
+        return mimeType != null && mimeType.startsWith("image/");
+    }
+    
+    /**
+     * Check if a MIME type represents a video
+     * @param mimeType MIME type to check
+     * @return true if the MIME type is for a video, false otherwise
+     */
+    public static boolean isVideoMimeType(String mimeType) {
+        return mimeType != null && mimeType.startsWith("video/");
+    }
+    
+    /**
+     * Get a File object from a URI
+     * @param context Application context
+     * @param uri File URI to convert
+     * @return File object, or null if conversion fails
+     */
+    public static File getFileFromUri(Context context, Uri uri) {
+        if (uri.getScheme().equals("file")) {
+            return new File(uri.getPath());
+        } else if (uri.getScheme().equals("content")) {
+            try {
+                return copyFileToCache(context, uri);
+            } catch (IOException e) {
+                Log.e(TAG, "Failed to copy file to cache", e);
+                return null;
+            }
+        }
+        return null;
     }
 } 

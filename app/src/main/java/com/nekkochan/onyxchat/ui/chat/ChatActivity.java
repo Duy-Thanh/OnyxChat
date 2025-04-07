@@ -1,6 +1,10 @@
 package com.nekkochan.onyxchat.ui.chat;
 
+import android.Manifest;
+import android.app.Activity;
 import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.TextWatcher;
@@ -14,18 +18,29 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.lifecycle.ViewModelProvider;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.google.android.material.bottomsheet.BottomSheetDialog;
 import com.google.android.material.chip.Chip;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.nekkochan.onyxchat.R;
+import com.nekkochan.onyxchat.ui.MediaProcessingActivity;
 import com.nekkochan.onyxchat.ui.adapters.ChatMessageAdapter;
 import com.nekkochan.onyxchat.ui.viewmodel.ChatViewModel;
+import com.nekkochan.onyxchat.util.EmojiUtils;
+import com.nekkochan.onyxchat.utils.FileUtils;
+import com.nekkochan.onyxchat.utils.MimeTypeUtils;
+import com.vanniktech.emoji.EmojiPopup;
+
+import java.util.concurrent.CompletableFuture;
 
 import de.hdodenhof.circleimageview.CircleImageView;
 
@@ -34,6 +49,8 @@ public class ChatActivity extends AppCompatActivity {
     private static final String TAG = "ChatActivity";
     public static final String EXTRA_CONTACT_ID = "contact_id";
     public static final String EXTRA_CONTACT_NAME = "contact_name";
+    private static final int MEDIA_MAX_SIZE_MB = 15;
+    private static final int PERMISSION_REQUEST_MEDIA = 100;
     
     private ChatViewModel viewModel;
     private RecyclerView recyclerView;
@@ -52,6 +69,41 @@ public class ChatActivity extends AppCompatActivity {
     private ImageButton voiceCallButton;
     private ImageButton videoCallButton;
     private ImageButton chatSettingsButton;
+    private EmojiPopup emojiPopup;
+    private Uri selectedFileUri;
+    
+    // Activity result launcher for picking images
+    private final ActivityResultLauncher<Intent> pickImageLauncher = 
+            registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
+        if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
+            selectedFileUri = result.getData().getData();
+            if (selectedFileUri != null) {
+                handleSelectedFile(selectedFileUri);
+            }
+        }
+    });
+    
+    // Activity result launcher for picking videos
+    private final ActivityResultLauncher<Intent> pickVideoLauncher = 
+            registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
+        if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
+            selectedFileUri = result.getData().getData();
+            if (selectedFileUri != null) {
+                handleSelectedFile(selectedFileUri);
+            }
+        }
+    });
+    
+    // Activity result launcher for picking documents
+    private final ActivityResultLauncher<Intent> pickDocumentLauncher = 
+            registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
+        if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
+            selectedFileUri = result.getData().getData();
+            if (selectedFileUri != null) {
+                handleSelectedFile(selectedFileUri);
+            }
+        }
+    });
     
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -149,6 +201,9 @@ public class ChatActivity extends AppCompatActivity {
             }
         });
         
+        // Set up emoji support
+        emojiPopup = EmojiUtils.setupEmojiPopup(findViewById(android.R.id.content), messageInput, emojiButton);
+        
         // Watch for scrolling to show/hide scroll button
         recyclerView.addOnScrollListener(new RecyclerView.OnScrollListener() {
             @Override
@@ -169,14 +224,7 @@ public class ChatActivity extends AppCompatActivity {
         });
         
         // Set up attachment button
-        attachButton.setOnClickListener(v -> {
-            Toast.makeText(this, "Attachment feature coming soon", Toast.LENGTH_SHORT).show();
-        });
-        
-        // Set up emoji button
-        emojiButton.setOnClickListener(v -> {
-            Toast.makeText(this, "Emoji picker coming soon", Toast.LENGTH_SHORT).show();
-        });
+        attachButton.setOnClickListener(v -> showAttachmentOptions());
         
         // Set up voice call button
         voiceCallButton.setOnClickListener(v -> {
@@ -247,6 +295,37 @@ public class ChatActivity extends AppCompatActivity {
         }
     }
     
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        // Dismiss emoji popup to prevent memory leaks
+        EmojiUtils.dismissEmojiPopup();
+    }
+    
+    @Override
+    public void onBackPressed() {
+        // Handle back press when emoji popup is showing
+        if (EmojiUtils.isEmojiPopupShowing()) {
+            EmojiUtils.dismissEmojiPopup();
+        } else {
+            super.onBackPressed();
+        }
+    }
+    
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        
+        if (requestCode == PERMISSION_REQUEST_MEDIA) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                // Permission granted, retry the action
+                showAttachmentOptions();
+            } else {
+                Toast.makeText(this, "Permission denied. Cannot access media files.", Toast.LENGTH_SHORT).show();
+            }
+        }
+    }
+    
     /**
      * Update the connection status UI
      */
@@ -296,5 +375,203 @@ public class ChatActivity extends AppCompatActivity {
                 Toast.makeText(this, "Failed to send message", Toast.LENGTH_SHORT).show();
             }
         }
+    }
+    
+    /**
+     * Show the attachment options bottom sheet
+     */
+    private void showAttachmentOptions() {
+        // Check if we have the necessary permissions first
+        if (!checkMediaPermissions()) {
+            return;
+        }
+        
+        BottomSheetDialog dialog = new BottomSheetDialog(this);
+        View sheetView = getLayoutInflater().inflate(R.layout.bottom_sheet_attachments, null);
+        dialog.setContentView(sheetView);
+        
+        // Set up click listeners for attachment options
+        sheetView.findViewById(R.id.option_photo).setOnClickListener(v -> {
+            dialog.dismiss();
+            pickImage();
+        });
+        
+        sheetView.findViewById(R.id.option_video).setOnClickListener(v -> {
+            dialog.dismiss();
+            pickVideo();
+        });
+        
+        sheetView.findViewById(R.id.option_file).setOnClickListener(v -> {
+            dialog.dismiss();
+            pickDocument();
+        });
+        
+        dialog.show();
+    }
+    
+    /**
+     * Pick an image from gallery
+     */
+    private void pickImage() {
+        Intent intent = new Intent(Intent.ACTION_PICK);
+        intent.setType("image/*");
+        pickImageLauncher.launch(intent);
+    }
+    
+    /**
+     * Pick a video from gallery
+     */
+    private void pickVideo() {
+        Intent intent = new Intent(Intent.ACTION_PICK);
+        intent.setType("video/*");
+        pickVideoLauncher.launch(intent);
+    }
+    
+    /**
+     * Pick a document file
+     */
+    private void pickDocument() {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("*/*");
+        intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{
+                "application/pdf",
+                "application/msword",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "application/vnd.ms-excel",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "text/plain"
+        });
+        pickDocumentLauncher.launch(intent);
+    }
+    
+    /**
+     * Handle the selected file
+     * 
+     * @param fileUri The URI of the selected file
+     */
+    private void handleSelectedFile(Uri fileUri) {
+        // Check file size first
+        if (!FileUtils.isFileSizeValid(this, fileUri)) {
+            Toast.makeText(this, 
+                   "File exceeds maximum size limit of " + MEDIA_MAX_SIZE_MB + "MB", 
+                   Toast.LENGTH_SHORT).show();
+            return;
+        }
+        
+        // Get the file's MIME type
+        String mimeType = MimeTypeUtils.getMimeType(this, fileUri);
+        if (mimeType == null) {
+            Toast.makeText(this, "Unknown file type", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        
+        // Handle the file based on its type
+        if (MimeTypeUtils.isImage(mimeType)) {
+            processImageFile(fileUri);
+        } else if (MimeTypeUtils.isVideo(mimeType)) {
+            processVideoFile(fileUri);
+        } else if (MimeTypeUtils.isDocument(mimeType)) {
+            processDocumentFile(fileUri);
+        } else {
+            Toast.makeText(this, "Unsupported file type", Toast.LENGTH_SHORT).show();
+        }
+    }
+    
+    /**
+     * Process an image file
+     */
+    private void processImageFile(Uri imageUri) {
+        Toast.makeText(this, "Processing image...", Toast.LENGTH_SHORT).show();
+        
+        // Start compressing in the background
+        CompletableFuture<String> future = FileUtils.compressImage(this, imageUri);
+        future.thenAcceptAsync(compressedPath -> {
+            // Launch media preview activity
+            Intent intent = new Intent(this, MediaProcessingActivity.class);
+            intent.putExtra(MediaProcessingActivity.EXTRA_FILE_PATH, compressedPath);
+            intent.putExtra(MediaProcessingActivity.EXTRA_FILE_TYPE, "image");
+            intent.putExtra(MediaProcessingActivity.EXTRA_RECIPIENT_ID, contactId);
+            startActivity(intent);
+        }, runnable -> runOnUiThread(runnable))
+        .exceptionally(ex -> {
+            // Handle error
+            runOnUiThread(() -> {
+                Toast.makeText(this, "Failed to process image: " + ex.getMessage(), Toast.LENGTH_SHORT).show();
+                Log.e(TAG, "Error processing image", ex);
+            });
+            return null;
+        });
+    }
+    
+    /**
+     * Process a video file
+     */
+    private void processVideoFile(Uri videoUri) {
+        Toast.makeText(this, "Processing video...", Toast.LENGTH_SHORT).show();
+        
+        // Start compressing in the background
+        CompletableFuture<String> future = FileUtils.compressVideo(this, videoUri);
+        future.thenAcceptAsync(compressedPath -> {
+            // Launch media preview activity
+            Intent intent = new Intent(this, MediaProcessingActivity.class);
+            intent.putExtra(MediaProcessingActivity.EXTRA_FILE_PATH, compressedPath);
+            intent.putExtra(MediaProcessingActivity.EXTRA_FILE_TYPE, "video");
+            intent.putExtra(MediaProcessingActivity.EXTRA_RECIPIENT_ID, contactId);
+            startActivity(intent);
+        }, runnable -> runOnUiThread(runnable))
+        .exceptionally(ex -> {
+            // Handle error
+            runOnUiThread(() -> {
+                Toast.makeText(this, "Failed to process video: " + ex.getMessage(), Toast.LENGTH_SHORT).show();
+                Log.e(TAG, "Error processing video", ex);
+            });
+            return null;
+        });
+    }
+    
+    /**
+     * Process a document file
+     */
+    private void processDocumentFile(Uri documentUri) {
+        // For documents, we don't need to compress, just copy to app's cache
+        String filePath = FileUtils.getPath(this, documentUri);
+        if (filePath != null) {
+            // Launch media processing activity directly
+            Intent intent = new Intent(this, MediaProcessingActivity.class);
+            intent.putExtra(MediaProcessingActivity.EXTRA_FILE_PATH, filePath);
+            intent.putExtra(MediaProcessingActivity.EXTRA_FILE_TYPE, "document");
+            intent.putExtra(MediaProcessingActivity.EXTRA_RECIPIENT_ID, contactId);
+            startActivity(intent);
+        } else {
+            Toast.makeText(this, "Failed to process document", Toast.LENGTH_SHORT).show();
+        }
+    }
+    
+    /**
+     * Check if we have the necessary permissions for media access
+     */
+    private boolean checkMediaPermissions() {
+        // For Android 13+ (API 33+), we need to check READ_MEDIA_IMAGES, READ_MEDIA_VIDEO
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            if (checkSelfPermission(Manifest.permission.READ_MEDIA_IMAGES) != PackageManager.PERMISSION_GRANTED ||
+                checkSelfPermission(Manifest.permission.READ_MEDIA_VIDEO) != PackageManager.PERMISSION_GRANTED) {
+                
+                ActivityCompat.requestPermissions(this, new String[]{
+                        Manifest.permission.READ_MEDIA_IMAGES,
+                        Manifest.permission.READ_MEDIA_VIDEO
+                }, PERMISSION_REQUEST_MEDIA);
+                return false;
+            }
+        } else {
+            // For older Android versions, we need to check READ_EXTERNAL_STORAGE
+            if (checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this, new String[]{
+                        Manifest.permission.READ_EXTERNAL_STORAGE
+                }, PERMISSION_REQUEST_MEDIA);
+                return false;
+            }
+        }
+        return true;
     }
 } 

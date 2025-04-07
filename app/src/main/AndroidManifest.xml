@@ -30,6 +30,7 @@
                      android:maxSdkVersion="29" />
 
     <application
+        android:name=".OnyxChatApplication"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -132,10 +133,11 @@
         
         <!-- Media Processing Activity -->
         <activity
-            android:name=".ui.MediaProcessingActivity"
+            android:name=".ui.media.MediaProcessingActivity"
             android:exported="false"
             android:parentActivityName=".ui.chat.ChatActivity"
-            android:label="Media Processing" />
+            android:label="Edit Media"
+            android:theme="@style/Theme.OnyxChat.NoActionBar" />
         
     </application>
 
