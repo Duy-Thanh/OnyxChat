@@ -7782,7 +7782,6 @@ local.properties
 /nodejs-server/node_modules/minimist/CHANGELOG.md
 /nodejs-server/node_modules/triple-beam/CHANGELOG.md
 /nodejs-server/node_modules/winston-transport/CHANGELOG.md
-/app/src/main/java/com/nekkochan/onyxchat/ui/chat/ChatMessageItem.java
 /nodejs-server/node_modules/busboy/.github/workflows/ci.yml
 /nodejs-server/node_modules/streamsearch/.github/workflows/ci.yml
 /nodejs-server/node_modules/logform/dist/cli.js
