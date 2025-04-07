@@ -73,6 +73,14 @@ public class UserSessionManager {
     }
     
     /**
+     * Get the context
+     * @return The context used by this session manager
+     */
+    public Context getContext() {
+        return context;
+    }
+    
+    /**
      * Set up unsafe SSL configuration for development (DO NOT USE IN PRODUCTION)
      */
     private void setupUnsafeSSL() {

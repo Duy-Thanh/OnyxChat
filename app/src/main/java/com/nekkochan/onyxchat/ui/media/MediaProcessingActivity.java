@@ -16,7 +16,12 @@ import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.nekkochan.onyxchat.R;
+import com.nekkochan.onyxchat.network.ApiClient;
 import com.nekkochan.onyxchat.utils.MediaUtils;
+import com.nekkochan.onyxchat.utils.MimeTypeUtils;
+import com.nekkochan.onyxchat.ui.chat.ChatMessageItem;
+import com.nekkochan.onyxchat.ui.viewmodel.ChatViewModel;
+import com.nekkochan.onyxchat.ui.viewmodel.MainViewModel;
 
 /**
  * Activity for processing images and videos before sending
@@ -30,6 +35,7 @@ public class MediaProcessingActivity extends AppCompatActivity {
     
     public static final String MEDIA_TYPE_IMAGE = "image";
     public static final String MEDIA_TYPE_VIDEO = "video";
+    public static final String MEDIA_TYPE_DOCUMENT = "document";
     
     private ImageView imagePreview;
     private VideoView videoPreview;
@@ -37,10 +43,12 @@ public class MediaProcessingActivity extends AppCompatActivity {
     private Button cancelButton;
     private TextView captionInput;
     private ProgressBar progressBar;
+    private TextView documentInfo;
     
     private Uri mediaUri;
     private String mediaType;
     private String chatId;
+    private ApiClient apiClient;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -54,6 +62,10 @@ public class MediaProcessingActivity extends AppCompatActivity {
         cancelButton = findViewById(R.id.cancelButton);
         captionInput = findViewById(R.id.captionInput);
         progressBar = findViewById(R.id.progressBar);
+        documentInfo = findViewById(R.id.documentInfo);
+        
+        // Get API client
+        apiClient = ApiClient.getInstance(this);
         
         // Get extras from intent
         Intent intent = getIntent();
@@ -73,6 +85,8 @@ public class MediaProcessingActivity extends AppCompatActivity {
                 setupImagePreview();
             } else if (MEDIA_TYPE_VIDEO.equals(mediaType)) {
                 setupVideoPreview();
+            } else if (MEDIA_TYPE_DOCUMENT.equals(mediaType)) {
+                setupDocumentPreview();
             } else {
                 Toast.makeText(this, "Unsupported media type", Toast.LENGTH_SHORT).show();
                 finish();
@@ -94,6 +108,7 @@ public class MediaProcessingActivity extends AppCompatActivity {
     private void setupImagePreview() {
         imagePreview.setVisibility(View.VISIBLE);
         videoPreview.setVisibility(View.GONE);
+        documentInfo.setVisibility(View.GONE);
         
         try {
             imagePreview.setImageURI(mediaUri);
@@ -110,6 +125,7 @@ public class MediaProcessingActivity extends AppCompatActivity {
     private void setupVideoPreview() {
         imagePreview.setVisibility(View.GONE);
         videoPreview.setVisibility(View.VISIBLE);
+        documentInfo.setVisibility(View.GONE);
         
         try {
             videoPreview.setVideoURI(mediaUri);
@@ -140,22 +156,101 @@ public class MediaProcessingActivity extends AppCompatActivity {
     }
     
     /**
-     * Send the media back to the chat activity
+     * Set up document preview
+     */
+    private void setupDocumentPreview() {
+        imagePreview.setVisibility(View.GONE);
+        videoPreview.setVisibility(View.GONE);
+        documentInfo.setVisibility(View.VISIBLE);
+        
+        try {
+            // Show document information
+            String fileName = mediaUri.getLastPathSegment();
+            long fileSize = MediaUtils.getFileSize(this, mediaUri);
+            String formattedSize = formatFileSize(fileSize);
+            
+            documentInfo.setText(String.format("%s (%s)", fileName, formattedSize));
+        } catch (Exception e) {
+            Log.e(TAG, "Error loading document info", e);
+            Toast.makeText(this, "Error loading document", Toast.LENGTH_SHORT).show();
+            finish();
+        }
+    }
+    
+    /**
+     * Format file size in human-readable format
+     */
+    private String formatFileSize(long size) {
+        if (size <= 0) return "0 B";
+        final String[] units = new String[] { "B", "KB", "MB", "GB", "TB" };
+        int digitGroup = (int) (Math.log10(size) / Math.log10(1024));
+        return String.format("%.1f %s", size / Math.pow(1024, digitGroup), units[digitGroup]);
+    }
+    
+    /**
+     * Send the media to the server and then send a message with the media URL
      */
     private void sendMedia() {
-        // Process media caption
+        // Show progress
+        progressBar.setVisibility(View.VISIBLE);
+        sendButton.setEnabled(false);
+        
+        // Get the caption if any
         String caption = captionInput.getText().toString().trim();
         
-        // Set result with the processed media
-        Intent resultIntent = new Intent();
-        resultIntent.putExtra(EXTRA_MEDIA_URI, mediaUri.toString());
-        resultIntent.putExtra(EXTRA_MEDIA_TYPE, mediaType);
-        if (!caption.isEmpty()) {
-            resultIntent.putExtra("caption", caption);
+        // Get MIME type
+        String mimeType = MimeTypeUtils.getMimeType(this, mediaUri);
+        if (mimeType == null) {
+            mimeType = "application/octet-stream";
         }
         
-        setResult(RESULT_OK, resultIntent);
-        finish();
+        // Upload to server
+        apiClient.uploadMedia(mediaUri, mimeType, new ApiClient.ApiCallback<ApiClient.MediaUploadResponse>() {
+            @Override
+            public void onSuccess(ApiClient.MediaUploadResponse response) {
+                // Media uploaded successfully
+                String mediaUrl = response.data.url;
+                String fileName = response.data.filename;
+                
+                // Create a message with the media URL
+                ChatMessageItem.MessageType messageType;
+                if (MEDIA_TYPE_IMAGE.equals(mediaType)) {
+                    messageType = ChatMessageItem.MessageType.IMAGE;
+                } else if (MEDIA_TYPE_VIDEO.equals(mediaType)) {
+                    messageType = ChatMessageItem.MessageType.VIDEO;
+                } else {
+                    messageType = ChatMessageItem.MessageType.DOCUMENT;
+                }
+                
+                // Create a JSON content with media information
+                String contentJson = String.format(
+                    "{\"url\":\"%s\",\"filename\":\"%s\",\"caption\":\"%s\",\"type\":\"%s\"}",
+                    mediaUrl, fileName, caption, messageType.toString()
+                );
+                
+                // Get ChatViewModel to send the message
+                ChatViewModel viewModel = new ChatViewModel(getApplication());
+                viewModel.setCurrentRecipient(chatId);
+                viewModel.sendMessage(contentJson, messageType);
+                
+                // Finish activity
+                runOnUiThread(() -> {
+                    Toast.makeText(MediaProcessingActivity.this, "Media sent", Toast.LENGTH_SHORT).show();
+                    finish();
+                });
+            }
+            
+            @Override
+            public void onFailure(String errorMessage) {
+                // Error uploading media
+                runOnUiThread(() -> {
+                    progressBar.setVisibility(View.GONE);
+                    sendButton.setEnabled(true);
+                    Toast.makeText(MediaProcessingActivity.this, 
+                            "Failed to upload media: " + errorMessage, Toast.LENGTH_SHORT).show();
+                });
+            }
+        });
     }
     
     @Override

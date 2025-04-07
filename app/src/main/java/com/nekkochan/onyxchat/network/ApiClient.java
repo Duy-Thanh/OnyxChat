@@ -2,7 +2,13 @@ package com.nekkochan.onyxchat.network;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.database.Cursor;
+import android.net.Uri;
+import android.os.Build;
 import android.preference.PreferenceManager;
+import android.provider.OpenableColumns;
+import android.provider.Telephony;
+import android.telephony.TelephonyManager;
 import android.util.Log;
 
 import com.google.gson.Gson;
@@ -14,13 +20,26 @@ import com.nekkochan.onyxchat.model.User;
 import com.nekkochan.onyxchat.model.UserProfile;
 import com.nekkochan.onyxchat.util.UserSessionManager;
 
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.security.KeyManagementException;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
+import java.security.cert.CertificateException;
+import java.security.cert.X509Certificate;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import okhttp3.Interceptor;
+import okhttp3.MediaType;
+import okhttp3.MultipartBody;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
-import okhttp3.Response;
+import okhttp3.RequestBody;
 import okhttp3.ResponseBody;
 import okhttp3.logging.HttpLoggingInterceptor;
 import retrofit2.Call;
@@ -30,26 +49,15 @@ import retrofit2.converter.gson.GsonConverterFactory;
 import retrofit2.http.Body;
 import retrofit2.http.DELETE;
 import retrofit2.http.GET;
+import retrofit2.http.Multipart;
 import retrofit2.http.POST;
 import retrofit2.http.PUT;
 import retrofit2.http.Path;
+import retrofit2.http.Part;
 
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.OutputStreamWriter;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.security.KeyManagementException;
-import java.security.NoSuchAlgorithmException;
-import java.security.SecureRandom;
-import java.security.cert.CertificateException;
-import java.security.cert.X509Certificate;
 import java.util.Date;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.Executor;
-import java.util.concurrent.Executors;
 
 import javax.net.ssl.HostnameVerifier;
 import javax.net.ssl.HttpsURLConnection;
@@ -748,6 +756,19 @@ public class ApiClient {
          */
         @GET("api/messages/email/{email}")
         Call<List<MessageResponse>> getMessagesByEmail(@Path("email") String email);
+        
+        /**
+         * Upload media file to the server
+         */
+        @Multipart
+        @POST("api/media/upload")
+        Call<MediaUploadResponse> uploadMedia(@Part MultipartBody.Part file);
+        
+        /**
+         * Delete a media file from the server
+         */
+        @DELETE("api/media/{filename}")
+        Call<BaseResponse> deleteMedia(@Path("filename") String filename);
     }
     
     /**
@@ -1311,6 +1332,185 @@ public class ApiClient {
         
         public int getUnreadCount() {
             return unread_count;
+        }
+    }
+    
+    /**
+     * Upload media file to the server
+     * @param fileUri URI of the file to upload
+     * @param mimeType MIME type of the file
+     * @param callback Callback for the response
+     */
+    public void uploadMedia(Uri fileUri, String mimeType, ApiCallback<MediaUploadResponse> callback) {
+        if (apiService == null) {
+            Log.e(TAG, "API service not initialized");
+            callback.onFailure("API service not initialized");
+            return;
+        }
+
+        executor.execute(() -> {
+            try {
+                // Get file name from URI
+                String fileName = getFileName(fileUri);
+                Log.d(TAG, "Uploading file: " + fileName + " with MIME type: " + mimeType);
+                
+                // Convert Uri to File
+                File file = createTempFileFromUri(fileUri);
+                if (file == null) {
+                    callback.onFailure("Failed to create file from URI");
+                    return;
+                }
+                
+                // Create RequestBody from file
+                RequestBody requestFile = RequestBody.create(
+                        MediaType.parse(mimeType),
+                        file
+                );
+                
+                // MultipartBody.Part is used to send the file as a form-data part
+                MultipartBody.Part filePart = MultipartBody.Part.createFormData(
+                        "file", fileName, requestFile
+                );
+                
+                // Call the API
+                Call<MediaUploadResponse> call = apiService.uploadMedia(filePart);
+                call.enqueue(new Callback<MediaUploadResponse>() {
+                    @Override
+                    public void onResponse(Call<MediaUploadResponse> call, retrofit2.Response<MediaUploadResponse> response) {
+                        if (response.isSuccessful() && response.body() != null) {
+                            callback.onSuccess(response.body());
+                        } else {
+                            handleErrorResponse(response, callback);
+                        }
+                    }
+                    
+                    @Override
+                    public void onFailure(Call<MediaUploadResponse> call, Throwable t) {
+                        Log.e(TAG, "Error uploading media", t);
+                        callback.onFailure(t.getMessage());
+                    }
+                });
+            } catch (Exception e) {
+                Log.e(TAG, "Error preparing media upload", e);
+                callback.onFailure("Error preparing upload: " + e.getMessage());
+            }
+        });
+    }
+    
+    /**
+     * Get file name from URI
+     */
+    private String getFileName(Uri uri) {
+        String result = null;
+        if (uri.getScheme().equals("content")) {
+            try (Cursor cursor = sessionManager.getContext().getContentResolver()
+                    .query(uri, null, null, null, null)) {
+                if (cursor != null && cursor.moveToFirst()) {
+                    int nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
+                    if (nameIndex != -1) {
+                        result = cursor.getString(nameIndex);
+                    }
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Error getting file name from URI", e);
+            }
+        }
+        if (result == null) {
+            result = uri.getLastPathSegment();
+        }
+        return result != null ? result : "file." + mimeTypeToExtension(uri);
+    }
+    
+    /**
+     * Convert URI to file extension based on MIME type
+     */
+    private String mimeTypeToExtension(Uri uri) {
+        String mimeType = sessionManager.getContext().getContentResolver().getType(uri);
+        if (mimeType == null) return "bin";
+        
+        switch (mimeType) {
+            case "image/jpeg": return "jpg";
+            case "image/png": return "png";
+            case "image/gif": return "gif";
+            case "video/mp4": return "mp4";
+            case "application/pdf": return "pdf";
+            case "application/msword": return "doc";
+            case "application/vnd.openxmlformats-officedocument.wordprocessingml.document": return "docx";
+            default: return "bin";
+        }
+    }
+    
+    /**
+     * Create a temporary file from a content URI
+     */
+    private File createTempFileFromUri(Uri uri) {
+        try {
+            // Create a temp file
+            String fileName = getFileName(uri);
+            String fileExtension = "";
+            int dotIndex = fileName.lastIndexOf(".");
+            if (dotIndex > 0) {
+                fileExtension = fileName.substring(dotIndex);
+                fileName = fileName.substring(0, dotIndex);
+            }
+            
+            File outputDir = sessionManager.getContext().getCacheDir();
+            File outputFile = File.createTempFile(fileName, fileExtension, outputDir);
+            
+            // Copy content to temp file
+            try (InputStream inputStream = sessionManager.getContext().getContentResolver().openInputStream(uri);
+                 OutputStream outputStream = new FileOutputStream(outputFile)) {
+                
+                if (inputStream == null) {
+                    throw new IOException("Failed to open input stream for URI: " + uri);
+                }
+                
+                byte[] buffer = new byte[4096];
+                int bytesRead;
+                while ((bytesRead = inputStream.read(buffer)) != -1) {
+                    outputStream.write(buffer, 0, bytesRead);
+                }
+                outputStream.flush();
+            }
+            
+            return outputFile;
+        } catch (IOException e) {
+            Log.e(TAG, "Error creating temp file from URI", e);
+            return null;
+        }
+    }
+    
+    /**
+     * Response class for media uploads
+     */
+    public static class MediaUploadResponse {
+        @SerializedName("success")
+        public boolean success;
+        
+        @SerializedName("message")
+        public String message;
+        
+        @SerializedName("file")
+        public MediaData data;
+        
+        public static class MediaData {
+            @SerializedName("url")
+            public String url;
+            
+            @SerializedName("filename")
+            public String filename;
+            
+            @SerializedName("originalname")
+            public String originalName;
+            
+            @SerializedName("size")
+            public long size;
+            
+            @SerializedName("mimetype")
+            public String mimetype;
+            
+            @SerializedName("path")
+            public String path;
         }
     }
 } 

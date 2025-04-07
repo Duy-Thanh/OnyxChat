@@ -36,14 +36,19 @@ import com.google.android.material.bottomsheet.BottomSheetDialog;
 import com.google.android.material.chip.Chip;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.nekkochan.onyxchat.R;
-import com.nekkochan.onyxchat.ui.media.MediaProcessingActivity;
+import com.nekkochan.onyxchat.model.Contact;
+import com.nekkochan.onyxchat.network.WebSocketClient;
 import com.nekkochan.onyxchat.ui.adapters.ChatMessageAdapter;
+import com.nekkochan.onyxchat.ui.media.MediaProcessingActivity;
 import com.nekkochan.onyxchat.ui.viewmodel.ChatViewModel;
 import com.nekkochan.onyxchat.utils.EmojiUtils;
 import com.nekkochan.onyxchat.utils.FileUtils;
+import com.nekkochan.onyxchat.utils.MediaUtils;
 import com.nekkochan.onyxchat.utils.MimeTypeUtils;
 import com.vanniktech.emoji.EmojiPopup;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 import de.hdodenhof.circleimageview.CircleImageView;
@@ -53,7 +58,7 @@ public class ChatActivity extends AppCompatActivity {
     private static final String TAG = "ChatActivity";
     public static final String EXTRA_CONTACT_ID = "contact_id";
     public static final String EXTRA_CONTACT_NAME = "contact_name";
-    private static final int MEDIA_MAX_SIZE_MB = 15;
+    private static final int MEDIA_MAX_SIZE_MB = 500;
     private static final int PERMISSION_REQUEST_MEDIA = 100;
     
     private ChatViewModel viewModel;
@@ -548,12 +553,13 @@ public class ChatActivity extends AppCompatActivity {
      * @param fileUri The URI of the selected file
      */
     private void handleSelectedFile(Uri fileUri) {
-        // Check file size first
-        if (!FileUtils.isFileSizeValid(this, fileUri)) {
-            Toast.makeText(this, 
-                   "File exceeds maximum size limit of " + MEDIA_MAX_SIZE_MB + "MB", 
-                   Toast.LENGTH_SHORT).show();
-            return;
+        // We're allowing files of any size now, so no need to check
+        // Just log the file size for reference
+        try {
+            long fileSize = MediaUtils.getFileSize(this, fileUri);
+            Log.d(TAG, "Selected file size: " + (fileSize / (1024.0 * 1024.0)) + " MB");
+        } catch (Exception e) {
+            Log.e(TAG, "Error getting file size", e);
         }
         
         // Get the file's MIME type

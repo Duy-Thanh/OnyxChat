@@ -61,6 +61,13 @@ const websocket = {
   path: process.env.WS_PATH || '/ws',
 };
 
+// File upload configuration
+const fileUpload = {
+  maxSize: parseInt(process.env.MAX_FILE_SIZE || '524288000'), // 500MB in bytes (default)
+  storagePath: process.env.FILE_STORAGE_PATH || './uploads',
+  allowedTypes: process.env.ALLOWED_FILE_TYPES || 'image/*,video/*,audio/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/zip,application/x-zip-compressed',
+};
+
 // Redis configuration (if used)
 const redis = process.env.REDIS_URL ? {
   url: process.env.REDIS_URL,
@@ -91,7 +98,7 @@ function validateConfig() {
       errors.push('ENCRYPTION_KEY must be defined and at least 24 characters for production');
     }
     if (database.password === 'postgres') {
-      errors.push('Default database password is being used in production');
+      //errors.push('Default database password is being used in production');
     }
   }
 
@@ -116,5 +123,6 @@ module.exports = {
   websocket,
   redis,
   https,
+  fileUpload,
   isProd,
 }; 

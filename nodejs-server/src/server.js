@@ -14,6 +14,7 @@ const messageRoutes = require('./routes/message.routes');
 const cryptoRoutes = require('./routes/crypto.routes');
 const contactsRoutes = require('./routes/contacts.routes');
 const friendRequestsRoutes = require('./routes/friend-requests.routes');
+const mediaRoutes = require('./routes/media.routes');
 
 // Initialize express app
 const app = express();
@@ -22,8 +23,8 @@ const PORT = process.env.PORT || 8081;
 // Middleware
 app.use(cors());
 app.use(morgan('dev'));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Health check route
 app.get('/api/health', (req, res) => {
@@ -42,6 +43,7 @@ app.use('/api/messages', messageRoutes);
 app.use('/api/crypto', cryptoRoutes);
 app.use('/api/contacts', contactsRoutes);
 app.use('/api/friend-requests', friendRequestsRoutes);
+app.use('/api/media', mediaRoutes);
 
 // Add a route to handle WebSocket connections for better debugging
 app.get('/ws', (req, res) => {

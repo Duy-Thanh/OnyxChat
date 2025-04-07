@@ -14,6 +14,7 @@ import androidx.lifecycle.Transformations;
 import com.nekkochan.onyxchat.network.ApiClient;
 import com.nekkochan.onyxchat.network.ChatService;
 import com.nekkochan.onyxchat.network.WebSocketClient;
+import com.nekkochan.onyxchat.ui.chat.ChatMessageItem;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -217,6 +218,25 @@ public class ChatViewModel extends AndroidViewModel {
      */
     public boolean sendChatMessage(String message) {
         return chatService.sendMessage(message);
+    }
+    
+    /**
+     * Send a message with custom type to the current recipient
+     * @param content Message content (text or JSON for media)
+     * @param messageType Type of message (TEXT, IMAGE, VIDEO, etc.)
+     * @return true if the message was sent successfully
+     */
+    public boolean sendMessage(String content, ChatMessageItem.MessageType messageType) {
+        if (currentRecipientId == null || content == null) {
+            return false;
+        }
+        
+        // For media messages, the content is already a JSON string with media info
+        // For text messages, we just send the text directly
+        // The server and receiver will handle the message based on the content format
+        
+        Log.d(TAG, "Sending message of type " + messageType + " to " + currentRecipientId);
+        return chatService.sendDirectMessage(currentRecipientId, content);
     }
     
     /**
