@@ -119,11 +119,17 @@ def count_sloc_in_file(filepath, ext):
 # -------------------------------
 # Directory scanner
 # -------------------------------
-def scan_directory(base_path):    
+def scan_directory(base_path, exclude_dirs=None):
+    if exclude_dirs is None:
+        exclude_dirs = {'node_modules', '.git', '__pycache__', '.venv'}
+    
     dir_language_counts = defaultdict(lambda: defaultdict(int))
     language_totals = defaultdict(int)
 
-    for root, _, files in os.walk(base_path):
+    for root, dirs, files in os.walk(base_path):
+        # Modify dirs in-place to skip excluded directories
+        dirs[:] = [d for d in dirs if d not in exclude_dirs]
+
         rel_dir = os.path.relpath(root, base_path)
         if rel_dir == ".":
             rel_dir = "top_dir"
