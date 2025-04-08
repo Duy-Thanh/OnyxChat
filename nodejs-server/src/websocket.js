@@ -202,6 +202,116 @@ const handleMessage = async (userId, messageData, connectionId) => {
           });
         }
         break;
+
+      // WebRTC Signaling
+      case 'call_request':
+        // Handle call request
+        if (clients.has(data.recipientId)) {
+          const recipientConnections = clients.get(data.recipientId);
+          recipientConnections.forEach(connection => {
+            if (connection.ws.readyState === 1) {
+              connection.ws.send(JSON.stringify({
+                type: 'incoming_call',
+                data: {
+                  callerId: userId,
+                  isVideoCall: data.isVideoCall
+                }
+              }));
+            }
+          });
+        }
+        break;
+
+      case 'call_response':
+        // Handle call response (accept/reject)
+        if (clients.has(data.callerId)) {
+          const callerConnections = clients.get(data.callerId);
+          callerConnections.forEach(connection => {
+            if (connection.ws.readyState === 1) {
+              connection.ws.send(JSON.stringify({
+                type: 'call_answered',
+                data: {
+                  accepted: data.accepted,
+                  recipientId: userId
+                }
+              }));
+            }
+          });
+        }
+        break;
+
+      case 'offer':
+        // Forward WebRTC offer to recipient
+        if (clients.has(data.to)) {
+          const recipientConnections = clients.get(data.to);
+          recipientConnections.forEach(connection => {
+            if (connection.ws.readyState === 1) {
+              connection.ws.send(JSON.stringify({
+                type: 'offer',
+                data: {
+                  sdp: data.sdp,
+                  from: userId
+                }
+              }));
+            }
+          });
+        }
+        break;
+
+      case 'answer':
+        // Forward WebRTC answer to caller
+        if (clients.has(data.to)) {
+          const callerConnections = clients.get(data.to);
+          callerConnections.forEach(connection => {
+            if (connection.ws.readyState === 1) {
+              connection.ws.send(JSON.stringify({
+                type: 'answer',
+                data: {
+                  sdp: data.sdp,
+                  from: userId
+                }
+              }));
+            }
+          });
+        }
+        break;
+
+      case 'ice_candidate':
+        // Forward ICE candidate to peer
+        if (clients.has(data.to)) {
+          const peerConnections = clients.get(data.to);
+          peerConnections.forEach(connection => {
+            if (connection.ws.readyState === 1) {
+              connection.ws.send(JSON.stringify({
+                type: 'ice_candidate',
+                data: {
+                  candidate: data.candidate,
+                  sdpMid: data.sdpMid,
+                  sdpMLineIndex: data.sdpMLineIndex,
+                  from: userId
+                }
+              }));
+            }
+          });
+        }
+        break;
+
+      case 'end_call':
+        // Notify peer about call end
+        if (clients.has(data.to)) {
+          const peerConnections = clients.get(data.to);
+          peerConnections.forEach(connection => {
+            if (connection.ws.readyState === 1) {
+              connection.ws.send(JSON.stringify({
+                type: 'call_ended',
+                data: {
+                  from: userId
+                }
+              }));
+            }
+          });
+        }
+        break;
         
       case 'READ_RECEIPT':
         // Update message as read
