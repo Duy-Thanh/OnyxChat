@@ -388,10 +388,20 @@ public class ChatNotificationService extends Service {
         
         // Listen for new messages
         chatService.getLatestMessage().observeForever(chatMessage -> {
-            if (chatMessage != null && !chatMessage.isSelf()) {
-                // Only show notifications for direct messages from others
-                if (chatMessage.getType() == ChatService.ChatMessage.MessageType.DIRECT) {
-                    showMessageNotification(chatMessage);
+            if (chatMessage != null) {
+                Log.d(TAG, "New message received in service: " + chatMessage.getContent() 
+                    + ", type: " + chatMessage.getType() 
+                    + ", isSelf: " + chatMessage.isSelf()
+                    + ", senderId: " + chatMessage.getSenderId());
+                
+                // Don't show notifications for our own messages
+                if (!chatMessage.isSelf() && !chatMessage.getSenderId().equals(userId)) {
+                    // Handle different message types
+                    if (chatMessage.getType() == ChatService.ChatMessage.MessageType.DIRECT 
+                            || chatMessage.getType() == ChatService.ChatMessage.MessageType.MESSAGE) {
+                        Log.d(TAG, "Showing notification for message from: " + chatMessage.getSenderId());
+                        showMessageNotification(chatMessage);
+                    }
                 }
             }
         });
@@ -465,19 +475,24 @@ public class ChatNotificationService extends Service {
      */
     private void showMessageNotification(ChatService.ChatMessage message) {
         if (message == null || message.getSenderId() == null) {
+            Log.e(TAG, "Cannot show notification: message or sender ID is null");
             return;
         }
         
         // Don't show notifications for our own messages
         if (message.isSelf() || message.getSenderId().equals(sessionManager.getUserId())) {
+            Log.d(TAG, "Skipping notification for own message");
             return;
         }
         
         // Only show notifications for direct messages (not system or error messages)
         if (message.getType() != ChatService.ChatMessage.MessageType.DIRECT &&
             message.getType() != ChatService.ChatMessage.MessageType.MESSAGE) {
+            Log.d(TAG, "Skipping notification for non-direct message type: " + message.getType());
             return;
         }
+        
+        Log.d(TAG, "Creating notification for message from " + message.getSenderId() + ": " + message.getContent());
         
         // Use the NotificationUtil to handle the notification
         NotificationUtil.showMessageNotification(this, message);
