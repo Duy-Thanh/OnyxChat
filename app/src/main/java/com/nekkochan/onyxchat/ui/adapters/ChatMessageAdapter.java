@@ -1,6 +1,8 @@
 package com.nekkochan.onyxchat.ui.adapters;
 
+import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.util.Log;
@@ -280,6 +282,74 @@ public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.
             playButtonView = itemView.findViewById(R.id.play_button);
         }
         
+        /**
+         * Convert a potentially relative server path to a proper HTTP URL
+         */
+        private String getProperMediaUrl(String mediaUrl) {
+            if (mediaUrl == null || mediaUrl.isEmpty()) {
+                return "";
+            }
+            
+            // If already a full URL, use as is
+            if (mediaUrl.startsWith("http://") || mediaUrl.startsWith("https://")) {
+                return mediaUrl;
+            }
+            
+            // If starts with / but not with //, assume it's a server path
+            if (mediaUrl.startsWith("/") && !mediaUrl.startsWith("//")) {
+                // Get the server URL from API client
+                String serverUrl = getBaseServerUrl(itemView.getContext());
+                
+                // Remove trailing slash from server URL if present
+                if (serverUrl.endsWith("/")) {
+                    serverUrl = serverUrl.substring(0, serverUrl.length() - 1);
+                }
+                
+                // Remove leading slash from media URL if present
+                String mediaPath = mediaUrl;
+                if (mediaPath.startsWith("/")) {
+                    mediaPath = mediaPath.substring(1);
+                }
+                
+                // Combine to form full URL
+                String fullUrl = serverUrl + "/" + mediaPath;
+                Log.d(TAG, "Converted relative URL " + mediaUrl + " to absolute URL " + fullUrl);
+                return fullUrl;
+            }
+            
+            // For file paths or other URIs, use as is
+            return mediaUrl;
+        }
+        
+        /**
+         * Get the base server URL from shared preferences
+         */
+        private String getBaseServerUrl(Context context) {
+            // Default server URL (used in API client)
+            String defaultUrl = "https://10.0.2.2:443";
+            
+            try {
+                // Try to get the actual server URL from shared preferences
+                SharedPreferences sharedPreferences = context.getSharedPreferences("app_preferences", Context.MODE_PRIVATE);
+                String serverUrl = sharedPreferences.getString("server_url", defaultUrl);
+                
+                // If empty or null, use default
+                if (serverUrl == null || serverUrl.isEmpty()) {
+                    return defaultUrl;
+                }
+                
+                // Remove api path if present
+                if (serverUrl.endsWith("/api")) {
+                    serverUrl = serverUrl.substring(0, serverUrl.length() - 4);
+                }
+                
+                return serverUrl;
+            } catch (Exception e) {
+                Log.e(TAG, "Error getting server URL", e);
+                return defaultUrl;
+            }
+        }
+        
         public void bind(ChatViewModel.ChatMessage message, ChatViewModel.ChatMessage previousMessage, ChatViewModel.ChatMessage nextMessage) {
             // Try to parse media content
             MediaContent mediaContent = parseMediaContent(message.getContent());
@@ -293,22 +363,26 @@ public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.
                     mediaImageView.setVisibility(View.VISIBLE);
                     playButtonView.setVisibility(View.VISIBLE);
                     
-                    // Set video thumbnail
+                    // Get the absolute URL for the video thumbnail
+                    String absoluteUrl = getProperMediaUrl(mediaContent.url);
+                    Log.d(TAG, "Loading video thumbnail from: " + absoluteUrl);
+                    
+                    // Load video thumbnail
                     Glide.with(itemView.getContext())
-                            .load(mediaContent.url)
+                            .load(absoluteUrl)
                             .apply(RequestOptions.centerCropTransform())
                             .thumbnail(0.1f)
                             .listener(new RequestListener<Drawable>() {
                                 @Override
                                 public boolean onLoadFailed(@Nullable GlideException e, Object model, Target<Drawable> target, boolean isFirstResource) {
                                     Log.e(TAG, "Failed to load video thumbnail: " + (e != null ? e.getMessage() : "unknown error"));
-                                    Log.e(TAG, "Video URL was: " + mediaContent.url);
+                                    Log.e(TAG, "Video URL was: " + absoluteUrl);
                                     return false;
                                 }
 
                                 @Override
                                 public boolean onResourceReady(Drawable resource, Object model, Target<Drawable> target, DataSource dataSource, boolean isFirstResource) {
-                                    Log.d(TAG, "Successfully loaded video thumbnail for URL: " + mediaContent.url);
+                                    Log.d(TAG, "Successfully loaded video thumbnail for URL: " + absoluteUrl);
                                     return false;
                                 }
                             })
@@ -336,9 +410,13 @@ public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.
                     mediaImageView.setVisibility(View.VISIBLE);
                     playButtonView.setVisibility(View.GONE);
                     
+                    // Get the absolute URL for the image
+                    String absoluteUrl = getProperMediaUrl(mediaContent.url);
+                    Log.d(TAG, "Loading image from: " + absoluteUrl);
+                    
                     // Load image
                     Glide.with(itemView.getContext())
-                            .load(mediaContent.url)
+                            .load(absoluteUrl)
                             .apply(RequestOptions.centerCropTransform())
                             .into(mediaImageView);
                             
