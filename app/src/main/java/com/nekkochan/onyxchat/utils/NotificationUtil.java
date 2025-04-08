@@ -195,6 +195,74 @@ public class NotificationUtil {
      * @return The display name of the contact, or the ID if not found
      */
     private static String getContactDisplayName(Context context, String contactId) {
+        if (contactId == null) {
+            return "Unknown";
+        }
+        
+        // First try to get from database - this is fast
+        String displayName = getDisplayNameFromDatabase(context, contactId);
+        if (displayName != null) {
+            Log.d(TAG, "Found contact in database: " + displayName);
+            return displayName;
+        }
+        
+        // Try to look up from network - this may be slower
+        displayName = getDisplayNameFromNetwork(context, contactId);
+        if (displayName != null) {
+            Log.d(TAG, "Found contact from network: " + displayName);
+            return displayName;
+        }
+        
+        // Finally, just format nicely
+        displayName = formatContactIdForDisplay(contactId);
+        Log.d(TAG, "Formatting contact ID: " + contactId + " -> " + displayName);
+        return displayName;
+    }
+    
+    /**
+     * Get display name from local Room database
+     */
+    private static String getDisplayNameFromDatabase(Context context, String contactId) {
+        try {
+            AppDatabase db = AppDatabase.getInstance(context);
+            
+            // Try to get from contacts by UUID first
+            Contact contact = db.contactDao().getContactByAddress(contactId);
+            if (contact != null && contact.getNickname() != null && !contact.getNickname().isEmpty()) {
+                return contact.getDisplayName();
+            }
+            
+            // Also try search by address for email or userId format
+            List<Contact> searchResults = db.contactDao().searchContacts(contactId);
+            if (searchResults != null && !searchResults.isEmpty()) {
+                for (Contact result : searchResults) {
+                    if (result.getOnionAddress().equals(contactId) && 
+                        result.getNickname() != null && 
+                        !result.getNickname().isEmpty()) {
+                        return result.getDisplayName();
+                    }
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error looking up contact in database", e);
+        }
+        
+        return null;
+    }
+    
+    /**
+     * Get display name from network - might search for user profile on server
+     */
+    private static String getDisplayNameFromNetwork(Context context, String contactId) {
+        // This could be implemented with API call
+        // For now, returning null to continue to fallback method
+        return null;
+    }
+    
+    /**
+     * Format contact ID for display in a user-friendly way
+     */
+    private static String formatContactIdForDisplay(String contactId) {
         try {
             // If it's an email, format it nicely
             if (contactId.contains("@")) {
@@ -206,19 +274,19 @@ public class NotificationUtil {
             
             // If it looks like a UUID (contains hyphens and is the right length)
             if (contactId.contains("-") && contactId.length() > 8) {
-                // It's likely a UUID - extract the first part for a readable name
+                // Try to create something more user-friendly
+                // Example: bf61266e-8d05-4253-aaa6-da3bdb230b79 -> Test User-bf61266e
                 String shortId = contactId.split("-")[0];
                 if (shortId.length() >= 8) {
-                    // Take first 8 chars for a username-like display
-                    String formattedName = "User-" + shortId.substring(0, 8);
-                    return formattedName;
+                    // Add a human-friendly prefix
+                    return "Test User-" + shortId;
                 }
             }
         } catch (Exception e) {
             Log.e(TAG, "Error formatting contact display name", e);
         }
         
-        // Fallback to contact ID
+        // Default fallback
         return contactId;
     }
     
