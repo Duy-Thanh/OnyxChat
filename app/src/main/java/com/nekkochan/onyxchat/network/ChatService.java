@@ -260,9 +260,17 @@ public class ChatService {
                     Log.d(TAG, String.format("Chat message: content=%s, senderId=%s, timestamp=%d (%s)", 
                             content, senderId, messageTimestamp, new Date(messageTimestamp)));
                     
+                    // Create message object with appropriate message type
+                    ChatMessage.MessageType messageType = ChatMessage.MessageType.MESSAGE;
+                    if ("NEW_MESSAGE".equals(type)) {
+                        // Explicitly set NEW_MESSAGE types to DIRECT for notifications to work
+                        messageType = ChatMessage.MessageType.DIRECT;
+                        Log.d(TAG, "Setting NEW_MESSAGE type as DIRECT for notification compatibility");
+                    }
+
                     // Create message object
                     ChatMessage chatMessage = new ChatMessage(
-                            ChatMessage.MessageType.MESSAGE,
+                            messageType,
                             senderId,
                             recipientId,
                             content,
