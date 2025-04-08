@@ -4,13 +4,13 @@
     android:layout_height="match_parent"
     android:background="@color/black">
 
-    <!-- Remote video view (full screen) -->
+    <!-- Remote Video View -->
     <org.webrtc.SurfaceViewRenderer
         android:id="@+id/remote_video_view"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <!-- Local video view (small overlay) -->
+    <!-- Local Video View -->
     <org.webrtc.SurfaceViewRenderer
         android:id="@+id/local_video_view"
         android:layout_width="120dp"
@@ -19,72 +19,91 @@
         android:layout_alignParentTop="true"
         android:layout_margin="16dp" />
 
-    <!-- Contact name and status -->
+    <!-- Call Info Container -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_alignParentTop="true"
-        android:orientation="vertical"
+        android:orientation="horizontal"
         android:padding="16dp">
 
-        <TextView
-            android:id="@+id/contact_name_text"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:textColor="@color/white"
-            android:textSize="24sp"
-            android:textStyle="bold" />
+        <ImageView
+            android:id="@+id/recipient_avatar_image"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginEnd="16dp"
+            android:src="@drawable/ic_person"
+            android:contentDescription="Recipient avatar" />
 
-        <TextView
-            android:id="@+id/call_status_text"
-            android:layout_width="wrap_content"
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:textColor="@color/white"
-            android:textSize="16sp" />
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/recipient_name_text"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/white"
+                android:textSize="24sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/call_status_text"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/white"
+                android:textSize="16sp" />
+
+            <TextView
+                android:id="@+id/call_duration_text"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/white"
+                android:textSize="16sp" />
+        </LinearLayout>
     </LinearLayout>
 
-    <!-- Call controls -->
+    <!-- Call Controls Container -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_alignParentBottom="true"
         android:gravity="center"
         android:orientation="horizontal"
-        android:padding="24dp">
+        android:padding="16dp">
 
         <ImageButton
-            android:id="@+id/mute_button"
+            android:id="@+id/toggle_audio_button"
             android:layout_width="64dp"
             android:layout_height="64dp"
-            android:layout_marginEnd="24dp"
-            android:background="@drawable/circle_background"
-            android:src="@drawable/ic_mic"
-            android:tint="@color/white" />
+            android:layout_margin="8dp"
+            android:background="@drawable/circle_button_background"
+            android:src="@drawable/ic_mic" />
+
+        <ImageButton
+            android:id="@+id/toggle_speaker_button"
+            android:layout_width="64dp"
+            android:layout_height="64dp"
+            android:layout_margin="8dp"
+            android:background="@drawable/circle_button_background"
+            android:src="@drawable/ic_speaker" />
+
+        <ImageButton
+            android:id="@+id/toggle_camera_button"
+            android:layout_width="64dp"
+            android:layout_height="64dp"
+            android:layout_margin="8dp"
+            android:background="@drawable/circle_button_background"
+            android:src="@drawable/ic_videocam" />
 
         <ImageButton
             android:id="@+id/end_call_button"
-            android:layout_width="72dp"
-            android:layout_height="72dp"
-            android:background="@drawable/circle_background_red"
-            android:src="@drawable/ic_call_end"
-            android:tint="@color/white" />
-
-        <ImageButton
-            android:id="@+id/speaker_button"
             android:layout_width="64dp"
             android:layout_height="64dp"
-            android:layout_marginStart="24dp"
-            android:background="@drawable/circle_background"
-            android:src="@drawable/ic_speaker"
-            android:tint="@color/white" />
-
-        <ImageButton
-            android:id="@+id/video_button"
-            android:layout_width="64dp"
-            android:layout_height="64dp"
-            android:layout_marginStart="24dp"
-            android:background="@drawable/circle_background"
-            android:src="@drawable/ic_videocam"
-            android:tint="@color/white" />
+            android:layout_margin="8dp"
+            android:background="@drawable/circle_button_background_red"
+            android:src="@drawable/ic_call_end" />
     </LinearLayout>
+
 </RelativeLayout> 
