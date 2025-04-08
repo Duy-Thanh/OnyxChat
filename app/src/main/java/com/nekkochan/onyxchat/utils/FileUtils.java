@@ -591,4 +591,20 @@ public class FileUtils {
         
         return 0;
     }
+
+    /**
+     * Check if media is currently being processed
+     * @return true if media is being processed, false otherwise
+     */
+    public static boolean isMediaProcessing() {
+        return isMediaProcessing;
+    }
+
+    /**
+     * Get the current media processing type
+     * @return The type of media being processed ("image", "video", etc.) or null if none
+     */
+    public static String getMediaProcessingType() {
+        return currentProcessingType;
+    }
 } 
