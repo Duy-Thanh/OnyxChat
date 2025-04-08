@@ -742,8 +742,8 @@ public class WebSocketClient {
         try {
             // Create a JSON message
             JSONObject messageJson = new JSONObject();
-            messageJson.put("type", "direct_message");
-            messageJson.put("recipientId", recipientId);
+            messageJson.put("type", "direct");
+            messageJson.put("recipient", recipientId);
             messageJson.put("content", message);
             messageJson.put("timestamp", System.currentTimeMillis());
             
