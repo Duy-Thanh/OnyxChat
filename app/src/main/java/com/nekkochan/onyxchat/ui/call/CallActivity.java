@@ -16,13 +16,17 @@ import androidx.core.content.ContextCompat;
 
 import com.nekkochan.onyxchat.R;
 import com.nekkochan.onyxchat.model.Contact;
+import com.nekkochan.onyxchat.network.WebSocketClient;
 import com.nekkochan.onyxchat.utils.EmojiUtils;
 
+import org.json.JSONException;
+import org.json.JSONObject;
 import org.webrtc.AudioSource;
 import org.webrtc.AudioTrack;
 import org.webrtc.Camera1Enumerator;
 import org.webrtc.Camera2Enumerator;
 import org.webrtc.CameraEnumerator;
+import org.webrtc.DataChannel;
 import org.webrtc.DefaultVideoDecoderFactory;
 import org.webrtc.DefaultVideoEncoderFactory;
 import org.webrtc.EglBase;
@@ -31,7 +35,10 @@ import org.webrtc.MediaConstraints;
 import org.webrtc.MediaStream;
 import org.webrtc.PeerConnection;
 import org.webrtc.PeerConnectionFactory;
+import org.webrtc.RtpReceiver;
 import org.webrtc.SessionDescription;
+import org.webrtc.SdpObserver;
+import org.webrtc.SurfaceTextureHelper;
 import org.webrtc.SurfaceViewRenderer;
 import org.webrtc.VideoCapturer;
 import org.webrtc.VideoSource;
@@ -48,12 +55,17 @@ public class CallActivity extends AppCompatActivity {
             Manifest.permission.RECORD_AUDIO
     };
 
+    // Video constants
+    private static final int VIDEO_RESOLUTION_WIDTH = 1280;
+    private static final int VIDEO_RESOLUTION_HEIGHT = 720;
+    private static final int VIDEO_FPS = 30;
+
     private boolean isVideoCall;
     private String contactId;
     private String contactName;
     private boolean isCaller;
     private boolean isMuted = false;
-    private boolean isSpeakerOn = true;
+    private boolean isSpeakerOn = false;
     private boolean isVideoEnabled = true;
 
     // WebRTC components
@@ -65,6 +77,8 @@ public class CallActivity extends AppCompatActivity {
     private AudioTrack localAudioTrack;
     private PeerConnection peerConnection;
     private List<PeerConnection.IceServer> iceServers = new ArrayList<>();
+    private VideoCapturer videoCapturer;
+    private VideoTrack remoteVideoTrack;
 
     // UI components
     private SurfaceViewRenderer localVideoView;
@@ -75,6 +89,10 @@ public class CallActivity extends AppCompatActivity {
     private ImageButton videoButton;
     private TextView contactNameText;
     private TextView callStatusText;
+
+    // State
+    private String recipientId;
+    private WebSocketClient webSocketClient;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -126,135 +144,192 @@ public class CallActivity extends AppCompatActivity {
     }
 
     private void initializeWebRTC() {
-        // Initialize EGL context
-        eglBaseContext = EglBase.create().getEglBaseContext();
+        PeerConnectionFactory.initialize(
+            PeerConnectionFactory.InitializationOptions.builder(getApplicationContext())
+                .setEnableInternalTracer(true)
+                .createInitializationOptions()
+        );
 
-        // Initialize PeerConnectionFactory
-        PeerConnectionFactory.InitializationOptions initializationOptions =
-                PeerConnectionFactory.InitializationOptions.builder(this)
-                        .createInitializationOptions();
-        PeerConnectionFactory.initialize(initializationOptions);
-
-        // Create PeerConnectionFactory
         PeerConnectionFactory.Options options = new PeerConnectionFactory.Options();
         peerConnectionFactory = PeerConnectionFactory.builder()
-                .setOptions(options)
-                .createPeerConnectionFactory();
+            .setOptions(options)
+            .createPeerConnectionFactory();
 
-        // Initialize video views
-        localVideoView.init(eglBaseContext, null);
-        remoteVideoView.init(eglBaseContext, null);
-
-        // Create local media stream
-        createLocalMediaStream();
-
-        // Create peer connection
-        createPeerConnection();
-
-        // Start call
-        if (isCaller) {
-            startCall();
-        } else {
-            // Handle incoming call
-            handleIncomingCall();
+        // Create video capturer
+        videoCapturer = createVideoCapturer();
+        if (videoCapturer == null) {
+            Log.e(TAG, "Failed to create video capturer");
+            return;
         }
-    }
 
-    private void createLocalMediaStream() {
-        MediaStream localStream = peerConnectionFactory.createLocalMediaStream("local_stream");
+        // Create video source
+        videoSource = peerConnectionFactory.createVideoSource(false);
+        SurfaceTextureHelper surfaceTextureHelper = SurfaceTextureHelper.create("CaptureThread", EglBase.create().getEglBaseContext());
+        videoCapturer.initialize(surfaceTextureHelper, getApplicationContext(), videoSource.getCapturerObserver());
+        videoCapturer.startCapture(VIDEO_RESOLUTION_WIDTH, VIDEO_RESOLUTION_HEIGHT, VIDEO_FPS);
 
-        // Create audio track
+        // Create video track
+        localVideoTrack = peerConnectionFactory.createVideoTrack("video", videoSource);
+
+        // Create audio source and track
         audioSource = peerConnectionFactory.createAudioSource(new MediaConstraints());
-        localAudioTrack = peerConnectionFactory.createAudioTrack("audio_track", audioSource);
-        localStream.addTrack(localAudioTrack);
+        localAudioTrack = peerConnectionFactory.createAudioTrack("audio", audioSource);
 
-        if (isVideoCall) {
-            // Create video track
-            VideoCapturer videoCapturer = createVideoCapturer();
-            videoSource = peerConnectionFactory.createVideoSource(videoCapturer.isScreencast());
-            videoCapturer.initialize(surfaceTextureHelper, getApplicationContext(), videoSource.getCapturerObserver());
-            videoCapturer.startCapture(1280, 720, 30);
-
-            localVideoTrack = peerConnectionFactory.createVideoTrack("video_track", videoSource);
-            localStream.addTrack(localVideoTrack);
-            localVideoTrack.addSink(localVideoView);
-        }
-
-        // Add stream to peer connection
-        peerConnection.addStream(localStream);
+        // Initialize peer connection
+        initializePeerConnection();
     }
 
-    private VideoCapturer createVideoCapturer() {
-        VideoCapturer videoCapturer;
-        if (Camera2Enumerator.isSupported(this)) {
-            videoCapturer = createCameraCapturer(new Camera2Enumerator(this));
-        } else {
-            videoCapturer = createCameraCapturer(new Camera1Enumerator(true));
-        }
-        return videoCapturer;
-    }
-
-    private VideoCapturer createCameraCapturer(CameraEnumerator enumerator) {
-        final String[] deviceNames = enumerator.getDeviceNames();
-        for (String deviceName : deviceNames) {
-            if (enumerator.isFrontFacing(deviceName)) {
-                VideoCapturer videoCapturer = enumerator.createCapturer(deviceName, null);
-                if (videoCapturer != null) {
-                    return videoCapturer;
-                }
-            }
-        }
-        return null;
-    }
-
-    private void createPeerConnection() {
-        // Add STUN/TURN servers
-        iceServers.add(PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer());
-
+    private void initializePeerConnection() {
         PeerConnection.RTCConfiguration rtcConfig = new PeerConnection.RTCConfiguration(iceServers);
         peerConnection = peerConnectionFactory.createPeerConnection(rtcConfig, new PeerConnection.Observer() {
             @Override
+            public void onSignalingChange(PeerConnection.SignalingState signalingState) {
+                Log.d(TAG, "onSignalingChange: " + signalingState);
+            }
+
+            @Override
+            public void onIceConnectionChange(PeerConnection.IceConnectionState iceConnectionState) {
+                Log.d(TAG, "onIceConnectionChange: " + iceConnectionState);
+                if (iceConnectionState == PeerConnection.IceConnectionState.DISCONNECTED) {
+                    runOnUiThread(() -> {
+                        Toast.makeText(CallActivity.this, "Call disconnected", Toast.LENGTH_SHORT).show();
+                        finish();
+                    });
+                }
+            }
+
+            @Override
+            public void onIceConnectionReceivingChange(boolean b) {
+                Log.d(TAG, "onIceConnectionReceivingChange: " + b);
+            }
+
+            @Override
+            public void onIceGatheringChange(PeerConnection.IceGatheringState iceGatheringState) {
+                Log.d(TAG, "onIceGatheringChange: " + iceGatheringState);
+            }
+
+            @Override
             public void onIceCandidate(IceCandidate iceCandidate) {
-                // Send ICE candidate to remote peer
+                Log.d(TAG, "onIceCandidate");
                 sendIceCandidate(iceCandidate);
             }
 
             @Override
+            public void onIceCandidatesRemoved(IceCandidate[] iceCandidates) {
+                Log.d(TAG, "onIceCandidatesRemoved");
+            }
+
+            @Override
             public void onAddStream(MediaStream mediaStream) {
-                // Handle remote stream
+                Log.d(TAG, "onAddStream");
                 runOnUiThread(() -> {
                     if (mediaStream.videoTracks.size() > 0) {
-                        mediaStream.videoTracks.get(0).addSink(remoteVideoView);
+                        remoteVideoTrack = mediaStream.videoTracks.get(0);
+                        remoteVideoTrack.addSink(remoteVideoView);
                     }
                 });
             }
 
-            // Implement other required methods...
-        });
-    }
+            @Override
+            public void onRemoveStream(MediaStream mediaStream) {
+                Log.d(TAG, "onRemoveStream");
+            }
 
-    private void startCall() {
-        // Create offer
+            @Override
+            public void onDataChannel(DataChannel dataChannel) {
+                Log.d(TAG, "onDataChannel");
+            }
+
+            @Override
+            public void onRenegotiationNeeded() {
+                Log.d(TAG, "onRenegotiationNeeded");
+            }
+
+            @Override
+            public void onAddTrack(RtpReceiver rtpReceiver, MediaStream[] mediaStreams) {
+                Log.d(TAG, "onAddTrack");
+            }
+        });
+
+        // Add local tracks
+        peerConnection.addTrack(localAudioTrack);
+        peerConnection.addTrack(localVideoTrack);
+
+        // Create and send offer
         MediaConstraints constraints = new MediaConstraints();
-        peerConnection.createOffer(new SdpObserver() {
+        constraints.mandatory.add(new MediaConstraints.KeyValuePair("OfferToReceiveAudio", "true"));
+        constraints.mandatory.add(new MediaConstraints.KeyValuePair("OfferToReceiveVideo", "true"));
+
+        peerConnection.createOffer(new org.webrtc.SdpObserver() {
             @Override
             public void onCreateSuccess(SessionDescription sessionDescription) {
-                peerConnection.setLocalDescription(new SdpObserver() {
+                peerConnection.setLocalDescription(new org.webrtc.SdpObserver() {
+                    @Override
+                    public void onCreateSuccess(SessionDescription sessionDescription) {
+                        Log.d(TAG, "Local description set successfully");
+                    }
+
                     @Override
                     public void onSetSuccess() {
-                        // Send offer to remote peer
-                        sendOffer(sessionDescription);
+                        Log.d(TAG, "Local description set successfully");
                     }
-                    // Implement other required methods...
+
+                    @Override
+                    public void onCreateFailure(String s) {
+                        Log.e(TAG, "Failed to create local description: " + s);
+                    }
+
+                    @Override
+                    public void onSetFailure(String s) {
+                        Log.e(TAG, "Failed to set local description: " + s);
+                    }
                 }, sessionDescription);
+                sendOffer(sessionDescription);
             }
-            // Implement other required methods...
+
+            @Override
+            public void onSetSuccess() {
+                Log.d(TAG, "Offer set successfully");
+            }
+
+            @Override
+            public void onCreateFailure(String s) {
+                Log.e(TAG, "Failed to create offer: " + s);
+            }
+
+            @Override
+            public void onSetFailure(String s) {
+                Log.e(TAG, "Failed to set offer: " + s);
+            }
         }, constraints);
     }
 
-    private void handleIncomingCall() {
-        // Handle incoming call setup
-        // This will be implemented when we add signaling
+    private void sendIceCandidate(IceCandidate iceCandidate) {
+        // Implement WebSocket message sending for ICE candidates
+        try {
+            JSONObject message = new JSONObject();
+            message.put("type", "ice_candidate");
+            message.put("candidate", iceCandidate.sdp);
+            message.put("sdpMid", iceCandidate.sdpMid);
+            message.put("sdpMLineIndex", iceCandidate.sdpMLineIndex);
+            message.put("to", recipientId);
+            webSocketClient.sendMessage(message.toString());
+        } catch (JSONException e) {
+            Log.e(TAG, "Error sending ICE candidate: " + e.getMessage());
+        }
+    }
+
+    private void sendOffer(SessionDescription sessionDescription) {
+        // Implement WebSocket message sending for offer
+        try {
+            JSONObject message = new JSONObject();
+            message.put("type", "offer");
+            message.put("sdp", sessionDescription.description);
+            message.put("to", recipientId);
+            webSocketClient.sendMessage(message.toString());
+        } catch (JSONException e) {
+            Log.e(TAG, "Error sending offer: " + e.getMessage());
+        }
     }
 
     private void endCall() {
@@ -324,5 +399,28 @@ public class CallActivity extends AppCompatActivity {
         if (remoteVideoView != null) {
             remoteVideoView.release();
         }
+    }
+
+    private VideoCapturer createVideoCapturer() {
+        VideoCapturer videoCapturer;
+        if (Camera2Enumerator.isSupported(this)) {
+            videoCapturer = createCameraCapturer(new Camera2Enumerator(this));
+        } else {
+            videoCapturer = createCameraCapturer(new Camera1Enumerator(true));
+        }
+        return videoCapturer;
+    }
+
+    private VideoCapturer createCameraCapturer(CameraEnumerator enumerator) {
+        final String[] deviceNames = enumerator.getDeviceNames();
+        for (String deviceName : deviceNames) {
+            if (enumerator.isFrontFacing(deviceName)) {
+                VideoCapturer videoCapturer = enumerator.createCapturer(deviceName, null);
+                if (videoCapturer != null) {
+                    return videoCapturer;
+                }
+            }
+        }
+        return null;
     }
 } 
