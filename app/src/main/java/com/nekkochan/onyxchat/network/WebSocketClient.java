@@ -1412,10 +1412,11 @@ public class WebSocketClient {
             
             JSONObject data = new JSONObject();
             data.put("recipientId", recipientId);
-            data.put("isVideoCall", isVideoCall);
+            data.put("isVideo", isVideoCall);
             
             message.put("data", data);
             
+            Log.d(TAG, "Sending call request: " + message.toString());
             return send(message.toString());
         } catch (JSONException e) {
             Log.e(TAG, "Error creating call request message: " + e.getMessage());
@@ -1469,11 +1470,12 @@ public class WebSocketClient {
             message.put("type", "offer");
             
             JSONObject data = new JSONObject();
-            data.put("to", recipientId);
-            data.put("sdp", sdp);
+            data.put("targetId", recipientId);
+            data.put("offer", sdp);
             
             message.put("data", data);
             
+            Log.d(TAG, "Sending offer: " + message.toString());
             return send(message.toString());
         } catch (JSONException e) {
             Log.e(TAG, "Error creating offer message: " + e.getMessage());
@@ -1498,11 +1500,12 @@ public class WebSocketClient {
             message.put("type", "answer");
             
             JSONObject data = new JSONObject();
-            data.put("to", recipientId);
-            data.put("sdp", sdp);
+            data.put("callerId", recipientId);
+            data.put("answer", sdp);
             
             message.put("data", data);
             
+            Log.d(TAG, "Sending answer: " + message.toString());
             return send(message.toString());
         } catch (JSONException e) {
             Log.e(TAG, "Error creating answer message: " + e.getMessage());
@@ -1529,13 +1532,12 @@ public class WebSocketClient {
             message.put("type", "ice_candidate");
             
             JSONObject data = new JSONObject();
-            data.put("to", recipientId);
+            data.put("peerId", recipientId);
             data.put("candidate", candidate);
-            data.put("sdpMid", sdpMid);
-            data.put("sdpMLineIndex", sdpMLineIndex);
             
             message.put("data", data);
             
+            Log.d(TAG, "Sending ICE candidate: " + message.toString());
             return send(message.toString());
         } catch (JSONException e) {
             Log.e(TAG, "Error creating ICE candidate message: " + e.getMessage());
@@ -1559,10 +1561,11 @@ public class WebSocketClient {
             message.put("type", "end_call");
             
             JSONObject data = new JSONObject();
-            data.put("to", recipientId);
+            data.put("callId", recipientId);
             
             message.put("data", data);
             
+            Log.d(TAG, "Sending end call: " + message.toString());
             return send(message.toString());
         } catch (JSONException e) {
             Log.e(TAG, "Error creating end call message: " + e.getMessage());

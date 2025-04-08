@@ -216,151 +216,107 @@ const handleMessage = async (userId, messageData, connectionId) => {
         }
         break;
 
-      // WebRTC Signaling
       case 'call_request':
-        // Check if recipient is already in a call
-        if (isUserInCall(data.recipientId)) {
-          const callerConnections = clients.get(userId);
-          callerConnections.forEach(connection => {
-            if (connection.ws.readyState === 1) {
-              connection.ws.send(JSON.stringify({
-                type: 'call_busy',
-                data: {
-                  recipientId: data.recipientId
-                }
-              }));
-            }
+        // Handle incoming call request
+        const { recipientId, isVideo } = data;
+        console.log(`Call request from ${userId} to ${recipientId}, video: ${isVideo}`);
+        
+        // Check if recipient is online
+        if (clients.has(recipientId)) {
+          const recipientConnections = clients.get(recipientId);
+          
+          // Create call session
+          const callId = uuidv4();
+          activeCalls.set(callId, {
+            callerId: userId,
+            recipientId: recipientId,
+            isVideo: isVideo,
+            startTime: Date.now(),
+            status: 'ringing'
           });
-          break;
-        }
-
-        // Handle call request
-        if (clients.has(data.recipientId)) {
-          const recipientConnections = clients.get(data.recipientId);
+          
+          // Notify recipient
           recipientConnections.forEach(connection => {
             if (connection.ws.readyState === 1) {
               connection.ws.send(JSON.stringify({
                 type: 'incoming_call',
                 data: {
+                  callId: callId,
                   callerId: userId,
-                  isVideoCall: data.isVideoCall
+                  isVideo: isVideo
                 }
               }));
             }
           });
-
-          // Set up call timeout
-          const callId = uuidv4();
-          const timeout = setTimeout(() => {
-            if (activeCalls.has(callId)) {
-              // Call timed out
-              const call = activeCalls.get(callId);
-              callStats.missedCalls++;
-              
+          
+          // Set timeout for unanswered call
+          setTimeout(() => {
+            const call = activeCalls.get(callId);
+            if (call && call.status === 'ringing') {
+              activeCalls.delete(callId);
               // Notify caller
-              if (clients.has(call.callerId)) {
-                const callerConnections = clients.get(call.callerId);
+              const callerConnections = clients.get(userId);
+              if (callerConnections) {
                 callerConnections.forEach(connection => {
                   if (connection.ws.readyState === 1) {
                     connection.ws.send(JSON.stringify({
                       type: 'call_timeout',
-                      data: {
-                        recipientId: call.recipientId
-                      }
+                      data: { callId }
                     }));
                   }
                 });
               }
-
-              // Notify recipient
-              if (clients.has(call.recipientId)) {
-                const recipientConnections = clients.get(call.recipientId);
-                recipientConnections.forEach(connection => {
-                  if (connection.ws.readyState === 1) {
-                    connection.ws.send(JSON.stringify({
-                      type: 'call_timeout',
-                      data: {
-                        callerId: call.callerId
-                      }
-                    }));
-                  }
-                });
-              }
-
-              // Record call in database
-              db.Call.create({
-                id: callId,
-                callerId: call.callerId,
-                recipientId: call.recipientId,
-                status: 'missed',
-                startTime: call.startTime,
-                endTime: new Date(),
-                duration: 0,
-                isVideoCall: call.isVideoCall
-              });
-
-              activeCalls.delete(callId);
             }
           }, CALL_TIMEOUT);
-
-          // Store call information
-          activeCalls.set(callId, {
-            callerId: userId,
-            recipientId: data.recipientId,
-            isVideoCall: data.isVideoCall,
-            startTime: new Date(),
-            timeout: timeout
-          });
+        } else {
+          // Recipient is offline
+          const callerConnections = clients.get(userId);
+          if (callerConnections) {
+            callerConnections.forEach(connection => {
+              if (connection.ws.readyState === 1) {
+                connection.ws.send(JSON.stringify({
+                  type: 'call_failed',
+                  data: { reason: 'recipient_offline' }
+                }));
+              }
+            });
+          }
         }
         break;
 
       case 'call_response':
         // Handle call response (accept/reject)
-        if (clients.has(data.callerId)) {
-          const callerConnections = clients.get(data.callerId);
-          callerConnections.forEach(connection => {
-            if (connection.ws.readyState === 1) {
-              connection.ws.send(JSON.stringify({
-                type: 'call_answered',
-                data: {
-                  accepted: data.accepted,
-                  recipientId: userId
+        const { callId, accepted } = data;
+        const call = activeCalls.get(callId);
+        
+        if (call) {
+          if (accepted) {
+            call.status = 'active';
+            // Notify caller
+            const callerConnections = clients.get(call.callerId);
+            if (callerConnections) {
+              callerConnections.forEach(connection => {
+                if (connection.ws.readyState === 1) {
+                  connection.ws.send(JSON.stringify({
+                    type: 'call_accepted',
+                    data: { callId }
+                  }));
                 }
-              }));
+              });
             }
-          });
-
-          // Find and update the call
-          for (const [callId, call] of activeCalls.entries()) {
-            if (call.callerId === data.callerId && call.recipientId === userId) {
-              clearTimeout(call.timeout);
-              
-              if (data.accepted) {
-                callStats.totalCalls++;
-                callStats.successfulCalls++;
-                call.status = 'active';
-              } else {
-                callStats.totalCalls++;
-                callStats.missedCalls++;
-                call.status = 'rejected';
-                call.endTime = new Date();
-                call.duration = call.endTime - call.startTime;
-                
-                // Record rejected call in database
-                db.Call.create({
-                  id: callId,
-                  callerId: call.callerId,
-                  recipientId: call.recipientId,
-                  status: 'rejected',
-                  startTime: call.startTime,
-                  endTime: call.endTime,
-                  duration: call.duration,
-                  isVideoCall: call.isVideoCall
-                });
-
-                activeCalls.delete(callId);
-              }
-              break;
+          } else {
+            activeCalls.delete(callId);
+            // Notify caller
+            const callerConnections = clients.get(call.callerId);
+            if (callerConnections) {
+              callerConnections.forEach(connection => {
+                if (connection.ws.readyState === 1) {
+                  connection.ws.send(JSON.stringify({
+                    type: 'call_rejected',
+                    data: { callId }
+                  }));
+                }
+              });
             }
           }
         }
@@ -368,15 +324,16 @@ const handleMessage = async (userId, messageData, connectionId) => {
 
       case 'offer':
         // Forward WebRTC offer to recipient
-        if (clients.has(data.to)) {
-          const recipientConnections = clients.get(data.to);
-          recipientConnections.forEach(connection => {
+        const { offer, targetId } = data;
+        if (clients.has(targetId)) {
+          const targetConnections = clients.get(targetId);
+          targetConnections.forEach(connection => {
             if (connection.ws.readyState === 1) {
               connection.ws.send(JSON.stringify({
                 type: 'offer',
                 data: {
-                  sdp: data.sdp,
-                  from: userId
+                  offer,
+                  senderId: userId
                 }
               }));
             }
@@ -386,15 +343,16 @@ const handleMessage = async (userId, messageData, connectionId) => {
 
       case 'answer':
         // Forward WebRTC answer to caller
-        if (clients.has(data.to)) {
-          const callerConnections = clients.get(data.to);
+        const { answer, callerId } = data;
+        if (clients.has(callerId)) {
+          const callerConnections = clients.get(callerId);
           callerConnections.forEach(connection => {
             if (connection.ws.readyState === 1) {
               connection.ws.send(JSON.stringify({
                 type: 'answer',
                 data: {
-                  sdp: data.sdp,
-                  from: userId
+                  answer,
+                  senderId: userId
                 }
               }));
             }
@@ -404,17 +362,16 @@ const handleMessage = async (userId, messageData, connectionId) => {
 
       case 'ice_candidate':
         // Forward ICE candidate to peer
-        if (clients.has(data.to)) {
-          const peerConnections = clients.get(data.to);
+        const { candidate, peerId } = data;
+        if (clients.has(peerId)) {
+          const peerConnections = clients.get(peerId);
           peerConnections.forEach(connection => {
             if (connection.ws.readyState === 1) {
               connection.ws.send(JSON.stringify({
                 type: 'ice_candidate',
                 data: {
-                  candidate: data.candidate,
-                  sdpMid: data.sdpMid,
-                  sdpMLineIndex: data.sdpMLineIndex,
-                  from: userId
+                  candidate,
+                  senderId: userId
                 }
               }));
             }
@@ -423,49 +380,23 @@ const handleMessage = async (userId, messageData, connectionId) => {
         break;
 
       case 'end_call':
-        // Notify peer about call end
-        if (clients.has(data.to)) {
-          const peerConnections = clients.get(data.to);
-          peerConnections.forEach(connection => {
-            if (connection.ws.readyState === 1) {
-              connection.ws.send(JSON.stringify({
-                type: 'call_ended',
-                data: {
-                  from: userId
-                }
-              }));
-            }
-          });
-        }
-
-        // Find and update the call
-        for (const [callId, call] of activeCalls.entries()) {
-          if ((call.callerId === userId && call.recipientId === data.to) ||
-              (call.recipientId === userId && call.callerId === data.to)) {
-            clearTimeout(call.timeout);
-            call.endTime = new Date();
-            call.duration = call.endTime - call.startTime;
-            call.status = 'completed';
-
-            // Update call statistics
-            callStats.totalDuration += call.duration;
-            callStats.averageDuration = callStats.totalDuration / callStats.successfulCalls;
-
-            // Record completed call in database
-            db.Call.create({
-              id: callId,
-              callerId: call.callerId,
-              recipientId: call.recipientId,
-              status: 'completed',
-              startTime: call.startTime,
-              endTime: call.endTime,
-              duration: call.duration,
-              isVideoCall: call.isVideoCall
+        // Handle call termination
+        const { callId: endCallId } = data;
+        const endCall = activeCalls.get(endCallId);
+        if (endCall) {
+          const peerId = endCall.callerId === userId ? endCall.recipientId : endCall.callerId;
+          if (clients.has(peerId)) {
+            const peerConnections = clients.get(peerId);
+            peerConnections.forEach(connection => {
+              if (connection.ws.readyState === 1) {
+                connection.ws.send(JSON.stringify({
+                  type: 'call_ended',
+                  data: { callId: endCallId }
+                }));
+              }
             });
-
-            activeCalls.delete(callId);
-            break;
           }
+          activeCalls.delete(endCallId);
         }
         break;
         
