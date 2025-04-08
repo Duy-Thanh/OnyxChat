@@ -1041,4 +1041,16 @@ public class MainViewModel extends AndroidViewModel {
             }
         }
     }
+
+    /**
+     * Refresh all contacts and conversations
+     */
+    public void refreshAll() {
+        // Refresh conversations
+        refreshConversations();
+        
+        // Fetch users and friend requests
+        fetchUsers();
+        getFriendRequests();
+    }
 } 

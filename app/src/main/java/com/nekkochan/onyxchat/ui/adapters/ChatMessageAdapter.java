@@ -429,4 +429,15 @@ public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.
             }
         }
     }
+
+    /**
+     * Update the adapter with a new list of messages
+     * @param messages The new list of messages
+     */
+    public void setChatMessages(List<ChatViewModel.ChatMessage> messages) {
+        Log.d(TAG, "Setting " + messages.size() + " messages");
+        this.messages = new ArrayList<>(messages);
+        notifyDataSetChanged();
+        lastAnimatedPosition = messages.size() - 5; // Only animate the last few messages
+    }
 } 

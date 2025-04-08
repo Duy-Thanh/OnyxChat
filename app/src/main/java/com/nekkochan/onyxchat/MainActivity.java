@@ -122,6 +122,15 @@ public class MainActivity extends AppCompatActivity implements BottomNavigationV
     protected void onResume() {
         super.onResume();
         
+        // Start notification service to ensure it's running
+        Intent serviceIntent = new Intent(this, ChatNotificationService.class);
+        serviceIntent.setAction(ChatNotificationService.ACTION_START_SERVICE);
+        startForegroundService(serviceIntent);
+        
+        // Refresh messages in case we missed any
+        MainViewModel viewModel = new ViewModelProvider(this).get(MainViewModel.class);
+        viewModel.refreshAll();
+        
         String userId = sessionManager.getUserId();
         if (userId != null && !userId.isEmpty()) {
             Log.d(TAG, "User ID from session: " + userId);

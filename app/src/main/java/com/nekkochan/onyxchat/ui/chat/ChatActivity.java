@@ -2,8 +2,10 @@ package com.nekkochan.onyxchat.ui.chat;
 
 import android.Manifest;
 import android.app.Activity;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Bundle;
@@ -134,6 +136,9 @@ public class ChatActivity extends AppCompatActivity {
         }
     });
     
+    // Add this as a field in the ChatActivity class
+    private BroadcastReceiver messageReceiver;
+    
     @Override
     protected void onSaveInstanceState(@NonNull Bundle outState) {
         super.onSaveInstanceState(outState);
@@ -243,6 +248,9 @@ public class ChatActivity extends AppCompatActivity {
         // Create and set adapter with the required userId parameter
         adapter = new ChatMessageAdapter(viewModel.getUserId());
         recyclerView.setAdapter(adapter);
+        
+        // Set up observers for view model data
+        observeViewModelData();
         
         // Set up scroll button
         scrollDownButton.setOnClickListener(v -> {
@@ -447,6 +455,47 @@ public class ChatActivity extends AppCompatActivity {
                 showMediaStatus(processingMediaMessage, processingMediaType, true);
             }
         }
+        
+        // Register broadcast receiver for message updates
+        messageReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                if (intent != null) {
+                    String senderId = intent.getStringExtra("senderId");
+                    String recipientId = intent.getStringExtra("recipientId");
+                    long timestamp = intent.getLongExtra("timestamp", 0);
+                    
+                    Log.d(TAG, "Received broadcast to refresh messages:");
+                    Log.d(TAG, "  senderId: " + senderId);
+                    Log.d(TAG, "  recipientId: " + recipientId);
+                    Log.d(TAG, "  timestamp: " + timestamp);
+                    Log.d(TAG, "  currentContactId: " + contactId);
+                    
+                    // Only refresh if this is the relevant chat
+                    // Chat is relevant if:
+                    // 1. We received a message from the contact we're chatting with
+                    // 2. The recipient is the contact we're chatting with (we sent it)
+                    boolean isRelevant = (senderId != null && senderId.equals(contactId)) || 
+                                       (recipientId != null && recipientId.equals(contactId));
+                    
+                    if (isRelevant) {
+                        Log.d(TAG, "Message is relevant to current chat, refreshing...");
+                        runOnUiThread(() -> {
+                            viewModel.refreshMessages();
+                            // Observe the updated messages
+                            observeViewModelData();
+                        });
+                    } else {
+                        Log.d(TAG, "Message is NOT relevant to current chat, ignoring");
+                    }
+                }
+            }
+        };
+
+        // Register receiver with broader intent filter
+        IntentFilter intentFilter = new IntentFilter();
+        intentFilter.addAction("com.nekkochan.onyxchat.REFRESH_MESSAGES");
+        registerReceiver(messageReceiver, intentFilter, Context.RECEIVER_EXPORTED);
     }
     
     @Override
@@ -475,6 +524,15 @@ public class ChatActivity extends AppCompatActivity {
         super.onDestroy();
         // Dismiss emoji popup to prevent memory leaks
         EmojiUtils.dismissEmojiPopup();
+        
+        // Unregister broadcast receiver
+        if (messageReceiver != null) {
+            try {
+                unregisterReceiver(messageReceiver);
+            } catch (Exception e) {
+                Log.e(TAG, "Error unregistering message receiver", e);
+            }
+        }
     }
     
     @Override
@@ -858,5 +916,48 @@ public class ChatActivity extends AppCompatActivity {
             }
         }
         return true;
+    }
+    
+    /**
+     * Observe the view model data and update the UI accordingly
+     */
+    private void observeViewModelData() {
+        // Observe connection state
+        viewModel.isChatConnected().observe(this, isConnected -> {
+            updateConnectionStatus(isConnected);
+        });
+        
+        // Observe chat messages
+        viewModel.getChatMessages().observe(this, messages -> {
+            if (messages != null && !messages.isEmpty()) {
+                Log.d(TAG, "Received " + messages.size() + " messages from ViewModel");
+                
+                // Update the adapter with the new messages
+                adapter.setChatMessages(messages);
+                
+                // Scroll to the bottom if we're already near it
+                LinearLayoutManager layoutManager = (LinearLayoutManager) recyclerView.getLayoutManager();
+                if (layoutManager != null) {
+                    int lastVisiblePosition = layoutManager.findLastVisibleItemPosition();
+                    int messageCount = adapter.getItemCount();
+                    
+                    if (lastVisiblePosition >= messageCount - 2 || messageCount <= 5) {
+                        recyclerView.post(() -> {
+                            recyclerView.smoothScrollToPosition(messageCount - 1);
+                        });
+                    } else {
+                        // Show scroll button
+                        scrollDownButton.setVisibility(View.VISIBLE);
+                    }
+                }
+            }
+        });
+        
+        // Observe error messages
+        viewModel.getErrorMessage().observe(this, errorMsg -> {
+            if (errorMsg != null && !errorMsg.isEmpty()) {
+                Toast.makeText(this, errorMsg, Toast.LENGTH_SHORT).show();
+            }
+        });
     }
 } 

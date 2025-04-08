@@ -28,6 +28,7 @@ import com.nekkochan.onyxchat.R;
 import com.nekkochan.onyxchat.network.ChatService;
 import com.nekkochan.onyxchat.network.WebSocketClient;
 import com.nekkochan.onyxchat.ui.chat.ChatActivity;
+import com.nekkochan.onyxchat.utils.NotificationUtil;
 import com.nekkochan.onyxchat.util.UserSessionManager;
 
 /**
@@ -478,67 +479,15 @@ public class ChatNotificationService extends Service {
             return;
         }
         
-        // Get sender name from contacts DB or use ID if not found
-        String senderName = message.getSenderId();
+        // Use the NotificationUtil to handle the notification
+        NotificationUtil.showMessageNotification(this, message);
         
-        // Create a unique notification ID for this conversation
-        int notificationId = senderName.hashCode();
-        
-        // Create an intent to open the chat with this sender
-        Intent intent = new Intent(this, ChatActivity.class);
-        intent.putExtra(ChatActivity.EXTRA_CONTACT_ID, message.getSenderId());
-        intent.putExtra(ChatActivity.EXTRA_CONTACT_NAME, senderName);
-        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        
-        PendingIntent pendingIntent = PendingIntent.getActivity(
-                this,
-                notificationId,
-                intent,
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
-        );
-        
-        // Get message content to display in notification
-        String content = message.getContent();
-        String messageContent = content;
-        
-        // Check if this is a media message (JSON)
-        if (content != null && content.startsWith("{") && content.endsWith("}")) {
-            try {
-                // Parse the JSON to get the media type
-                org.json.JSONObject jsonObject = new org.json.JSONObject(content);
-                if (jsonObject.has("type")) {
-                    String mediaType = jsonObject.getString("type");
-                    String caption = jsonObject.optString("caption", "");
-                    
-                    if (!caption.isEmpty()) {
-                        messageContent = caption;
-                    } else {
-                        messageContent = "📎 " + mediaType + " message";
-                    }
-                }
-            } catch (Exception e) {
-                Log.e(TAG, "Error parsing media message", e);
-            }
-        }
-        
-        // Build the notification
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, MESSAGE_CHANNEL_ID)
-                .setSmallIcon(R.drawable.ic_message_notification)
-                .setContentTitle(senderName)
-                .setContentText(messageContent)
-                .setPriority(NotificationCompat.PRIORITY_HIGH)
-                .setCategory(NotificationCompat.CATEGORY_MESSAGE)
-                .setAutoCancel(true)
-                .setContentIntent(pendingIntent)
-                .setDefaults(NotificationCompat.DEFAULT_ALL);
-        
-        // Show the notification
-        NotificationManagerCompat notificationManager = NotificationManagerCompat.from(this);
-        try {
-            notificationManager.notify(notificationId, builder.build());
-        } catch (SecurityException e) {
-            Log.e(TAG, "Unable to show notification: " + e.getMessage());
-        }
+        // Send a broadcast to refresh any open chat screens
+        Intent refreshIntent = new Intent("com.nekkochan.onyxchat.REFRESH_MESSAGES");
+        refreshIntent.putExtra("senderId", message.getSenderId());
+        refreshIntent.putExtra("recipientId", message.getRecipientId());
+        refreshIntent.putExtra("timestamp", message.getTimestamp());
+        sendBroadcast(refreshIntent);
     }
     
     /**

@@ -1,6 +1,7 @@
 package com.nekkochan.onyxchat.network;
 
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.preference.PreferenceManager;
 import android.util.Log;
@@ -209,11 +210,45 @@ public class ChatService {
                             messageTimestamp + " (" + new Date(messageTimestamp) + ")");
                 }
 
-                if ("message".equals(type)) {
+                if ("message".equals(type) || "NEW_MESSAGE".equals(type)) {
                     // Process chat message
-                    String senderId = jsonMessage.get("senderId").getAsString();
-                    String recipientId = jsonMessage.get("recipientId").getAsString();
-                    String content = jsonMessage.get("content").getAsString();
+                    String senderId;
+                    String recipientId = "";
+                    String content;
+                    
+                    if ("NEW_MESSAGE".equals(type)) {
+                        // For NEW_MESSAGE format, data is in a nested "data" object
+                        JsonObject dataObj = jsonMessage.getAsJsonObject("data");
+                        senderId = dataObj.get("senderId").getAsString();
+                        if (dataObj.has("recipientId")) {
+                            recipientId = dataObj.get("recipientId").getAsString();
+                        }
+                        content = dataObj.get("content").getAsString();
+                        
+                        // Get timestamp from nested data if available
+                        if (dataObj.has("timestamp")) {
+                            try {
+                                // Try to parse ISO date string
+                                String timestampStr = dataObj.get("timestamp").getAsString();
+                                SimpleDateFormat iso8601Format = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US);
+                                iso8601Format.setTimeZone(TimeZone.getTimeZone("UTC"));
+                                Date date = iso8601Format.parse(timestampStr);
+                                if (date != null) {
+                                    messageTimestamp = date.getTime();
+                                    hasServerTimestamp = true;
+                                    Log.d(TAG, "Message has timestamp from data: " + messageTimestamp + 
+                                           " (" + new Date(messageTimestamp) + ")");
+                                }
+                            } catch (Exception e) {
+                                Log.e(TAG, "Error parsing timestamp from data", e);
+                            }
+                        }
+                    } else {
+                        // Original message format
+                        senderId = jsonMessage.get("senderId").getAsString();
+                        recipientId = jsonMessage.get("recipientId").getAsString();
+                        content = jsonMessage.get("content").getAsString();
+                    }
                     
                     // Check for formattedTime field from enhanced server
                     if (jsonMessage.has("formattedTime")) {
@@ -239,6 +274,13 @@ public class ChatService {
                     
                     // Post to LiveData
                     latestMessage.postValue(chatMessage);
+
+                    // Send broadcast to refresh UI
+                    Intent broadcastIntent = new Intent("com.nekkochan.onyxchat.REFRESH_MESSAGES");
+                    broadcastIntent.putExtra("senderId", senderId);
+                    broadcastIntent.putExtra("recipientId", recipientId);
+                    broadcastIntent.putExtra("timestamp", messageTimestamp);
+                    context.sendBroadcast(broadcastIntent);
                 } else if ("user_status".equals(type)) {
                     // User status update
                     String status = jsonMessage.get("status").getAsString();
