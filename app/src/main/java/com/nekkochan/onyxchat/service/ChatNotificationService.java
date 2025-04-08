@@ -479,8 +479,23 @@ public class ChatNotificationService extends Service {
             return;
         }
         
-        // Don't show notifications for our own messages
-        if (message.isSelf() || message.getSenderId().equals(sessionManager.getUserId())) {
+        // Check if session manager is initialized
+        if (sessionManager == null) {
+            Log.w(TAG, "SessionManager is null, reinitializing");
+            sessionManager = new UserSessionManager(this);
+        }
+        
+        // Get current user ID safely
+        String currentUserId = null;
+        try {
+            currentUserId = sessionManager.getUserId();
+        } catch (Exception e) {
+            Log.e(TAG, "Error getting user ID from session manager", e);
+        }
+        
+        // Don't show notifications for our own messages - safer check
+        if (message.isSelf() || 
+            (currentUserId != null && message.getSenderId().equals(currentUserId))) {
             Log.d(TAG, "Skipping notification for own message");
             return;
         }

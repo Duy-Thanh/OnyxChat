@@ -203,6 +203,17 @@ public class NotificationUtil {
                 // Capitalize first letter and format
                 return username.substring(0, 1).toUpperCase() + username.substring(1);
             }
+            
+            // If it looks like a UUID (contains hyphens and is the right length)
+            if (contactId.contains("-") && contactId.length() > 8) {
+                // It's likely a UUID - extract the first part for a readable name
+                String shortId = contactId.split("-")[0];
+                if (shortId.length() >= 8) {
+                    // Take first 8 chars for a username-like display
+                    String formattedName = "User-" + shortId.substring(0, 8);
+                    return formattedName;
+                }
+            }
         } catch (Exception e) {
             Log.e(TAG, "Error formatting contact display name", e);
         }
