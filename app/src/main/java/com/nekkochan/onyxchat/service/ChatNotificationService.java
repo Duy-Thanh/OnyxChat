@@ -388,22 +388,43 @@ public class ChatNotificationService extends Service {
         
         // Listen for new messages
         chatService.getLatestMessage().observeForever(chatMessage -> {
+            Log.d(TAG, "============ MESSAGE NOTIFICATION PROCESSING START ============");
             if (chatMessage != null) {
                 Log.d(TAG, "New message received in service: " + chatMessage.getContent() 
                     + ", type: " + chatMessage.getType() 
                     + ", isSelf: " + chatMessage.isSelf()
-                    + ", senderId: " + chatMessage.getSenderId());
+                    + ", senderId: " + chatMessage.getSenderId()
+                    + ", recipientId: " + chatMessage.getRecipientId());
+                
+                // Check the value of userId to see if it matches correctly
+                Log.d(TAG, "Current user ID: " + userId);
+                
+                // Log the condition check - whether this message is ours
+                boolean isOwnMessage = chatMessage.isSelf() || chatMessage.getSenderId().equals(userId);
+                Log.d(TAG, "Is this our own message? " + isOwnMessage);
                 
                 // Don't show notifications for our own messages
-                if (!chatMessage.isSelf() && !chatMessage.getSenderId().equals(userId)) {
+                if (!isOwnMessage) {
+                    // Log the message type check
+                    boolean isDirectOrMessage = 
+                        chatMessage.getType() == ChatService.ChatMessage.MessageType.DIRECT || 
+                        chatMessage.getType() == ChatService.ChatMessage.MessageType.MESSAGE;
+                    Log.d(TAG, "Is this a DIRECT or MESSAGE type? " + isDirectOrMessage);
+                    
                     // Handle different message types
-                    if (chatMessage.getType() == ChatService.ChatMessage.MessageType.DIRECT 
-                            || chatMessage.getType() == ChatService.ChatMessage.MessageType.MESSAGE) {
-                        Log.d(TAG, "Showing notification for message from: " + chatMessage.getSenderId());
+                    if (isDirectOrMessage) {
+                        Log.d(TAG, "All conditions met - SHOWING notification for message from: " + chatMessage.getSenderId());
                         showMessageNotification(chatMessage);
+                    } else {
+                        Log.d(TAG, "Skipping notification - not a direct or message type: " + chatMessage.getType());
                     }
+                } else {
+                    Log.d(TAG, "Skipping notification for own message");
                 }
+            } else {
+                Log.d(TAG, "Received NULL message in service, cannot process");
             }
+            Log.d(TAG, "============ MESSAGE NOTIFICATION PROCESSING END ============");
         });
         
         // Connect to the WebSocket

@@ -207,11 +207,15 @@ public class ChatActivity extends AppCompatActivity {
         
         // Add logging to track timestamps of messages
         // Set up contact info in header format similar to Discover Users screen
-        contactNameText.setText(contactName != null ? contactName : contactId);
+        contactNameText.setText(getFormattedContactName(contactId, contactName));
         
         // Find the statusChip's parent LinearLayout
         ViewParent statusChipParent = statusChip.getParent();
         if (statusChipParent instanceof LinearLayout) {
+            // Get a properly formatted display name for the contact
+            String displayName = getFormattedContactName(contactId, contactName);
+            contactNameText.setText(displayName);
+            
             // Get the username from the contact ID (email)
             if (isEmail) {
                 String username = contactId.split("@")[0];
@@ -959,5 +963,39 @@ public class ChatActivity extends AppCompatActivity {
                 Toast.makeText(this, errorMsg, Toast.LENGTH_SHORT).show();
             }
         });
+    }
+    
+    // Add a method to format contact names consistently
+    private String getFormattedContactName(String contactId, String contactName) {
+        if (contactName != null && !contactName.isEmpty() && !contactName.equals(contactId)) {
+            // If we already have a display name that's different from the ID, use it
+            return contactName;
+        }
+        
+        // Otherwise, format the contact ID appropriately
+        try {
+            // If it's an email, format it nicely
+            if (contactId.contains("@")) {
+                // Get the part before @ symbol
+                String username = contactId.split("@")[0];
+                // Capitalize first letter and format
+                return username.substring(0, 1).toUpperCase() + username.substring(1);
+            }
+            
+            // If it looks like a UUID (contains hyphens and is the right length)
+            if (contactId.contains("-") && contactId.length() > 8) {
+                // Try to create something more user-friendly
+                String shortId = contactId.split("-")[0];
+                if (shortId.length() >= 8) {
+                    // Create a user-friendly name
+                    return "Test User-" + shortId;
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error formatting contact name", e);
+        }
+        
+        // Fallback to original ID
+        return contactId;
     }
 } 
