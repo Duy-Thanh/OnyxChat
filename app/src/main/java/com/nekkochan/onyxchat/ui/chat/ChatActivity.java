@@ -381,14 +381,10 @@ public class ChatActivity extends AppCompatActivity {
         attachButton.setOnClickListener(v -> showAttachmentOptions());
         
         // Set up voice call button
-        voiceCallButton.setOnClickListener(v -> {
-            Toast.makeText(this, "Voice call feature coming soon", Toast.LENGTH_SHORT).show();
-        });
+        voiceCallButton.setOnClickListener(v -> initiateCall(false));
         
         // Set up video call button
-        videoCallButton.setOnClickListener(v -> {
-            Toast.makeText(this, "Video call feature coming soon", Toast.LENGTH_SHORT).show();
-        });
+        videoCallButton.setOnClickListener(v -> initiateCall(true));
         
         // Set up chat settings button
         chatSettingsButton.setOnClickListener(v -> {
@@ -559,6 +555,31 @@ public class ChatActivity extends AppCompatActivity {
                 showAttachmentOptions();
             } else {
                 Toast.makeText(this, "Permission denied. Cannot access media files.", Toast.LENGTH_SHORT).show();
+            }
+        } else if (requestCode == PERMISSION_REQUEST_CALL) {
+            // Handle call permissions
+            boolean allGranted = true;
+            for (int result : grantResults) {
+                if (result != PackageManager.PERMISSION_GRANTED) {
+                    allGranted = false;
+                    break;
+                }
+            }
+            
+            if (allGranted) {
+                // Check which permission was requested
+                boolean isVideoPermission = false;
+                for (String permission : permissions) {
+                    if (permission.equals(Manifest.permission.CAMERA)) {
+                        isVideoPermission = true;
+                        break;
+                    }
+                }
+                
+                // Retry the call with the granted permissions
+                initiateCall(isVideoPermission);
+            } else {
+                Toast.makeText(this, "Permission denied for call", Toast.LENGTH_SHORT).show();
             }
         }
     }
@@ -998,4 +1019,38 @@ public class ChatActivity extends AppCompatActivity {
         // Fallback to original ID
         return contactId;
     }
+    
+    /**
+     * Initiates a call with the current recipient
+     * @param isVideoCall true for video call, false for voice call
+     */
+    private void initiateCall(boolean isVideoCall) {
+        Log.d(TAG, "Initiating " + (isVideoCall ? "video" : "voice") + " call with: " + contactId);
+        
+        // Check necessary permissions
+        if (isVideoCall) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this, 
+                        new String[]{Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO}, 
+                        PERMISSION_REQUEST_CALL);
+                return;
+            }
+        } else {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this, 
+                        new String[]{Manifest.permission.RECORD_AUDIO}, 
+                        PERMISSION_REQUEST_CALL);
+                return;
+            }
+        }
+        
+        // Launch CallActivity
+        Intent callIntent = new Intent(this, com.nekkochan.onyxchat.ui.call.CallActivity.class);
+        callIntent.putExtra("recipientId", contactId);
+        callIntent.putExtra("isVideoCall", isVideoCall);
+        callIntent.putExtra("isCaller", true);
+        startActivity(callIntent);
+    }
+
+    private static final int PERMISSION_REQUEST_CALL = 101;
 } 

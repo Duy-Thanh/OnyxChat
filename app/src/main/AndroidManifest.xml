@@ -22,6 +22,7 @@
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
     <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     
     <!-- Legacy storage permissions for older Android versions -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" 
@@ -49,6 +50,12 @@
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+            
+        <!-- WebRTC signaling service -->
+        <service
+            android:name=".service.WebRTCService"
+            android:enabled="true"
+            android:exported="false" />
             
         <!-- Startup job service for scheduling service start -->
         <service
@@ -130,6 +137,12 @@
             android:exported="false"
             android:parentActivityName=".ui.chat.ChatActivity"
             android:theme="@style/AppTheme" />
+        
+        <!-- Call Activity -->
+        <activity
+            android:name=".ui.call.CallActivity"
+            android:exported="false"
+            android:theme="@style/Theme.OnyxChat.FullscreenCall" />
         
         <!-- Media Processing Activity -->
         <activity

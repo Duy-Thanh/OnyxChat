@@ -149,7 +149,16 @@ public class WebSocketClient {
         CONNECT,
         DISCONNECT,
         ERROR,
-        USER_STATUS_CHANGE  // Add new event type for status changes
+        USER_STATUS_CHANGE,  // Status changes
+        // WebRTC signaling events
+        INCOMING_CALL,
+        CALL_ANSWERED,
+        CALL_BUSY,
+        CALL_TIMEOUT,
+        CALL_ENDED,
+        ICE_CANDIDATE,
+        OFFER,
+        ANSWER
     }
     
     /**
@@ -1290,23 +1299,60 @@ public class WebSocketClient {
      * Process incoming WebSocket message
      */
     private void processMessage(String message) {
-        Log.d(TAG, "Received WebSocket message: " + message);
-        
-        // We'll use this temporarily to avoid implementing all methods
-        // In a real implementation, we would implement each handler method
-        
         try {
             JSONObject jsonObject = new JSONObject(message);
-            String type = jsonObject.optString("type", "");
+            String type = jsonObject.getString("type");
             
-            if ("userStatusChange".equals(type)) {
-                handleUserStatusChange(jsonObject);
-            } else {
-                // For all other message types, just log them for now
-                Log.d(TAG, "Received message with type: " + type);
+            switch (type) {
+                case "user_joined":
+                    // Existing user joined code
+                    eventLiveData.postValue(new WebSocketEvent(WebSocketEventType.USER_JOINED, message));
+                    break;
+                case "user_left":
+                    // Existing user left code
+                    eventLiveData.postValue(new WebSocketEvent(WebSocketEventType.USER_LEFT, message));
+                    break;
+                case "message":
+                    eventLiveData.postValue(new WebSocketEvent(WebSocketEventType.MESSAGE_RECEIVED, message));
+                    break;
+                case "direct":
+                    eventLiveData.postValue(new WebSocketEvent(WebSocketEventType.DIRECT_MESSAGE, message));
+                    break;
+                case "status":
+                    // Handle user status updates
+                    handleUserStatusChange(jsonObject);
+                    break;
+                // WebRTC Signaling Messages
+                case "incoming_call":
+                    eventLiveData.postValue(new WebSocketEvent(WebSocketEventType.INCOMING_CALL, message));
+                    break;
+                case "call_answered":
+                    eventLiveData.postValue(new WebSocketEvent(WebSocketEventType.CALL_ANSWERED, message));
+                    break;
+                case "call_busy":
+                    eventLiveData.postValue(new WebSocketEvent(WebSocketEventType.CALL_BUSY, message));
+                    break;
+                case "call_timeout":
+                    eventLiveData.postValue(new WebSocketEvent(WebSocketEventType.CALL_TIMEOUT, message));
+                    break;
+                case "call_ended":
+                    eventLiveData.postValue(new WebSocketEvent(WebSocketEventType.CALL_ENDED, message));
+                    break;
+                case "ice_candidate":
+                    eventLiveData.postValue(new WebSocketEvent(WebSocketEventType.ICE_CANDIDATE, message));
+                    break;
+                case "offer":
+                    eventLiveData.postValue(new WebSocketEvent(WebSocketEventType.OFFER, message));
+                    break;
+                case "answer":
+                    eventLiveData.postValue(new WebSocketEvent(WebSocketEventType.ANSWER, message));
+                    break;
+                default:
+                    Log.d(TAG, "Unknown message type: " + type);
+                    break;
             }
         } catch (JSONException e) {
-            Log.e(TAG, "Failed to parse WebSocket message", e);
+            Log.e(TAG, "Error parsing message: " + e.getMessage());
         }
     }
 
@@ -1346,5 +1392,181 @@ public class WebSocketClient {
         
         // Notify listeners
         eventLiveData.postValue(event);
+    }
+
+    /**
+     * Send a call request to a recipient
+     * @param recipientId the ID of the recipient
+     * @param isVideoCall whether this is a video call
+     * @return true if the message was sent, false otherwise
+     */
+    public boolean sendCallRequest(String recipientId, boolean isVideoCall) {
+        if (webSocket == null || state != WebSocketState.CONNECTED) {
+            Log.e(TAG, "Cannot send call request - not connected");
+            return false;
+        }
+        
+        try {
+            JSONObject message = new JSONObject();
+            message.put("type", "call_request");
+            
+            JSONObject data = new JSONObject();
+            data.put("recipientId", recipientId);
+            data.put("isVideoCall", isVideoCall);
+            
+            message.put("data", data);
+            
+            return send(message.toString());
+        } catch (JSONException e) {
+            Log.e(TAG, "Error creating call request message: " + e.getMessage());
+            return false;
+        }
+    }
+    
+    /**
+     * Send a call response to a caller
+     * @param callerId the ID of the caller
+     * @param accepted whether the call was accepted
+     * @return true if the message was sent, false otherwise
+     */
+    public boolean sendCallResponse(String callerId, boolean accepted) {
+        if (webSocket == null || state != WebSocketState.CONNECTED) {
+            Log.e(TAG, "Cannot send call response - not connected");
+            return false;
+        }
+        
+        try {
+            JSONObject message = new JSONObject();
+            message.put("type", "call_response");
+            
+            JSONObject data = new JSONObject();
+            data.put("callerId", callerId);
+            data.put("accepted", accepted);
+            
+            message.put("data", data);
+            
+            return send(message.toString());
+        } catch (JSONException e) {
+            Log.e(TAG, "Error creating call response message: " + e.getMessage());
+            return false;
+        }
+    }
+    
+    /**
+     * Send an SDP offer to a recipient
+     * @param recipientId the ID of the recipient
+     * @param sdp the SDP offer
+     * @return true if the message was sent, false otherwise
+     */
+    public boolean sendOffer(String recipientId, String sdp) {
+        if (webSocket == null || state != WebSocketState.CONNECTED) {
+            Log.e(TAG, "Cannot send offer - not connected");
+            return false;
+        }
+        
+        try {
+            JSONObject message = new JSONObject();
+            message.put("type", "offer");
+            
+            JSONObject data = new JSONObject();
+            data.put("to", recipientId);
+            data.put("sdp", sdp);
+            
+            message.put("data", data);
+            
+            return send(message.toString());
+        } catch (JSONException e) {
+            Log.e(TAG, "Error creating offer message: " + e.getMessage());
+            return false;
+        }
+    }
+    
+    /**
+     * Send an SDP answer to a recipient
+     * @param recipientId the ID of the recipient
+     * @param sdp the SDP answer
+     * @return true if the message was sent, false otherwise
+     */
+    public boolean sendAnswer(String recipientId, String sdp) {
+        if (webSocket == null || state != WebSocketState.CONNECTED) {
+            Log.e(TAG, "Cannot send answer - not connected");
+            return false;
+        }
+        
+        try {
+            JSONObject message = new JSONObject();
+            message.put("type", "answer");
+            
+            JSONObject data = new JSONObject();
+            data.put("to", recipientId);
+            data.put("sdp", sdp);
+            
+            message.put("data", data);
+            
+            return send(message.toString());
+        } catch (JSONException e) {
+            Log.e(TAG, "Error creating answer message: " + e.getMessage());
+            return false;
+        }
+    }
+    
+    /**
+     * Send an ICE candidate to a recipient
+     * @param recipientId the ID of the recipient
+     * @param candidate the ICE candidate
+     * @param sdpMid the SDP mid
+     * @param sdpMLineIndex the SDP mline index
+     * @return true if the message was sent, false otherwise
+     */
+    public boolean sendIceCandidate(String recipientId, String candidate, String sdpMid, int sdpMLineIndex) {
+        if (webSocket == null || state != WebSocketState.CONNECTED) {
+            Log.e(TAG, "Cannot send ICE candidate - not connected");
+            return false;
+        }
+        
+        try {
+            JSONObject message = new JSONObject();
+            message.put("type", "ice_candidate");
+            
+            JSONObject data = new JSONObject();
+            data.put("to", recipientId);
+            data.put("candidate", candidate);
+            data.put("sdpMid", sdpMid);
+            data.put("sdpMLineIndex", sdpMLineIndex);
+            
+            message.put("data", data);
+            
+            return send(message.toString());
+        } catch (JSONException e) {
+            Log.e(TAG, "Error creating ICE candidate message: " + e.getMessage());
+            return false;
+        }
+    }
+    
+    /**
+     * Send an end call message to a recipient
+     * @param recipientId the ID of the recipient
+     * @return true if the message was sent, false otherwise
+     */
+    public boolean sendEndCall(String recipientId) {
+        if (webSocket == null || state != WebSocketState.CONNECTED) {
+            Log.e(TAG, "Cannot send end call - not connected");
+            return false;
+        }
+        
+        try {
+            JSONObject message = new JSONObject();
+            message.put("type", "end_call");
+            
+            JSONObject data = new JSONObject();
+            data.put("to", recipientId);
+            
+            message.put("data", data);
+            
+            return send(message.toString());
+        } catch (JSONException e) {
+            Log.e(TAG, "Error creating end call message: " + e.getMessage());
+            return false;
+        }
     }
 }
