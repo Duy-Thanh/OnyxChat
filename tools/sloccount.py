@@ -1,7 +1,9 @@
 import os
 import sys
+from collections import defaultdict
+import math
 
-# Define language configurations
+# Language configuration
 language_config = {
     'c':      {'single': ['//'],    'multi': [('/*', '*/')]},
     'cpp':    {'single': ['//'],    'multi': [('/*', '*/')]},
@@ -14,24 +16,20 @@ language_config = {
     'swift':  {'single': ['//'],    'multi': [('/*', '*/')]},
     'asm':    {'single': [';'],     'multi': []},
     's':      {'single': [';'],     'multi': []},
-    # add more as needed...
+    # Extend as needed
 }
 
-def get_language_by_extension(filename):
+def get_extension_language(filename):
     ext = filename.rsplit('.', 1)[-1].lower()
-    return language_config.get(ext)
+    return ext if ext in language_config else None
 
-def count_sloc_in_file(filepath):
-    ext = filepath.rsplit('.', 1)[-1].lower()
-    lang = language_config.get(ext)
-    if not lang:
-        return 0  # unsupported file type
+def count_sloc_in_file(filepath, ext):
+    config = language_config.get(ext)
+    if not config:
+        return 0
 
     sloc = 0
     in_multiline_comment = False
-    multi_comment_starts = [start for start, _ in lang['multi']]
-    multi_comment_ends   = [end for _, end in lang['multi']]
-
     with open(filepath, 'r', errors='ignore') as f:
         for line in f:
             line = line.strip()
@@ -39,27 +37,24 @@ def count_sloc_in_file(filepath):
                 continue
 
             if in_multiline_comment:
-                for end in multi_comment_ends:
+                for _, end in config['multi']:
                     if end in line:
                         line = line.split(end, 1)[1]
                         in_multiline_comment = False
                         break
                 else:
-                    continue  # still inside comment
+                    continue
                 if not line.strip():
-                    continue  # line ends with multiline comment
+                    continue
 
-            # Remove single-line comments
-            for token in lang['single']:
+            for token in config['single']:
                 if token in line:
                     line = line.split(token, 1)[0]
 
-            # Handle start of multiline comment
-            for start, end in lang['multi']:
+            for start, end in config['multi']:
                 if start in line:
                     before, after = line.split(start, 1)
                     if end in after:
-                        # comment starts and ends on same line
                         after = after.split(end, 1)[1]
                         line = before + after
                     else:
@@ -68,24 +63,85 @@ def count_sloc_in_file(filepath):
 
             if line.strip():
                 sloc += 1
-
     return sloc
 
-def scan_directory(path):
-    total_sloc = 0
-    per_file = {}
-    for root, _, files in os.walk(path):
+def scan_directory(base_path):
+    dir_language_counts = defaultdict(lambda: defaultdict(int))
+    language_totals = defaultdict(int)
+
+    for root, _, files in os.walk(base_path):
+        rel_dir = os.path.relpath(root, base_path)
+        if rel_dir == ".":
+            rel_dir = "top_dir"
+
         for file in files:
-            full_path = os.path.join(root, file)
             if '.' not in file:
                 continue
-            lang = get_language_by_extension(file)
-            if not lang:
+            ext = get_extension_language(file)
+            if not ext:
                 continue
-            count = count_sloc_in_file(full_path)
-            total_sloc += count
-            per_file[full_path] = count
-    return total_sloc, per_file
+
+            full_path = os.path.join(root, file)
+            count = count_sloc_in_file(full_path, ext)
+            if count > 0:
+                dir_language_counts[rel_dir][ext] += count
+                language_totals[ext] += count
+            elif rel_dir not in dir_language_counts:
+                dir_language_counts[rel_dir] = {}
+
+    return dir_language_counts, language_totals
+
+def cocomo_model(total_sloc):
+    ksloc = total_sloc / 1000.0
+    person_months = 2.4 * (ksloc ** 1.05)
+    schedule_months = 2.5 * (person_months ** 0.38)
+    cost = person_months * 56286 * 2.4
+    return {
+        'person_months': person_months,
+        'schedule_months': schedule_months,
+        'developers': person_months / schedule_months if schedule_months > 0 else 0,
+        'cost': cost,
+    }
+
+def format_output(dir_lang_counts, lang_totals):
+    print("Computing results.\n")
+    print("SLOC\tDirectory\tSLOC-by-Language (Sorted)")
+
+    total_sloc = 0
+    for directory in sorted(dir_lang_counts):
+        langs = dir_lang_counts[directory]
+        sloc_dir = sum(langs.values())
+        total_sloc += sloc_dir
+        if langs:
+            sorted_langs = sorted(langs.items(), key=lambda x: -x[1])
+            lang_str = ",".join(f"{k}={v}" for k, v in sorted_langs)
+        else:
+            lang_str = "(none)"
+        print(f"{sloc_dir:<8}{directory:<16}{lang_str}")
+
+    print("\n\nTotals grouped by language (dominant language first):")
+    total_sloc = sum(lang_totals.values())
+    sorted_langs = sorted(lang_totals.items(), key=lambda x: -x[1])
+    for lang, count in sorted_langs:
+        percent = (count / total_sloc * 100) if total_sloc else 0
+        print(f"{lang:<13}{count:>7} ({percent:.2f}%)")
+
+    print("\n")
+    print(f"Total Physical Source Lines of Code (SLOC)                = {total_sloc:,}")
+    metrics = cocomo_model(total_sloc)
+    print(f"Development Effort Estimate, Person-Years (Person-Months) = {metrics['person_months']/12:.2f} ({metrics['person_months']:.2f})")
+    print(" (Basic COCOMO model, Person-Months = 2.4 * (KSLOC**1.05))")
+    print(f"Schedule Estimate, Years (Months)                         = {metrics['schedule_months']/12:.2f} ({metrics['schedule_months']:.2f})")
+    print(" (Basic COCOMO model, Months = 2.5 * (person-months**0.38))")
+    print(f"Estimated Average Number of Developers (Effort/Schedule)  = {metrics['developers']:.2f}")
+    print(f"Total Estimated Cost to Develop                           = $ {int(metrics['cost']):,}")
+    print(" (average salary = $56,286/year, overhead = 2.40).")
+    print("SLOCCount, Copyright (C) 2001-2004 David A. Wheeler")
+    print("SLOCCount is Open Source Software/Free Software, licensed under the GNU GPL.")
+    print("SLOCCount comes with ABSOLUTELY NO WARRANTY, and you are welcome to")
+    print("redistribute it under certain conditions as specified by the GNU GPL license;")
+    print("see the documentation for details.")
+    print("Please credit this data as \"generated using David A. Wheeler's 'SLOCCount'.\"")
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
@@ -97,7 +153,5 @@ if __name__ == "__main__":
         print("Directory not found:", target_dir)
         sys.exit(1)
 
-    total, file_counts = scan_directory(target_dir)
-    for path, count in file_counts.items():
-        print(f"{path}: {count} LOC")
-    print("\nTotal SLOC:", total)
+    dir_counts, lang_totals = scan_directory(target_dir)
+    format_output(dir_counts, lang_totals)
