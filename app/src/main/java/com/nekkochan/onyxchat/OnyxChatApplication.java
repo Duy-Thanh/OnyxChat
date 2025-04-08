@@ -4,6 +4,7 @@ import android.app.Application;
 import android.util.Log;
 
 import com.nekkochan.onyxchat.utils.EmojiUtils;
+import com.nekkochan.onyxchat.utils.NotificationUtil;
 
 /**
  * Main application class for OnyxChat
@@ -19,6 +20,10 @@ public class OnyxChatApplication extends Application {
         // Initialize emoji support
         Log.d(TAG, "Initializing emoji support");
         EmojiUtils.init(this);
+        
+        // Initialize notification channels
+        Log.d(TAG, "Creating notification channels");
+        NotificationUtil.createNotificationChannels(this);
         
         // Initialize other components as needed
     }
