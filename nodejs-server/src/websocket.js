@@ -5,6 +5,19 @@ const db = require('./models');
 // Store clients connections - modified to support multiple connections per user
 const clients = new Map();
 
+// Store active calls and their timeouts
+const activeCalls = new Map();
+const CALL_TIMEOUT = 30000; // 30 seconds timeout for unanswered calls
+
+// Call statistics tracking
+const callStats = {
+  totalCalls: 0,
+  successfulCalls: 0,
+  missedCalls: 0,
+  averageDuration: 0,
+  totalDuration: 0
+};
+
 // Authentication middleware for WebSocket
 const authenticateWsConnection = (token) => {
   try {
@@ -205,6 +218,22 @@ const handleMessage = async (userId, messageData, connectionId) => {
 
       // WebRTC Signaling
       case 'call_request':
+        // Check if recipient is already in a call
+        if (isUserInCall(data.recipientId)) {
+          const callerConnections = clients.get(userId);
+          callerConnections.forEach(connection => {
+            if (connection.ws.readyState === 1) {
+              connection.ws.send(JSON.stringify({
+                type: 'call_busy',
+                data: {
+                  recipientId: data.recipientId
+                }
+              }));
+            }
+          });
+          break;
+        }
+
         // Handle call request
         if (clients.has(data.recipientId)) {
           const recipientConnections = clients.get(data.recipientId);
@@ -218,6 +247,69 @@ const handleMessage = async (userId, messageData, connectionId) => {
                 }
               }));
             }
+          });
+
+          // Set up call timeout
+          const callId = uuidv4();
+          const timeout = setTimeout(() => {
+            if (activeCalls.has(callId)) {
+              // Call timed out
+              const call = activeCalls.get(callId);
+              callStats.missedCalls++;
+              
+              // Notify caller
+              if (clients.has(call.callerId)) {
+                const callerConnections = clients.get(call.callerId);
+                callerConnections.forEach(connection => {
+                  if (connection.ws.readyState === 1) {
+                    connection.ws.send(JSON.stringify({
+                      type: 'call_timeout',
+                      data: {
+                        recipientId: call.recipientId
+                      }
+                    }));
+                  }
+                });
+              }
+
+              // Notify recipient
+              if (clients.has(call.recipientId)) {
+                const recipientConnections = clients.get(call.recipientId);
+                recipientConnections.forEach(connection => {
+                  if (connection.ws.readyState === 1) {
+                    connection.ws.send(JSON.stringify({
+                      type: 'call_timeout',
+                      data: {
+                        callerId: call.callerId
+                      }
+                    }));
+                  }
+                });
+              }
+
+              // Record call in database
+              db.Call.create({
+                id: callId,
+                callerId: call.callerId,
+                recipientId: call.recipientId,
+                status: 'missed',
+                startTime: call.startTime,
+                endTime: new Date(),
+                duration: 0,
+                isVideoCall: call.isVideoCall
+              });
+
+              activeCalls.delete(callId);
+            }
+          }, CALL_TIMEOUT);
+
+          // Store call information
+          activeCalls.set(callId, {
+            callerId: userId,
+            recipientId: data.recipientId,
+            isVideoCall: data.isVideoCall,
+            startTime: new Date(),
+            timeout: timeout
           });
         }
         break;
@@ -237,6 +329,40 @@ const handleMessage = async (userId, messageData, connectionId) => {
               }));
             }
           });
+
+          // Find and update the call
+          for (const [callId, call] of activeCalls.entries()) {
+            if (call.callerId === data.callerId && call.recipientId === userId) {
+              clearTimeout(call.timeout);
+              
+              if (data.accepted) {
+                callStats.totalCalls++;
+                callStats.successfulCalls++;
+                call.status = 'active';
+              } else {
+                callStats.totalCalls++;
+                callStats.missedCalls++;
+                call.status = 'rejected';
+                call.endTime = new Date();
+                call.duration = call.endTime - call.startTime;
+                
+                // Record rejected call in database
+                db.Call.create({
+                  id: callId,
+                  callerId: call.callerId,
+                  recipientId: call.recipientId,
+                  status: 'rejected',
+                  startTime: call.startTime,
+                  endTime: call.endTime,
+                  duration: call.duration,
+                  isVideoCall: call.isVideoCall
+                });
+
+                activeCalls.delete(callId);
+              }
+              break;
+            }
+          }
         }
         break;
 
@@ -310,6 +436,36 @@ const handleMessage = async (userId, messageData, connectionId) => {
               }));
             }
           });
+        }
+
+        // Find and update the call
+        for (const [callId, call] of activeCalls.entries()) {
+          if ((call.callerId === userId && call.recipientId === data.to) ||
+              (call.recipientId === userId && call.callerId === data.to)) {
+            clearTimeout(call.timeout);
+            call.endTime = new Date();
+            call.duration = call.endTime - call.startTime;
+            call.status = 'completed';
+
+            // Update call statistics
+            callStats.totalDuration += call.duration;
+            callStats.averageDuration = callStats.totalDuration / callStats.successfulCalls;
+
+            // Record completed call in database
+            db.Call.create({
+              id: callId,
+              callerId: call.callerId,
+              recipientId: call.recipientId,
+              status: 'completed',
+              startTime: call.startTime,
+              endTime: call.endTime,
+              duration: call.duration,
+              isVideoCall: call.isVideoCall
+            });
+
+            activeCalls.delete(callId);
+            break;
+          }
         }
         break;
         
@@ -635,6 +791,16 @@ const notifyUserStatus = async (userId, isOnline) => {
   } catch (error) {
     console.error('Error notifying user status:', error);
   }
+};
+
+// Helper function to check if a user is in a call
+const isUserInCall = (userId) => {
+  for (const call of activeCalls.values()) {
+    if ((call.callerId === userId || call.recipientId === userId) && call.status === 'active') {
+      return true;
+    }
+  }
+  return false;
 };
 
 module.exports = {
