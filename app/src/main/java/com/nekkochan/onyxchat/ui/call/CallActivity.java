@@ -376,10 +376,25 @@ public class CallActivity extends AppCompatActivity {
             @Override
             public void onAddTrack(RtpReceiver rtpReceiver, MediaStream[] mediaStreams) {
                 Log.d(TAG, "onAddTrack");
+                // Handle remote track
+                if (rtpReceiver.track() instanceof VideoTrack) {
+                    VideoTrack videoTrack = (VideoTrack) rtpReceiver.track();
+                    runOnUiThread(() -> {
+                        remoteVideoView.init(rootEglBase.getEglBaseContext(), null);
+                        videoTrack.addSink(remoteVideoView);
+                    });
+                }
             }
         });
         
-        peerConnection.addStream(localStream);
+        // With Unified Plan we need to use addTrack instead of addStream
+        if (localAudioTrack != null) {
+            peerConnection.addTrack(localAudioTrack);
+        }
+        
+        if (isVideoCall && localVideoTrack != null) {
+            peerConnection.addTrack(localVideoTrack);
+        }
     }
     
     private void startCall() {
