@@ -156,7 +156,11 @@ public class NotificationUtil {
         
         // Add messages to the style
         for (NotificationMessage msg : messages) {
-            style.addMessage(msg.text, msg.timestamp, senderName);
+            // Messages from others should use the sender name
+            style.addMessage(new NotificationCompat.MessagingStyle.Message(
+                    msg.text, 
+                    msg.timestamp, 
+                    senderName)); // Using human-readable sender name
         }
         
         // Build the notification
