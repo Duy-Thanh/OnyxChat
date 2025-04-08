@@ -15,14 +15,9 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.nekkochan.onyxchat.model.UserStatus;
 import com.nekkochan.onyxchat.util.UserSessionManager;
-import com.nekkochan.onyxchat.model.ChatMessage;
-import com.nekkochan.onyxchat.model.User;
-import com.nekkochan.onyxchat.model.WebSocketEvent;
-import org.java_websocket.client.WebSocketClient;
-import org.java_websocket.handshake.ServerHandshake;
+
 import org.json.JSONException;
 import org.json.JSONObject;
-import org.webrtc.IceCandidate;
 
 import java.io.EOFException;
 import java.io.IOException;
@@ -1351,90 +1346,5 @@ public class WebSocketClient {
         
         // Notify listeners
         eventLiveData.postValue(event);
-    }
-
-    public void sendCallRequest(String recipientId, boolean isVideoCall) {
-        try {
-            JSONObject message = new JSONObject();
-            message.put("type", "call_request");
-            JSONObject data = new JSONObject();
-            data.put("recipientId", recipientId);
-            data.put("isVideoCall", isVideoCall);
-            message.put("data", data);
-            sendMessage(message.toString());
-        } catch (JSONException e) {
-            Log.e(TAG, "Error sending call request: " + e.getMessage());
-        }
-    }
-
-    public void sendCallResponse(String callerId, boolean accepted) {
-        try {
-            JSONObject message = new JSONObject();
-            message.put("type", "call_response");
-            JSONObject data = new JSONObject();
-            data.put("callerId", callerId);
-            data.put("accepted", accepted);
-            message.put("data", data);
-            sendMessage(message.toString());
-        } catch (JSONException e) {
-            Log.e(TAG, "Error sending call response: " + e.getMessage());
-        }
-    }
-
-    public void sendOffer(String recipientId, String sdp) {
-        try {
-            JSONObject message = new JSONObject();
-            message.put("type", "offer");
-            JSONObject data = new JSONObject();
-            data.put("to", recipientId);
-            data.put("sdp", sdp);
-            message.put("data", data);
-            sendMessage(message.toString());
-        } catch (JSONException e) {
-            Log.e(TAG, "Error sending offer: " + e.getMessage());
-        }
-    }
-
-    public void sendAnswer(String recipientId, String sdp) {
-        try {
-            JSONObject message = new JSONObject();
-            message.put("type", "answer");
-            JSONObject data = new JSONObject();
-            data.put("to", recipientId);
-            data.put("sdp", sdp);
-            message.put("data", data);
-            sendMessage(message.toString());
-        } catch (JSONException e) {
-            Log.e(TAG, "Error sending answer: " + e.getMessage());
-        }
-    }
-
-    public void sendIceCandidate(String recipientId, IceCandidate candidate) {
-        try {
-            JSONObject message = new JSONObject();
-            message.put("type", "ice_candidate");
-            JSONObject data = new JSONObject();
-            data.put("to", recipientId);
-            data.put("candidate", candidate.sdp);
-            data.put("sdpMid", candidate.sdpMid);
-            data.put("sdpMLineIndex", candidate.sdpMLineIndex);
-            message.put("data", data);
-            sendMessage(message.toString());
-        } catch (JSONException e) {
-            Log.e(TAG, "Error sending ICE candidate: " + e.getMessage());
-        }
-    }
-
-    public void sendEndCall(String recipientId) {
-        try {
-            JSONObject message = new JSONObject();
-            message.put("type", "end_call");
-            JSONObject data = new JSONObject();
-            data.put("to", recipientId);
-            message.put("data", data);
-            sendMessage(message.toString());
-        } catch (JSONException e) {
-            Log.e(TAG, "Error sending end call message: " + e.getMessage());
-        }
     }
 }
