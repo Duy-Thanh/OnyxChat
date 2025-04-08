@@ -22,12 +22,15 @@ import com.bumptech.glide.Glide;
 import com.bumptech.glide.request.RequestOptions;
 import com.bumptech.glide.request.target.Target;
 import com.bumptech.glide.request.transition.DrawableCrossFadeFactory;
+import com.bumptech.glide.load.model.GlideUrl;
+import com.bumptech.glide.load.model.LazyHeaders;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.nekkochan.onyxchat.R;
 import com.nekkochan.onyxchat.ui.media.MediaViewerActivity;
 import com.nekkochan.onyxchat.ui.viewmodel.ChatViewModel;
+import com.nekkochan.onyxchat.util.UserSessionManager;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -350,6 +353,32 @@ public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.
             }
         }
         
+        /**
+         * Convert a potentially relative server path to a proper HTTP URL
+         * and add authentication if needed
+         */
+        private GlideUrl getAuthenticatedUrl(String mediaUrl, Context context) {
+            String absoluteUrl = getProperMediaUrl(mediaUrl);
+            
+            // Get auth token from session manager
+            UserSessionManager sessionManager = new UserSessionManager(context);
+            String authToken = sessionManager.getAuthToken();
+            
+            if (authToken != null && !authToken.isEmpty()) {
+                // Return URL with auth headers
+                return new GlideUrl(
+                    absoluteUrl,
+                    new LazyHeaders.Builder()
+                        .addHeader("Authorization", "Bearer " + authToken)
+                        .build()
+                );
+            } else {
+                // Fallback to URL without auth headers (will likely fail)
+                Log.w(TAG, "No auth token available for media URL: " + absoluteUrl);
+                return new GlideUrl(absoluteUrl);
+            }
+        }
+        
         public void bind(ChatViewModel.ChatMessage message, ChatViewModel.ChatMessage previousMessage, ChatViewModel.ChatMessage nextMessage) {
             // Try to parse media content
             MediaContent mediaContent = parseMediaContent(message.getContent());
@@ -363,26 +392,25 @@ public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.
                     mediaImageView.setVisibility(View.VISIBLE);
                     playButtonView.setVisibility(View.VISIBLE);
                     
-                    // Get the absolute URL for the video thumbnail
-                    String absoluteUrl = getProperMediaUrl(mediaContent.url);
-                    Log.d(TAG, "Loading video thumbnail from: " + absoluteUrl);
+                    // Get the absolute URL with authentication
+                    GlideUrl glideUrl = getAuthenticatedUrl(mediaContent.url, itemView.getContext());
+                    Log.d(TAG, "Loading video thumbnail with auth: " + glideUrl.toString());
                     
                     // Load video thumbnail
                     Glide.with(itemView.getContext())
-                            .load(absoluteUrl)
+                            .load(glideUrl)
                             .apply(RequestOptions.centerCropTransform())
                             .thumbnail(0.1f)
                             .listener(new RequestListener<Drawable>() {
                                 @Override
                                 public boolean onLoadFailed(@Nullable GlideException e, Object model, Target<Drawable> target, boolean isFirstResource) {
                                     Log.e(TAG, "Failed to load video thumbnail: " + (e != null ? e.getMessage() : "unknown error"));
-                                    Log.e(TAG, "Video URL was: " + absoluteUrl);
                                     return false;
                                 }
 
                                 @Override
                                 public boolean onResourceReady(Drawable resource, Object model, Target<Drawable> target, DataSource dataSource, boolean isFirstResource) {
-                                    Log.d(TAG, "Successfully loaded video thumbnail for URL: " + absoluteUrl);
+                                    Log.d(TAG, "Successfully loaded video thumbnail");
                                     return false;
                                 }
                             })
@@ -410,13 +438,13 @@ public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.
                     mediaImageView.setVisibility(View.VISIBLE);
                     playButtonView.setVisibility(View.GONE);
                     
-                    // Get the absolute URL for the image
-                    String absoluteUrl = getProperMediaUrl(mediaContent.url);
-                    Log.d(TAG, "Loading image from: " + absoluteUrl);
+                    // Get the absolute URL with authentication
+                    GlideUrl glideUrl = getAuthenticatedUrl(mediaContent.url, itemView.getContext());
+                    Log.d(TAG, "Loading image with auth: " + glideUrl.toString());
                     
                     // Load image
                     Glide.with(itemView.getContext())
-                            .load(absoluteUrl)
+                            .load(glideUrl)
                             .apply(RequestOptions.centerCropTransform())
                             .into(mediaImageView);
                             

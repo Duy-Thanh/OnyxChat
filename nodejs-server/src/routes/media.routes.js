@@ -13,8 +13,9 @@ const { authJwt } = require('../middlewares');
 const config = require('../config');
 const logger = require('../utils/logger');
 
-// Apply authentication middleware to all routes
-router.use(authJwt.verifyToken);
+// Apply authentication middleware to upload routes only
+// Note: file retrieval does not require authentication
+router.use('/upload', authJwt.verifyToken);
 
 /**
  * Upload a single media file
@@ -52,6 +53,7 @@ router.post('/upload', upload.single('file'), handleUploadError, async (req, res
 
 /**
  * Get a media file by filename
+ * Public endpoint - no authentication required
  */
 router.get('/file/:filename', async (req, res) => {
   try {
@@ -65,6 +67,9 @@ router.get('/file/:filename', async (req, res) => {
       return res.status(404).json({ error: 'File not found' });
     }
     
+    // Set cache headers for media files
+    res.setHeader('Cache-Control', 'public, max-age=86400'); // 24 hours
+    
     // Send the file
     return res.sendFile(path.resolve(filePath));
   } catch (error) {
@@ -77,7 +82,7 @@ router.get('/file/:filename', async (req, res) => {
  * Delete a media file
  * Only available to file owner or admin
  */
-router.delete('/file/:filename', async (req, res) => {
+router.delete('/file/:filename', authJwt.verifyToken, async (req, res) => {
   try {
     const filename = req.params.filename;
     const filePath = path.join(config.fileUpload.storagePath, filename);

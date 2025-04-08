@@ -24,7 +24,11 @@ import com.google.android.exoplayer2.Player;
 import com.google.android.exoplayer2.SimpleExoPlayer;
 import com.google.android.exoplayer2.ui.PlayerView;
 import com.google.android.exoplayer2.util.Util;
+import com.google.android.exoplayer2.upstream.DefaultHttpDataSource;
+import com.google.android.exoplayer2.upstream.DefaultDataSourceFactory;
+import com.google.android.exoplayer2.upstream.HttpDataSource;
 import com.nekkochan.onyxchat.R;
+import com.nekkochan.onyxchat.util.UserSessionManager;
 
 /**
  * Activity for viewing media content (images and videos)
@@ -88,31 +92,92 @@ public class MediaViewerActivity extends AppCompatActivity {
         Uri mediaUri = getProperMediaUri(mediaUrl);
         Log.d(TAG, "Loading image with URI: " + mediaUri);
         
-        Glide.with(this)
-                .load(mediaUri.toString())
-                .error(R.drawable.ic_error)
-                .listener(new RequestListener<Drawable>() {
-                    @Override
-                    public boolean onLoadFailed(@Nullable GlideException e, Object model, Target<Drawable> target, boolean isFirstResource) {
-                        Log.e(TAG, "Failed to load image: " + (e != null ? e.getMessage() : "unknown error"), e);
-                        progressBar.setVisibility(View.GONE);
-                        Toast.makeText(MediaViewerActivity.this, "Error loading image", Toast.LENGTH_SHORT).show();
-                        return false;
-                    }
+        // Get auth token for Glide header
+        UserSessionManager sessionManager = new UserSessionManager(this);
+        String authToken = sessionManager.getAuthToken();
+        
+        // Create Glide request with auth header
+        com.bumptech.glide.request.RequestOptions options = new com.bumptech.glide.request.RequestOptions()
+            .error(R.drawable.ic_error);
+        
+        // Create header
+        if (authToken != null && !authToken.isEmpty()) {
+            // Add auth token to Glide request using GlideUrl with headers
+            com.bumptech.glide.load.model.GlideUrl glideUrl = new com.bumptech.glide.load.model.GlideUrl(
+                mediaUri.toString(),
+                new com.bumptech.glide.load.model.LazyHeaders.Builder()
+                    .addHeader("Authorization", "Bearer " + authToken)
+                    .build()
+            );
+            
+            // Load with auth header
+            Glide.with(this)
+                    .load(glideUrl)
+                    .apply(options)
+                    .listener(new RequestListener<Drawable>() {
+                        @Override
+                        public boolean onLoadFailed(@Nullable GlideException e, Object model, Target<Drawable> target, boolean isFirstResource) {
+                            Log.e(TAG, "Failed to load image: " + (e != null ? e.getMessage() : "unknown error"), e);
+                            progressBar.setVisibility(View.GONE);
+                            Toast.makeText(MediaViewerActivity.this, "Error loading image", Toast.LENGTH_SHORT).show();
+                            return false;
+                        }
 
-                    @Override
-                    public boolean onResourceReady(Drawable resource, Object model, Target<Drawable> target, DataSource dataSource, boolean isFirstResource) {
-                        Log.d(TAG, "Image loaded successfully");
-                        progressBar.setVisibility(View.GONE);
-                        return false;
-                    }
-                })
-                .into(imageView);
+                        @Override
+                        public boolean onResourceReady(Drawable resource, Object model, Target<Drawable> target, DataSource dataSource, boolean isFirstResource) {
+                            Log.d(TAG, "Image loaded successfully");
+                            progressBar.setVisibility(View.GONE);
+                            return false;
+                        }
+                    })
+                    .into(imageView);
+        } else {
+            // Fallback to loading without auth (will likely fail)
+            Log.w(TAG, "No auth token available for image loading!");
+            Glide.with(this)
+                    .load(mediaUri.toString())
+                    .apply(options)
+                    .listener(new RequestListener<Drawable>() {
+                        @Override
+                        public boolean onLoadFailed(@Nullable GlideException e, Object model, Target<Drawable> target, boolean isFirstResource) {
+                            Log.e(TAG, "Failed to load image: " + (e != null ? e.getMessage() : "unknown error"), e);
+                            progressBar.setVisibility(View.GONE);
+                            Toast.makeText(MediaViewerActivity.this, "Error loading image", Toast.LENGTH_SHORT).show();
+                            return false;
+                        }
+
+                        @Override
+                        public boolean onResourceReady(Drawable resource, Object model, Target<Drawable> target, DataSource dataSource, boolean isFirstResource) {
+                            Log.d(TAG, "Image loaded successfully");
+                            progressBar.setVisibility(View.GONE);
+                            return false;
+                        }
+                    })
+                    .into(imageView);
+        }
     }
 
     private void initializePlayer() {
         if (player == null && mediaType != null && mediaType.equalsIgnoreCase("VIDEO")) {
-            player = new SimpleExoPlayer.Builder(this).build();
+            // Create a custom HttpDataSource.Factory with auth headers
+            HttpDataSource.Factory httpDataSourceFactory = new DefaultHttpDataSource.Factory()
+                .setUserAgent("OnyxChat-App")
+                .setAllowCrossProtocolRedirects(true)
+                .setDefaultRequestProperties(getAuthHeaders());
+
+            // Create a DataSourceFactory that uses our HttpDataSourceFactory
+            DefaultDataSourceFactory dataSourceFactory = new DefaultDataSourceFactory(
+                this,
+                httpDataSourceFactory
+            );
+            
+            // Create player with our custom factory
+            player = new SimpleExoPlayer.Builder(this)
+                .setMediaSourceFactory(
+                    new com.google.android.exoplayer2.source.DefaultMediaSourceFactory(dataSourceFactory)
+                )
+                .build();
+            
             playerView.setPlayer(player);
             
             // Create media item with proper URL handling
@@ -224,6 +289,26 @@ public class MediaViewerActivity extends AppCompatActivity {
             Log.e(TAG, "Error getting server URL", e);
             return defaultUrl;
         }
+    }
+
+    /**
+     * Get authentication headers for API requests
+     */
+    private java.util.Map<String, String> getAuthHeaders() {
+        java.util.Map<String, String> headers = new java.util.HashMap<>();
+        
+        // Get auth token from session manager
+        UserSessionManager sessionManager = new UserSessionManager(this);
+        String authToken = sessionManager.getAuthToken();
+        
+        if (authToken != null && !authToken.isEmpty()) {
+            headers.put("Authorization", "Bearer " + authToken);
+            Log.d(TAG, "Added auth token to headers");
+        } else {
+            Log.w(TAG, "No auth token available!");
+        }
+        
+        return headers;
     }
 
     private void releasePlayer() {
