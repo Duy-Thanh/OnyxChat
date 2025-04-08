@@ -2,10 +2,12 @@ const express = require('express');
 const { body, param, validationResult } = require('express-validator');
 const { authenticate } = require('../middleware/auth.middleware');
 const { ValidationError, NotFoundError, ForbiddenError } = require('../utils/error.utils');
+const { upload, handleUploadError, cleanupOnError, trackFileSize } = require('../middlewares/fileUpload');
 const db = require('../models');
 const { v4: uuidv4 } = require('uuid');
 // const { authJwt } = require("../middlewares");
 const Op = db.Sequelize.Op;
+const path = require('path');
 
 const router = express.Router();
 
@@ -585,128 +587,87 @@ router.get("/email/:email", authenticate, async (req, res) => {
 });
 
 /**
- * Create a new message
- * @route POST /api/messages
+ * @route POST /api/messages/upload
+ * @desc Upload a file and create a message with attachment
+ * @access Protected
  */
-router.post("/", [authenticate], async (req, res) => {
-  try {
-    if (!req.body.recipientId || !req.body.content) {
-      return res.status(400).send({
-        message: "Content and recipientId are required!"
-      });
-    }
-
-    // Check if content is JSON for media messages
-    let contentType = req.body.contentType || 'text';
-    let content = req.body.content;
-    let isMediaContent = false;
-
-    // Try to parse as JSON for media content
+router.post('/upload', authenticate, 
+  upload.single('file'), // Handle file upload
+  handleUploadError, // Handle multer errors
+  cleanupOnError, // Clean up file on error
+  [
+    body('recipientId').isUUID().withMessage('Invalid recipient ID'),
+    body('contentType').isIn(['image', 'video', 'audio', 'file']).withMessage('Invalid content type'),
+    body('encrypted').optional().isBoolean().withMessage('Encrypted must be a boolean'),
+    validate
+  ],
+  trackFileSize, // Track file size and update metadata
+  async (req, res, next) => {
     try {
-      const contentObj = JSON.parse(content);
-      if (contentObj.type && contentObj.url) {
-        // This is a media message
-        isMediaContent = true;
-        contentType = contentObj.type.toLowerCase();
+      if (!req.file || !req.fileMetadata) {
+        return next(new ValidationError('No file uploaded'));
       }
-    } catch (e) {
-      // Not JSON, assume regular text
-    }
 
-    // Create the message
-    const newMessage = await db.Message.create({
-      senderId: req.userId,
-      recipientId: req.body.recipientId,
-      content: content,
-      encrypted: req.body.encrypted || false,
-      contentType: contentType,
-    });
-    
-    // Create response with explicit timestamp fields
-    const messageResponse = {
-      id: newMessage.id,
-      senderId: newMessage.senderId,
-      recipientId: newMessage.recipientId,
-      content: newMessage.content,
-      encrypted: newMessage.encrypted,
-      contentType: newMessage.contentType,
-      createdAt: newMessage.createdAt,
-      // Add explicit timestamp in milliseconds for client-side consistency
-      timestamp: newMessage.createdAt.getTime(),
-      // Add formatted time string for debugging and display
-      formattedTime: newMessage.createdAt.toISOString()
-    };
-
-    // If the recipient is online, send them a message via WebSocket
-    const recipientSocketId = onlineUsers[req.body.recipientId];
-    if (recipientSocketId) {
-      // Send message via WebSocket
-      io.to(recipientSocketId).emit('message', {
-        type: 'message',
-        senderId: req.userId,
-        recipientId: req.body.recipientId,
-        content: content,
-        encrypted: req.body.encrypted || false,
-        contentType: contentType,
-        timestamp: newMessage.createdAt.getTime(),
-        formattedTime: newMessage.createdAt.toISOString()
-      });
-    }
-
-    res.status(201).send(messageResponse);
-  } catch (err) {
-    console.error("Error creating message:", err);
-    res.status(500).send({
-      message: err.message || "Some error occurred while creating the message."
-    });
-  }
-});
-
-/**
- * Mark a message as read
- * @route PUT /api/messages/:id/read
- */
-router.put("/:id/read", [authenticate], async (req, res) => {
-  try {
-    const messageId = req.params.id;
-    
-    // Verify the message exists and is sent to this user
-    const message = await db.Message.findOne({
-      where: {
-        id: messageId,
-        recipientId: req.userId
+      const { recipientId, contentType, encrypted = true } = req.body;
+      
+      // Check if recipient exists
+      const recipient = await db.User.findByPk(recipientId);
+      if (!recipient) {
+        return next(new NotFoundError('Recipient'));
       }
-    });
-    
-    if (!message) {
-      return res.status(404).send({
-        message: "Message not found or not addressed to you."
+      
+      // Create message with file metadata
+      const message = await db.Message.create({
+        id: uuidv4(),
+        senderId: req.user.id,
+        recipientId,
+        content: JSON.stringify({
+          ...req.fileMetadata,
+          url: `/uploads/${req.fileMetadata.path}` // Relative URL for client
+        }),
+        contentType,
+        encrypted,
+        sent: true,
+        received: false,
+        read: false,
+        deleted: false
       });
+      
+      // Notify recipient via WebSocket if they're online
+      const { clients } = require('../websocket');
+      if (clients.has(recipientId)) {
+        const client = clients.get(recipientId);
+        if (client.readyState === 1) { // WebSocket.OPEN
+          client.send(JSON.stringify({
+            type: 'NEW_MESSAGE',
+            data: {
+              id: message.id,
+              senderId: req.user.id,
+              content: message.content,
+              contentType: message.contentType,
+              encrypted: message.encrypted,
+              timestamp: message.createdAt.getTime(),
+              createdAt: message.createdAt.toISOString()
+            }
+          }));
+        }
+      }
+      
+      res.status(201).json({
+        status: 'success',
+        message: 'File uploaded and message sent successfully',
+        data: {
+          message: {
+            ...message.toJSON(),
+            timestamp: message.createdAt.getTime(),
+            formattedTime: message.createdAt.toISOString()
+          }
+        }
+      });
+    } catch (error) {
+      next(error);
     }
-    
-    // Update the message
-    await message.update({
-      read: true,
-      readAt: new Date()
-    });
-    
-    // Create response with explicit timestamp fields
-    const response = {
-      message: "Message marked as read successfully.",
-      id: message.id,
-      read: true,
-      readAt: message.readAt,
-      timestamp: message.readAt.getTime(),
-      formattedTime: message.readAt.toISOString()
-    };
-    
-    res.status(200).send(response);
-  } catch (err) {
-    console.error("Error marking message as read:", err);
-    res.status(500).send({
-      message: err.message || "Some error occurred while updating the message."
-    });
   }
-});
+);
 
 module.exports = router; 

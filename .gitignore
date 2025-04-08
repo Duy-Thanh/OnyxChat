@@ -7864,7 +7864,6 @@ local.properties
 /nodejs-server/node_modules/winston/dist/winston/transports/file.js
 /nodejs-server/node_modules/winston/lib/winston/transports/file.js
 /nodejs-server/node_modules/multer/lib/file-appender.js
-/nodejs-server/src/middlewares/fileUpload.js
 /nodejs-server/node_modules/async/internal/filter.js
 /nodejs-server/node_modules/async/filter.js
 /nodejs-server/node_modules/async/filterLimit.js
@@ -7950,7 +7949,6 @@ local.properties
 /nodejs-server/node_modules/winston/lib/winston/transports/index.js
 /nodejs-server/node_modules/winston-transport/dist/index.js
 /nodejs-server/node_modules/winston-transport/index.js
-/nodejs-server/src/middlewares/index.js
 /nodejs-server/node_modules/triple-beam/.nyc_output/processinfo/index.json
 /nodejs-server/node_modules/winston-transport/.nyc_output/processinfo/index.json
 /nodejs-server/node_modules/async/internal/initialParams.js
@@ -8024,7 +8022,6 @@ local.properties
 /nodejs-server/node_modules/async/mapValues.js
 /nodejs-server/node_modules/async/mapValuesLimit.js
 /nodejs-server/node_modules/async/mapValuesSeries.js
-/nodejs-server/src/routes/media.routes.js
 /nodejs-server/node_modules/async/memoize.js
 /nodejs-server/node_modules/multer/storage/memory.js
 /nodejs-server/node_modules/logform/dist/metadata.js

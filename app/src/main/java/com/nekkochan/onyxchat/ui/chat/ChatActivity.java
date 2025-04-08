@@ -458,7 +458,7 @@ public class ChatActivity extends AppCompatActivity {
         
         // Register broadcast receiver for message updates
         messageReceiver = new BroadcastReceiver() {
-            @Override
+    @Override
             public void onReceive(Context context, Intent intent) {
                 if (intent != null) {
                     String senderId = intent.getStringExtra("senderId");
