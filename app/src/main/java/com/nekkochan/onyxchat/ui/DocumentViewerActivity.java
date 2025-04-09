@@ -20,10 +20,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
 import androidx.lifecycle.ViewModelProvider;
 
-import com.github.barteksc.pdfviewer.PDFView;
-import com.github.barteksc.pdfviewer.listener.OnErrorListener;
-import com.github.barteksc.pdfviewer.listener.OnLoadCompleteListener;
-import com.github.barteksc.pdfviewer.listener.OnPageChangeListener;
+import com.rajat.pdfviewer.PdfViewerActivity;
 import com.nekkochan.onyxchat.R;
 import com.nekkochan.onyxchat.ui.viewmodel.DocumentViewModel;
 import com.nekkochan.onyxchat.util.DocumentConverter;
@@ -36,14 +33,13 @@ import java.util.concurrent.Executors;
 /**
  * Activity for viewing various document formats
  */
-public class DocumentViewerActivity extends AppCompatActivity implements OnPageChangeListener, OnLoadCompleteListener, OnErrorListener {
+public class DocumentViewerActivity extends AppCompatActivity {
     private static final String TAG = "DocumentViewerActivity";
     private static final String EXTRA_FILE_URI = "extra_file_uri";
     private static final String EXTRA_FILE_NAME = "extra_file_name";
     private static final String EXTRA_MIME_TYPE = "extra_mime_type";
 
     private DocumentViewModel viewModel;
-    private PDFView pdfView;
     private TextView textContent;
     private ScrollView textScrollView;
     private TextView pageNumber;
@@ -89,7 +85,6 @@ public class DocumentViewerActivity extends AppCompatActivity implements OnPageC
             actionBar.setDisplayShowHomeEnabled(true);
         }
 
-        pdfView = findViewById(R.id.pdf_view);
         textContent = findViewById(R.id.text_content);
         textScrollView = findViewById(R.id.text_scroll_view);
         pageNumber = findViewById(R.id.page_number);
@@ -111,15 +106,11 @@ public class DocumentViewerActivity extends AppCompatActivity implements OnPageC
         // Initialize executor service for background tasks
         executorService = Executors.newSingleThreadExecutor();
 
-        // Set up observers
+        // Set up observers for ViewModel
         setupObservers();
 
-        // Load document
-        if (fileUri != null) {
-            loadDocument();
-        } else {
-            showError("Invalid document URI");
-        }
+        // Load the document
+        loadDocument();
     }
 
     @Override
@@ -141,24 +132,25 @@ public class DocumentViewerActivity extends AppCompatActivity implements OnPageC
 
     private void setupObservers() {
         viewModel.getIsLoading().observe(this, isLoading -> {
-            progressBar.setVisibility(isLoading ? View.VISIBLE : View.GONE);
+            if (isLoading) {
+                progressBar.setVisibility(View.VISIBLE);
+                errorText.setVisibility(View.GONE);
+            } else {
+                progressBar.setVisibility(View.GONE);
+            }
         });
 
         viewModel.getErrorMessage().observe(this, errorMessage -> {
             if (errorMessage != null && !errorMessage.isEmpty()) {
-                showError(errorMessage);
+                errorText.setText(errorMessage);
+                errorText.setVisibility(View.VISIBLE);
             } else {
                 errorText.setVisibility(View.GONE);
             }
         });
 
-        viewModel.getCurrentPage().observe(this, currentPage -> {
-            updatePageInfo();
-        });
-
-        viewModel.getTotalPages().observe(this, totalPages -> {
-            updatePageInfo();
-        });
+        viewModel.getCurrentPage().observe(this, page -> updatePageInfo());
+        viewModel.getTotalPages().observe(this, total -> updatePageInfo());
     }
 
     private void updatePageInfo() {
@@ -185,7 +177,7 @@ public class DocumentViewerActivity extends AppCompatActivity implements OnPageC
                 }
 
                 if (mimeType.startsWith("application/pdf")) {
-                    // Load PDF directly
+                    // Load PDF using the new library
                     loadPdfDocument(fileUri);
                 } else if (mimeType.startsWith("text/")) {
                     // Load text document
@@ -203,16 +195,18 @@ public class DocumentViewerActivity extends AppCompatActivity implements OnPageC
 
     private void loadPdfDocument(Uri uri) {
         runOnUiThread(() -> {
-            pdfView.setVisibility(View.VISIBLE);
+            viewModel.setIsLoading(false);
             textScrollView.setVisibility(View.GONE);
-
-            pdfView.fromUri(uri)
-                    .defaultPage(0)
-                    .onPageChange(this)
-                    .enableAnnotationRendering(true)
-                    .onLoad(this)
-                    .onError(this)
-                    .load();
+            
+            // Launch the PDF viewer activity from the new library
+            Intent intent = new Intent(this, PdfViewerActivity.class);
+            intent.putExtra("PDF_FILE_URI", uri.toString());
+            intent.putExtra("PDF_TITLE", fileName != null ? fileName : "Document");
+            intent.putExtra("ENABLE_SHARE", false);
+            startActivity(intent);
+            
+            // Finish this activity since we're launching another activity
+            finish();
         });
     }
 
@@ -220,7 +214,6 @@ public class DocumentViewerActivity extends AppCompatActivity implements OnPageC
         try {
             String text = FileUtils.readTextFromUri(this, uri);
             runOnUiThread(() -> {
-                pdfView.setVisibility(View.GONE);
                 textScrollView.setVisibility(View.VISIBLE);
                 textContent.setText(text);
                 viewModel.setIsLoading(false);
@@ -236,16 +229,18 @@ public class DocumentViewerActivity extends AppCompatActivity implements OnPageC
             File pdfFile = DocumentConverter.convertToPdf(this, uri, extension);
             if (pdfFile != null && pdfFile.exists()) {
                 runOnUiThread(() -> {
-                    pdfView.setVisibility(View.VISIBLE);
+                    viewModel.setIsLoading(false);
                     textScrollView.setVisibility(View.GONE);
-
-                    pdfView.fromFile(pdfFile)
-                            .defaultPage(0)
-                            .onPageChange(this)
-                            .enableAnnotationRendering(true)
-                            .onLoad(this)
-                            .onError(this)
-                            .load();
+                    
+                    // Launch the PDF viewer activity from the new library
+                    Intent intent = new Intent(this, PdfViewerActivity.class);
+                    intent.putExtra("PDF_FILE_URI", Uri.fromFile(pdfFile).toString());
+                    intent.putExtra("PDF_TITLE", fileName != null ? fileName : "Document");
+                    intent.putExtra("ENABLE_SHARE", false);
+                    startActivity(intent);
+                    
+                    // Finish this activity since we're launching another activity
+                    finish();
                 });
             } else {
                 showError("Failed to convert document to PDF");
@@ -263,23 +258,5 @@ public class DocumentViewerActivity extends AppCompatActivity implements OnPageC
             errorText.setText(message);
             errorText.setVisibility(View.VISIBLE);
         });
-    }
-
-    @Override
-    public void onPageChanged(int page, int pageCount) {
-        viewModel.setCurrentPage(page);
-        viewModel.setTotalPages(pageCount);
-    }
-
-    @Override
-    public void loadComplete(int nbPages) {
-        viewModel.setIsLoading(false);
-        viewModel.setTotalPages(nbPages);
-    }
-
-    @Override
-    public void onError(Throwable t) {
-        Log.e(TAG, "Error loading PDF", t);
-        showError("Error loading PDF: " + t.getMessage());
     }
 }

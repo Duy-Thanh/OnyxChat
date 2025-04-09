@@ -7,7 +7,8 @@ import android.util.Log;
 import android.widget.Toast;
 
 import com.nekkochan.onyxchat.ui.DocumentViewerActivity;
-import com.nekkochan.onyxchat.util.FileUtils;
+import com.nekkochan.onyxchat.utils.FileUtils;
+import com.nekkochan.onyxchat.utils.MimeTypeUtils;
 
 /**
  * Helper class for handling document operations in chat
@@ -24,7 +25,8 @@ public class ChatDocumentHandler {
      */
     public static void openDocument(Context context, Uri fileUri, String fileName) {
         try {
-            String mimeType = FileUtils.getMimeType(context, fileUri);
+            // Using the getMimeType method from the FileUtils class in the utils package
+            String mimeType = com.nekkochan.onyxchat.utils.FileUtils.getMimeType(context, fileUri);
             if (mimeType == null) {
                 mimeType = "application/octet-stream";
             }
@@ -46,22 +48,6 @@ public class ChatDocumentHandler {
      * @return True if the file is a document, false otherwise
      */
     public static boolean isDocument(String mimeType) {
-        if (mimeType == null) {
-            return false;
-        }
-
-        return mimeType.startsWith("application/pdf") ||
-                mimeType.startsWith("application/msword") ||
-                mimeType.startsWith("application/vnd.openxmlformats-officedocument.wordprocessingml") ||
-                mimeType.startsWith("application/vnd.ms-excel") ||
-                mimeType.startsWith("application/vnd.openxmlformats-officedocument.spreadsheetml") ||
-                mimeType.startsWith("application/vnd.ms-powerpoint") ||
-                mimeType.startsWith("application/vnd.openxmlformats-officedocument.presentationml") ||
-                mimeType.startsWith("application/vnd.oasis.opendocument.text") ||
-                mimeType.startsWith("application/vnd.oasis.opendocument.spreadsheet") ||
-                mimeType.startsWith("application/vnd.oasis.opendocument.presentation") ||
-                mimeType.startsWith("text/plain") ||
-                mimeType.startsWith("text/rtf") ||
-                mimeType.startsWith("text/csv");
+        return MimeTypeUtils.isDocument(mimeType);
     }
 }

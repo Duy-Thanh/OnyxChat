@@ -42,6 +42,8 @@ import com.nekkochan.onyxchat.utils.MimeTypeUtils;
 import com.nekkochan.onyxchat.ui.chat.ChatMessageItem;
 import com.nekkochan.onyxchat.ui.viewmodel.ChatViewModel;
 import com.nekkochan.onyxchat.ui.viewmodel.MainViewModel;
+import com.nekkochan.onyxchat.ui.DocumentViewerActivity;
+import com.nekkochan.onyxchat.ui.chat.ChatDocumentHandler;
 
 import java.io.File;
 import java.io.IOException;
@@ -70,6 +72,7 @@ public class MediaProcessingActivity extends AppCompatActivity {
     private TextView captionInput;
     private ProgressBar progressBar;
     private TextView documentInfo;
+    private Button previewDocumentButton;
     private ImageView playPauseButton;
     
     private Uri mediaUri;
@@ -122,6 +125,7 @@ public class MediaProcessingActivity extends AppCompatActivity {
         captionInput = findViewById(R.id.captionInput);
         progressBar = findViewById(R.id.progressBar);
         documentInfo = findViewById(R.id.documentInfo);
+        previewDocumentButton = findViewById(R.id.previewDocumentButton);
         playPauseButton = findViewById(R.id.playPauseButton);
         
         // Set play/pause button click listener
@@ -377,6 +381,23 @@ public class MediaProcessingActivity extends AppCompatActivity {
             String formattedSize = formatFileSize(fileSize);
             
             documentInfo.setText(String.format("%s (%s)", fileName, formattedSize));
+            
+            // Show and set up the preview button
+            if (previewDocumentButton != null) {
+                previewDocumentButton.setVisibility(View.VISIBLE);
+                previewDocumentButton.setOnClickListener(v -> {
+                    // Get MIME type
+                    String mimeType = MimeTypeUtils.getMimeType(this, mediaUri);
+                    if (mimeType == null) {
+                        mimeType = "application/octet-stream";
+                    }
+                    
+                    // Open document in DocumentViewerActivity
+                    Intent intent = DocumentViewerActivity.createIntent(
+                            this, mediaUri, fileName, mimeType);
+                    startActivity(intent);
+                });
+            }
         } catch (Exception e) {
             Log.e(TAG, "Error showing document info", e);
             Toast.makeText(this, "Error showing document info", Toast.LENGTH_SHORT).show();

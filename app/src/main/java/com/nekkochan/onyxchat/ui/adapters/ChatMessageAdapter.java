@@ -32,6 +32,7 @@ import com.nekkochan.onyxchat.ui.media.MediaViewerActivity;
 import com.nekkochan.onyxchat.ui.viewmodel.ChatViewModel;
 import com.nekkochan.onyxchat.util.UserSessionManager;
 import com.nekkochan.onyxchat.ui.chat.ChatDocumentHandler;
+import com.nekkochan.onyxchat.utils.MimeTypeUtils;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -271,17 +272,38 @@ public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.
         
         // Check if this is a document type
         boolean isDocument() {
-            return type != null && (
-                type.equals("document") || 
-                type.equals("pdf") || 
-                type.equals("doc") || 
-                type.equals("docx") || 
-                type.equals("xls") || 
-                type.equals("xlsx") || 
-                type.equals("ppt") || 
-                type.equals("pptx") || 
-                type.equals("txt")
-            );
+            if (type == null) {
+                return false;
+            }
+            
+            // Direct check for document type
+            if (type.equals("document")) {
+                return true;
+            }
+            
+            // Check if the type corresponds to a document MIME type
+            String mimeType = getMimeTypeFromExtension(type);
+            return mimeType != null && MimeTypeUtils.isDocument(mimeType);
+        }
+        
+        // Convert file extension to MIME type
+        private String getMimeTypeFromExtension(String extension) {
+            switch (extension.toLowerCase()) {
+                case "pdf": return "application/pdf";
+                case "doc": return "application/msword";
+                case "docx": return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+                case "xls": return "application/vnd.ms-excel";
+                case "xlsx": return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+                case "ppt": return "application/vnd.ms-powerpoint";
+                case "pptx": return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+                case "odt": return "application/vnd.oasis.opendocument.text";
+                case "ods": return "application/vnd.oasis.opendocument.spreadsheet";
+                case "odp": return "application/vnd.oasis.opendocument.presentation";
+                case "txt": return "text/plain";
+                case "rtf": return "text/rtf";
+                case "csv": return "text/csv";
+                default: return null;
+            }
         }
     }
     
@@ -589,16 +611,18 @@ public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.
                 documentView.setVisibility(View.VISIBLE);
                 
                 // Extract filename from URL or use caption
-                String fileName = mediaContent.caption;
-                if (fileName == null || fileName.isEmpty()) {
+                String fileNameValue = mediaContent.caption;
+                if (fileNameValue == null || fileNameValue.isEmpty()) {
                     String url = mediaContent.url;
                     int lastSlash = url.lastIndexOf('/');
                     if (lastSlash >= 0 && lastSlash < url.length() - 1) {
-                        fileName = url.substring(lastSlash + 1);
+                        fileNameValue = url.substring(lastSlash + 1);
                     } else {
-                        fileName = "Document";
+                        fileNameValue = "Document";
                     }
                 }
+                
+                final String fileName = fileNameValue;
                 
                 // Set document name
                 if (documentName != null) {
@@ -616,10 +640,17 @@ public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.
                     int iconResId = R.drawable.ic_document; // Default document icon
                     
                     // Set specific icon based on document type
-                    if (mediaContent.type.equals("pdf")) {
+                    String type = mediaContent.type.toLowerCase();
+                    if (type.equals("pdf")) {
                         iconResId = R.drawable.ic_pdf;
-                    } else if (mediaContent.type.equals("doc") || mediaContent.type.equals("docx")) {
+                    } else if (type.equals("doc") || type.equals("docx") || type.equals("odt") || type.equals("rtf")) {
                         iconResId = R.drawable.ic_word;
+                    } else if (type.equals("xls") || type.equals("xlsx") || type.equals("ods") || type.equals("csv")) {
+                        iconResId = R.drawable.ic_excel;
+                    } else if (type.equals("ppt") || type.equals("pptx") || type.equals("odp")) {
+                        iconResId = R.drawable.ic_powerpoint;
+                    } else if (type.equals("txt")) {
+                        iconResId = R.drawable.ic_text;
                     }
                     
                     documentIcon.setImageResource(iconResId);

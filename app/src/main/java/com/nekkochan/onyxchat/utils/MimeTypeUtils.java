@@ -36,7 +36,11 @@ public class MimeTypeUtils {
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             "application/vnd.ms-powerpoint",
             "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-            "text/plain"
+            "application/vnd.oasis.opendocument.text",
+            "application/vnd.oasis.opendocument.spreadsheet",
+            "application/vnd.oasis.opendocument.presentation",
+            "text/plain", "text/csv", "text/rtf",
+            "application/rtf", "application/x-rtf"
     ));
     
     /**

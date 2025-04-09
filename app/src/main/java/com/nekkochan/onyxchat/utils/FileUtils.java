@@ -12,6 +12,7 @@ import android.provider.MediaStore;
 import android.provider.OpenableColumns;
 import android.text.TextUtils;
 import android.util.Log;
+import android.webkit.MimeTypeMap;
 
 import com.arthenica.ffmpegkit.FFmpegKit;
 import com.arthenica.ffmpegkit.FFmpegSession;
@@ -590,6 +591,42 @@ public class FileUtils {
         }
         
         return 0;
+    }
+
+    /**
+     * Get the MIME type of a file from its URI
+     *
+     * @param context The context
+     * @param uri The URI of the file
+     * @return The MIME type or null if not found
+     */
+    public static String getMimeType(Context context, Uri uri) {
+        String mimeType = context.getContentResolver().getType(uri);
+        if (mimeType == null) {
+            String extension = getExtension(context, uri);
+            if (extension != null) {
+                mimeType = android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension.toLowerCase());
+            }
+        }
+        return mimeType;
+    }
+    
+    /**
+     * Get the file extension from a URI
+     *
+     * @param context The context
+     * @param uri The URI
+     * @return The file extension without dot
+     */
+    public static String getExtension(Context context, Uri uri) {
+        String fileName = getFileName(context, uri);
+        if (fileName != null) {
+            int dotIndex = fileName.lastIndexOf('.');
+            if (dotIndex >= 0) {
+                return fileName.substring(dotIndex + 1).toLowerCase();
+            }
+        }
+        return null;
     }
 
     /**

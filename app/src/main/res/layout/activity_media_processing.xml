@@ -87,6 +87,18 @@
             tools:text="document.pdf (2.5 MB)"
             tools:visibility="visible" />
 
+        <!-- Preview Document Button -->
+        <Button
+            android:id="@+id/previewDocumentButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="180dp"
+            android:backgroundTint="@color/colorAccent"
+            android:text="Preview Document"
+            android:visibility="gone"
+            tools:visibility="visible" />
+
         <!-- Progress Bar -->
         <ProgressBar
             android:id="@+id/progressBar"
