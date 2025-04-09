@@ -115,7 +115,7 @@ public class Repository {
     }
 
     /**
-     * Create a new user with a generated key pair
+     * Create a new user with the given display name and onion address
      *
      * @param displayName The user's display name
      * @param onionAddress The user's onion address
@@ -123,15 +123,15 @@ public class Repository {
      */
     public User createUser(String displayName, String onionAddress) {
         try {
-            // Generate new key pair using Java security
-            KeyPair keyPair = PQCProvider.generateKyberKeyPair();
+            // Generate new key pair using PQCProvider
+            PQCProvider.KyberKeyPair keyPair = PQCProvider.generateKyberKeyPair();
             if (keyPair == null) {
                 setErrorMessage("Failed to generate key pair");
                 return null;
             }
             
-            String publicKey = PQCProvider.encodePublicKey(keyPair.getPublic());
-            String privateKey = PQCProvider.encodePrivateKey(keyPair.getPrivate());
+            String publicKey = keyPair.getEncodedPublicKey();
+            String privateKey = keyPair.getEncodedPrivateKey();
             
             String userId = UUID.randomUUID().toString();
             User user = new User(
@@ -159,14 +159,14 @@ public class Repository {
      */
     public void regenerateUserKeyPair(User user) {
         try {
-            KeyPair keyPair = PQCProvider.generateKyberKeyPair();
+            PQCProvider.KyberKeyPair keyPair = PQCProvider.generateKyberKeyPair();
             if (keyPair == null) {
                 setErrorMessage("Failed to generate key pair");
                 return;
             }
             
-            String publicKey = PQCProvider.encodePublicKey(keyPair.getPublic());
-            String privateKey = PQCProvider.encodePrivateKey(keyPair.getPrivate());
+            String publicKey = keyPair.getEncodedPublicKey();
+            String privateKey = keyPair.getEncodedPrivateKey();
             
             user.setPrivateKey(privateKey);
             user.setPublicKey(publicKey);

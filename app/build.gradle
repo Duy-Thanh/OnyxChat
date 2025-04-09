@@ -21,6 +21,14 @@ android {
                 arguments += ["room.schemaLocation": "$projectDir/schemas".toString()]
             }
         }
+        
+        // Configure CMake
+        externalNativeBuild {
+            cmake {
+                cppFlags "-std=c++17 -fexceptions"
+                arguments "-DANDROID_STL=c++_shared"
+            }
+        }
     }
 
     buildTypes {
@@ -45,6 +53,20 @@ android {
     
     configurations {
         all*.exclude group: 'info.guardianproject.netcipher', module: 'netcipher-webkit'
+    }
+    
+    // Add CMake build configuration
+    externalNativeBuild {
+        cmake {
+            path file('src/main/cpp/CMakeLists.txt')
+        }
+    }
+    
+    // Package native libraries with the APK
+    packagingOptions {
+        jniLibs {
+            useLegacyPackaging true
+        }
     }
 }
 

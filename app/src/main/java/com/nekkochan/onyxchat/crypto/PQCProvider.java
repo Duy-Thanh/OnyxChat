@@ -4,16 +4,14 @@ import android.util.Base64;
 import android.util.Log;
 
 import java.security.KeyPair;
-import java.security.KeyPairGenerator;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.SecureRandom;
-import java.security.Security;
 import java.nio.charset.StandardCharsets;
 
 /**
- * A stub provider for Post-Quantum Cryptography operations.
- * This is a simplified version to allow the application to build.
+ * Native implementation of Post-Quantum Cryptography operations using JNI.
+ * This class provides an interface to the C++ implementation of Kyber and Dilithium algorithms.
  */
 public class PQCProvider {
     private static final String TAG = "PQCProvider";
@@ -21,147 +19,344 @@ public class PQCProvider {
     // Constants for the types of algorithms
     public static final String ALGORITHM_KYBER = "KYBER";
     public static final String ALGORITHM_DILITHIUM = "DILITHIUM";
-
-    // Default algorithm
-    private String currentAlgorithm = ALGORITHM_KYBER;
     
-    // Secure random generator
-    private final SecureRandom secureRandom = new SecureRandom();
+    // Algorithm variants
+    public static final int KYBER_512 = 1;
+    public static final int KYBER_768 = 2;
+    public static final int KYBER_1024 = 3;
+    
+    public static final int DILITHIUM_2 = 1;
+    public static final int DILITHIUM_3 = 2;
+    public static final int DILITHIUM_5 = 3;
+
+    // Default algorithm and variant
+    private static int kyberVariant = KYBER_768;
+    private static int dilithiumVariant = DILITHIUM_3;
+    
+    // Load the native library
+    static {
+        try {
+            System.loadLibrary("pqc-native");
+            Log.d(TAG, "PQC native library loaded successfully");
+            nativeInitialize();
+        } catch (UnsatisfiedLinkError e) {
+            Log.e(TAG, "Failed to load PQC native library", e);
+        }
+    }
+    
+    /**
+     * Initialize the native library
+     */
+    private static native void nativeInitialize();
+    
+    /**
+     * Set the Kyber variant to use
+     * @param variant KYBER_512, KYBER_768, or KYBER_1024
+     */
+    public static void setKyberVariant(int variant) {
+        if (variant < KYBER_512 || variant > KYBER_1024) {
+            throw new IllegalArgumentException("Invalid Kyber variant");
+        }
+        kyberVariant = variant;
+    }
+    
+    /**
+     * Set the Dilithium variant to use
+     * @param variant DILITHIUM_2, DILITHIUM_3, or DILITHIUM_5
+     */
+    public static void setDilithiumVariant(int variant) {
+        if (variant < DILITHIUM_2 || variant > DILITHIUM_5) {
+            throw new IllegalArgumentException("Invalid Dilithium variant");
+        }
+        dilithiumVariant = variant;
+    }
 
     /**
      * Generate a Kyber key pair
-     * @return KeyPair with public and private keys
+     * @return KyberKeyPair containing public and private keys
      */
-    public static KeyPair generateKyberKeyPair() {
+    public static KyberKeyPair generateKyberKeyPair() {
         try {
-            // For stub implementation, generate RSA keys
-            KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
-            generator.initialize(2048);
-            return generator.generateKeyPair();
+            byte[][] keyPairArray = nativeGenerateKyberKeyPair(kyberVariant);
+            if (keyPairArray != null && keyPairArray.length == 2) {
+                return new KyberKeyPair(keyPairArray[0], keyPairArray[1]);
+            }
+            return null;
         } catch (Exception e) {
-            Log.e(TAG, "Error generating key pair", e);
+            Log.e(TAG, "Error generating Kyber key pair", e);
+            return null;
+        }
+    }
+    
+    /**
+     * Generate a Dilithium key pair for digital signatures
+     * @return DilithiumKeyPair containing public and private keys
+     */
+    public static DilithiumKeyPair generateDilithiumKeyPair() {
+        try {
+            byte[][] keyPairArray = nativeGenerateDilithiumKeyPair(dilithiumVariant);
+            if (keyPairArray != null && keyPairArray.length == 2) {
+                return new DilithiumKeyPair(keyPairArray[0], keyPairArray[1]);
+            }
+            return null;
+        } catch (Exception e) {
+            Log.e(TAG, "Error generating Dilithium key pair", e);
             return null;
         }
     }
 
     /**
-     * Encode a public key to a string format
-     * @param publicKey Public key to encode
-     * @return Base64 encoded string of the public key
+     * Encapsulate a key with a Kyber public key
+     * @param publicKey The Kyber public key to use for encapsulation
+     * @return KyberEncapsulationResult containing the ciphertext and shared secret
      */
-    public static String encodePublicKey(PublicKey publicKey) {
-        return Base64.encodeToString(publicKey.getEncoded(), Base64.NO_WRAP);
-    }
-
-    /**
-     * Encode a private key to a string format
-     * @param privateKey Private key to encode
-     * @return Base64 encoded string of the private key
-     */
-    public static String encodePrivateKey(PrivateKey privateKey) {
-        return Base64.encodeToString(privateKey.getEncoded(), Base64.NO_WRAP);
-    }
-
-    /**
-     * Decode a public key from a string format
-     * @param encodedKey Base64 encoded string of the public key
-     * @return Decoded public key
-     */
-    public static PublicKey decodePublicKey(String encodedKey) {
+    public static KyberEncapsulationResult encapsulateKey(byte[] publicKey) {
         try {
-            // Not implemented in stub version
-            Log.d(TAG, "decodePublicKey called but not implemented in stub");
+            byte[][] resultArray = nativeEncapsulateKey(publicKey);
+            if (resultArray != null && resultArray.length == 2) {
+                return new KyberEncapsulationResult(resultArray[0], resultArray[1]);
+            }
             return null;
         } catch (Exception e) {
-            Log.e(TAG, "Error decoding public key", e);
+            Log.e(TAG, "Error encapsulating key", e);
             return null;
         }
     }
 
     /**
-     * Decode a private key from a string format
-     * @param encodedKey Base64 encoded string of the private key
-     * @return Decoded private key
+     * Decapsulate a key with a Kyber private key
+     * @param privateKey The Kyber private key to use for decapsulation
+     * @param ciphertext The ciphertext to decapsulate
+     * @return The shared secret key
      */
-    public static PrivateKey decodePrivateKey(String encodedKey) {
+    public static byte[] decapsulateKey(byte[] privateKey, byte[] ciphertext) {
         try {
-            // Not implemented in stub version
-            Log.d(TAG, "decodePrivateKey called but not implemented in stub");
-            return null;
+            return nativeDecapsulateKey(privateKey, ciphertext);
         } catch (Exception e) {
-            Log.e(TAG, "Error decoding private key", e);
+            Log.e(TAG, "Error decapsulating key", e);
             return null;
         }
     }
-
+    
     /**
-     * Encapsulate a key with a public key
-     * @param publicKey The public key to use for encapsulation
-     * @return EncapsulatedKey containing the encapsulation and secret key
+     * Sign a message using Dilithium
+     * @param privateKey The Dilithium private key
+     * @param message The message to sign
+     * @return The signature
      */
-    public static EncapsulatedKey encapsulateKey(PublicKey publicKey) {
-        // Stub implementation
-        byte[] fakeSecretKey = new byte[32];
-        new SecureRandom().nextBytes(fakeSecretKey);
-        return new EncapsulatedKey("stub-encapsulation", fakeSecretKey);
+    public static byte[] sign(byte[] privateKey, byte[] message) {
+        try {
+            return nativeSignMessage(privateKey, message);
+        } catch (Exception e) {
+            Log.e(TAG, "Error signing message", e);
+            return null;
+        }
     }
-
+    
     /**
-     * Decapsulate a key with a private key
-     * @param privateKey The private key to use for decapsulation
-     * @param encapsulation The encapsulation to decapsulate
-     * @return The decapsulated secret key
+     * Verify a signature using Dilithium
+     * @param publicKey The Dilithium public key
+     * @param message The message that was signed
+     * @param signature The signature to verify
+     * @return true if the signature is valid, false otherwise
      */
-    public static byte[] decapsulateKey(PrivateKey privateKey, String encapsulation) {
-        // Stub implementation
-        byte[] fakeSecretKey = new byte[32];
-        new SecureRandom().nextBytes(fakeSecretKey);
-        return fakeSecretKey;
+    public static boolean verify(byte[] publicKey, byte[] message, byte[] signature) {
+        try {
+            return nativeVerifySignature(publicKey, message, signature);
+        } catch (Exception e) {
+            Log.e(TAG, "Error verifying signature", e);
+            return false;
+        }
     }
-
+    
     /**
-     * Encrypt data with AES
+     * Encrypt data with AES-GCM using the provided key
      * @param plaintext The plaintext to encrypt
-     * @param secretKey The secret key to use
+     * @param key The key to use
      * @return EncryptedData containing the IV and ciphertext
      */
-    public static EncryptedData encryptWithAES(String plaintext, byte[] secretKey) {
-        // Stub implementation
-        return new EncryptedData(
-            Base64.encodeToString(new byte[16], Base64.NO_WRAP), 
-            Base64.encodeToString(plaintext.getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP)
-        );
+    public static EncryptedData encryptWithAES(byte[] plaintext, byte[] key) {
+        try {
+            byte[][] resultArray = nativeEncrypt(plaintext, key);
+            if (resultArray != null && resultArray.length == 2) {
+                return new EncryptedData(resultArray[0], resultArray[1]);
+            }
+            return null;
+        } catch (Exception e) {
+            Log.e(TAG, "Error encrypting data", e);
+            return null;
+        }
+    }
+    
+    /**
+     * Encrypt a string with AES-GCM using the provided key
+     * @param plaintext The plaintext string to encrypt
+     * @param key The key to use
+     * @return EncryptedData containing the IV and ciphertext
+     */
+    public static EncryptedData encryptWithAES(String plaintext, byte[] key) {
+        return encryptWithAES(plaintext.getBytes(StandardCharsets.UTF_8), key);
     }
 
     /**
-     * Decrypt data with AES
+     * Decrypt data with AES-GCM
      * @param encryptedData The encrypted data to decrypt
-     * @param secretKey The secret key to use
+     * @param key The key to use
      * @return The decrypted plaintext
      */
-    public static String decryptWithAES(EncryptedData encryptedData, byte[] secretKey) {
-        // Stub implementation - just return fixed text for testing
-        return "Decrypted stub message";
+    public static byte[] decryptWithAES(EncryptedData encryptedData, byte[] key) {
+        try {
+            return nativeDecrypt(
+                Base64.decode(encryptedData.getIv(), Base64.NO_WRAP),
+                Base64.decode(encryptedData.getCiphertext(), Base64.NO_WRAP),
+                key
+            );
+        } catch (Exception e) {
+            Log.e(TAG, "Error decrypting data", e);
+            return null;
+        }
     }
+    
+    /**
+     * Decrypt data with AES-GCM and return as a string
+     * @param encryptedData The encrypted data to decrypt
+     * @param key The key to use
+     * @return The decrypted plaintext as a string
+     */
+    public static String decryptWithAESAsString(EncryptedData encryptedData, byte[] key) {
+        byte[] decrypted = decryptWithAES(encryptedData, key);
+        if (decrypted == null) {
+            return null;
+        }
+        return new String(decrypted, StandardCharsets.UTF_8);
+    }
+    
+    /**
+     * Encode a public key as a Base64 string
+     * @param publicKey The public key to encode
+     * @return The encoded public key
+     */
+    public static String encodePublicKey(byte[] publicKey) {
+        return Base64.encodeToString(publicKey, Base64.NO_WRAP);
+    }
+    
+    /**
+     * Encode a private key as a Base64 string
+     * @param privateKey The private key to encode
+     * @return The encoded private key
+     */
+    public static String encodePrivateKey(byte[] privateKey) {
+        return Base64.encodeToString(privateKey, Base64.NO_WRAP);
+    }
+    
+    /**
+     * Decode a Base64 encoded public key
+     * @param encodedKey The encoded public key
+     * @return The decoded public key
+     */
+    public static byte[] decodePublicKey(String encodedKey) {
+        return Base64.decode(encodedKey, Base64.NO_WRAP);
+    }
+    
+    /**
+     * Decode a Base64 encoded private key
+     * @param encodedKey The encoded private key
+     * @return The decoded private key
+     */
+    public static byte[] decodePrivateKey(String encodedKey) {
+        return Base64.decode(encodedKey, Base64.NO_WRAP);
+    }
+    
+    // Native method declarations
+    private static native byte[][] nativeGenerateKyberKeyPair(int variant);
+    private static native byte[][] nativeGenerateDilithiumKeyPair(int variant);
+    private static native byte[][] nativeEncapsulateKey(byte[] publicKey);
+    private static native byte[] nativeDecapsulateKey(byte[] privateKey, byte[] ciphertext);
+    private static native byte[] nativeSignMessage(byte[] privateKey, byte[] message);
+    private static native boolean nativeVerifySignature(byte[] publicKey, byte[] message, byte[] signature);
+    private static native byte[][] nativeEncrypt(byte[] plaintext, byte[] key);
+    private static native byte[] nativeDecrypt(byte[] iv, byte[] ciphertext, byte[] key);
 
     /**
-     * Class representing an encapsulated key
+     * Class representing a Kyber key pair
      */
-    public static class EncapsulatedKey {
-        private final String encapsulation;
-        private final byte[] secretKey;
+    public static class KyberKeyPair {
+        private final byte[] publicKey;
+        private final byte[] privateKey;
 
-        public EncapsulatedKey(String encapsulation, byte[] secretKey) {
-            this.encapsulation = encapsulation;
-            this.secretKey = secretKey;
+        public KyberKeyPair(byte[] publicKey, byte[] privateKey) {
+            this.publicKey = publicKey;
+            this.privateKey = privateKey;
         }
 
-        public String getEncapsulation() {
-            return encapsulation;
+        public byte[] getPublicKey() {
+            return publicKey;
         }
 
-        public byte[] getSecretKey() {
-            return secretKey;
+        public byte[] getPrivateKey() {
+            return privateKey;
+        }
+        
+        public String getEncodedPublicKey() {
+            return Base64.encodeToString(publicKey, Base64.NO_WRAP);
+        }
+        
+        public String getEncodedPrivateKey() {
+            return Base64.encodeToString(privateKey, Base64.NO_WRAP);
+        }
+    }
+    
+    /**
+     * Class representing a Dilithium key pair
+     */
+    public static class DilithiumKeyPair {
+        private final byte[] publicKey;
+        private final byte[] privateKey;
+
+        public DilithiumKeyPair(byte[] publicKey, byte[] privateKey) {
+            this.publicKey = publicKey;
+            this.privateKey = privateKey;
+        }
+
+        public byte[] getPublicKey() {
+            return publicKey;
+        }
+
+        public byte[] getPrivateKey() {
+            return privateKey;
+        }
+        
+        public String getEncodedPublicKey() {
+            return Base64.encodeToString(publicKey, Base64.NO_WRAP);
+        }
+        
+        public String getEncodedPrivateKey() {
+            return Base64.encodeToString(privateKey, Base64.NO_WRAP);
+        }
+    }
+    
+    /**
+     * Class representing a Kyber encapsulation result
+     */
+    public static class KyberEncapsulationResult {
+        private final byte[] ciphertext;
+        private final byte[] sharedSecret;
+
+        public KyberEncapsulationResult(byte[] ciphertext, byte[] sharedSecret) {
+            this.ciphertext = ciphertext;
+            this.sharedSecret = sharedSecret;
+        }
+
+        public byte[] getCiphertext() {
+            return ciphertext;
+        }
+
+        public byte[] getSharedSecret() {
+            return sharedSecret;
+        }
+        
+        public String getEncodedCiphertext() {
+            return Base64.encodeToString(ciphertext, Base64.NO_WRAP);
         }
     }
 
@@ -176,6 +371,11 @@ public class PQCProvider {
             this.iv = iv;
             this.ciphertext = ciphertext;
         }
+        
+        public EncryptedData(byte[] iv, byte[] ciphertext) {
+            this.iv = Base64.encodeToString(iv, Base64.NO_WRAP);
+            this.ciphertext = Base64.encodeToString(ciphertext, Base64.NO_WRAP);
+        }
 
         public String getIv() {
             return iv;
@@ -185,4 +385,4 @@ public class PQCProvider {
             return ciphertext;
         }
     }
-} 
+}

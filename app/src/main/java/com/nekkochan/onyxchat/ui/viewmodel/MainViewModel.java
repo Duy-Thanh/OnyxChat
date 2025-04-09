@@ -157,19 +157,19 @@ public class MainViewModel extends AndroidViewModel {
     }
     
     /**
-     * Create a new user with a fresh key pair
+     * Create a new user with a generated key pair
      */
     private void createNewUser() {
         try {
             // Generate new post-quantum key pair
-            KeyPair keyPair = PQCProvider.generateKyberKeyPair();
+            PQCProvider.KyberKeyPair keyPair = PQCProvider.generateKyberKeyPair();
             if (keyPair == null) {
                 errorMessage.setValue("Failed to generate key pair");
                 return;
             }
             
-            String encodedPublicKey = PQCProvider.encodePublicKey(keyPair.getPublic());
-            String encodedPrivateKey = PQCProvider.encodePrivateKey(keyPair.getPrivate());
+            String encodedPublicKey = keyPair.getEncodedPublicKey();
+            String encodedPrivateKey = keyPair.getEncodedPrivateKey();
             
             // Create new user with default name and address
             User newUser = new User(
@@ -212,7 +212,7 @@ public class MainViewModel extends AndroidViewModel {
             new Thread(() -> {
                 try {
                     // Generate new post-quantum key pair
-                    KeyPair keyPair = PQCProvider.generateKyberKeyPair();
+                    PQCProvider.KyberKeyPair keyPair = PQCProvider.generateKyberKeyPair();
                     if (keyPair == null) {
                         errorMessage.postValue("Failed to generate key pair");
                         isLoading.postValue(false);
@@ -220,8 +220,8 @@ public class MainViewModel extends AndroidViewModel {
                         return;
                     }
                     
-                    String encodedPublicKey = PQCProvider.encodePublicKey(keyPair.getPublic());
-                    String encodedPrivateKey = PQCProvider.encodePrivateKey(keyPair.getPrivate());
+                    String encodedPublicKey = keyPair.getEncodedPublicKey();
+                    String encodedPrivateKey = keyPair.getEncodedPrivateKey();
                     
                     // Update user
                     currentUser.setPublicKey(encodedPublicKey);
