@@ -46,7 +46,10 @@
     <string name="password">Password</string>
     <string name="confirm_password">Confirm Password</string>
     <string name="display_name">Display Name</string>
-    <string name="forgot_password">Forgot Password?</string>
+    <string name="forgot_password">Forgot Password</string>
+    <string name="forgot_password_subtitle">Enter your email address to receive a verification code</string>
+    <string name="forgot_password_subtitle_alt">Enter your email and optionally your username. If both match, the verification code will be shown directly.</string>
+    <string name="username_optional">Username (optional)</string>
     <string name="reset_password">Reset Password</string>
     <string name="reset_password_description">Enter your email address and we will send you a link to reset your password.</string>
     <string name="send_reset_link">Send Reset Link</string>

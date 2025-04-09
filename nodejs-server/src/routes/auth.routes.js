@@ -370,14 +370,25 @@ router.post('/request-password-reset', [
   body('email')
     .isEmail()
     .withMessage('Please provide a valid email address'),
+  body('username')
+    .optional()
+    .isString()
+    .withMessage('Username must be a string'),
   validate
 ], async (req, res, next) => {
   try {
-    const { email } = req.body;
+    const { email, username } = req.body;
     
     // Find user by email
+    const whereClause = { email };
+    
+    // If username is provided, add it to the where clause
+    if (username) {
+      whereClause.username = username;
+    }
+    
     const user = await db.User.findOne({ 
-      where: { email }
+      where: whereClause
     });
     
     if (!user) {
@@ -407,8 +418,8 @@ router.post('/request-password-reset', [
     // Send email with OTP
     let emailSent = false;
     
-    if (process.env.NODE_ENV === 'production') {
-      // In production, send actual email
+    if (process.env.NODE_ENV === 'production' && !username) {
+      // In production, send actual email if username is not provided
       emailSent = await emailService.sendOtpEmail(email, otp);
       
       if (!emailSent) {
@@ -420,14 +431,13 @@ router.post('/request-password-reset', [
       emailSent = true;
     }
     
-    // For development/testing, return the OTP in the response
-    // In production, remove this and only send via email
-    if (process.env.NODE_ENV === 'development') {
+    // If both username and email match, or in development mode, return OTP in response
+    if (username || process.env.NODE_ENV === 'development') {
       return res.json({
         status: 'success',
-        message: 'Password reset code sent to your email.',
+        message: 'Password reset code generated successfully.',
         data: {
-          otp: otp // Only include in development
+          otp: otp
         }
       });
     }

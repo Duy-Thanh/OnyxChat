@@ -48,6 +48,12 @@ public class VerifyOtpActivity extends AppCompatActivity {
             return;
         }
         
+        // Check if OTP was passed directly
+        String directOtp = getIntent().getStringExtra("otp");
+        if (directOtp != null && !directOtp.isEmpty()) {
+            binding.otpInput.setText(directOtp);
+        }
+        
         // Set email text
         binding.emailText.setText(email);
         

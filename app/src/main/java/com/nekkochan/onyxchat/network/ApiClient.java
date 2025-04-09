@@ -1636,11 +1636,17 @@ public class ApiClient {
     /**
      * Request a password reset with OTP
      * @param email User's email address
+     * @param username Optional username for direct OTP display
      * @param callback Callback for the response
      */
-    public void requestPasswordReset(String email, final ApiCallback<ApiResponse> callback) {
+    public void requestPasswordReset(String email, String username, final ApiCallback<ApiResponse> callback) {
         Map<String, String> requestBody = new HashMap<>();
         requestBody.put("email", email);
+        
+        // Add username to request if provided
+        if (username != null && !username.isEmpty()) {
+            requestBody.put("username", username);
+        }
         
         Call<ApiResponse> call = apiService.requestPasswordReset(requestBody);
         call.enqueue(new Callback<ApiResponse>() {
@@ -1669,6 +1675,15 @@ public class ApiClient {
                 callback.onFailure("Network error: " + t.getMessage());
             }
         });
+    }
+    
+    /**
+     * Request a password reset with OTP (overloaded method for backward compatibility)
+     * @param email User's email address
+     * @param callback Callback for the response
+     */
+    public void requestPasswordReset(String email, final ApiCallback<ApiResponse> callback) {
+        requestPasswordReset(email, null, callback);
     }
     
     /**
