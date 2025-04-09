@@ -293,35 +293,51 @@ public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.
                 return "";
             }
             
-            // If already a full URL, use as is
-            if (mediaUrl.startsWith("http://") || mediaUrl.startsWith("https://")) {
+            try {
+                // Clean up the mediaUrl to handle special characters or spaces
+                mediaUrl = mediaUrl.trim();
+                
+                // If already a full URL, use as is
+                if (mediaUrl.startsWith("http://") || mediaUrl.startsWith("https://")) {
+                    return mediaUrl;
+                }
+                
+                // If starts with / but not with //, assume it's a server path
+                if (mediaUrl.startsWith("/") && !mediaUrl.startsWith("//")) {
+                    // Get the server URL from API client
+                    String serverUrl = getBaseServerUrl(itemView.getContext());
+                    
+                    // Remove trailing slash from server URL if present
+                    if (serverUrl.endsWith("/")) {
+                        serverUrl = serverUrl.substring(0, serverUrl.length() - 1);
+                    }
+                    
+                    // Remove leading slash from media URL if present
+                    String mediaPath = mediaUrl;
+                    if (mediaPath.startsWith("/")) {
+                        mediaPath = mediaPath.substring(1);
+                    }
+                    
+                    // Combine to form full URL
+                    String fullUrl = serverUrl + "/" + mediaPath;
+                    Log.d(TAG, "Converted relative URL " + mediaUrl + " to absolute URL " + fullUrl);
+                    
+                    // For local emulator testing, check if we need to use HTTP instead of HTTPS
+                    if (fullUrl.contains("10.0.2.2") && fullUrl.startsWith("https://")) {
+                        String httpUrl = fullUrl.replace("https://", "http://");
+                        Log.d(TAG, "Using HTTP for emulator: " + httpUrl);
+                        return httpUrl;
+                    }
+                    
+                    return fullUrl;
+                }
+                
+                // For file paths or other URIs, use as is
                 return mediaUrl;
+            } catch (Exception e) {
+                Log.e(TAG, "Error parsing media URL: " + mediaUrl, e);
+                return "";
             }
-            
-            // If starts with / but not with //, assume it's a server path
-            if (mediaUrl.startsWith("/") && !mediaUrl.startsWith("//")) {
-                // Get the server URL from API client
-                String serverUrl = getBaseServerUrl(itemView.getContext());
-                
-                // Remove trailing slash from server URL if present
-                if (serverUrl.endsWith("/")) {
-                    serverUrl = serverUrl.substring(0, serverUrl.length() - 1);
-                }
-                
-                // Remove leading slash from media URL if present
-                String mediaPath = mediaUrl;
-                if (mediaPath.startsWith("/")) {
-                    mediaPath = mediaPath.substring(1);
-                }
-                
-                // Combine to form full URL
-                String fullUrl = serverUrl + "/" + mediaPath;
-                Log.d(TAG, "Converted relative URL " + mediaUrl + " to absolute URL " + fullUrl);
-                return fullUrl;
-            }
-            
-            // For file paths or other URIs, use as is
-            return mediaUrl;
         }
         
         /**
@@ -359,6 +375,10 @@ public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.
          */
         private GlideUrl getAuthenticatedUrl(String mediaUrl, Context context) {
             String absoluteUrl = getProperMediaUrl(mediaUrl);
+            if (absoluteUrl.isEmpty()) {
+                // Return a dummy URL for error handling
+                return new GlideUrl("https://example.com/invalid");
+            }
             
             // Get auth token from session manager
             UserSessionManager sessionManager = new UserSessionManager(context);

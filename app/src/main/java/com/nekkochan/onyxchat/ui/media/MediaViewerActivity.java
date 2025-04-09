@@ -61,12 +61,11 @@ public class MediaViewerActivity extends AppCompatActivity {
         imageView = findViewById(R.id.image_view);
         progressBar = findViewById(R.id.progress_bar);
 
-        // Set up based on media type
-        if (mediaType != null && mediaType.equalsIgnoreCase("VIDEO")) {
-            setupVideoPlayer();
-        } else {
-            setupImageViewer();
-        }
+        // Show loading indicator
+        progressBar.setVisibility(View.VISIBLE);
+        
+        // Validate and load media
+        validateAndLoadMedia();
 
         // Set up close button
         findViewById(R.id.close_button).setOnClickListener(v -> finish());
@@ -231,35 +230,51 @@ public class MediaViewerActivity extends AppCompatActivity {
             return Uri.EMPTY;
         }
         
-        // If already a full URL, use as is
-        if (mediaUrl.startsWith("http://") || mediaUrl.startsWith("https://")) {
+        try {
+            // Clean up the mediaUrl to handle special characters or spaces
+            mediaUrl = mediaUrl.trim();
+            
+            // If already a full URL, use as is
+            if (mediaUrl.startsWith("http://") || mediaUrl.startsWith("https://")) {
+                return Uri.parse(mediaUrl);
+            }
+            
+            // If starts with / but not with //, assume it's a server path
+            if (mediaUrl.startsWith("/") && !mediaUrl.startsWith("//")) {
+                // Get the server URL from API client
+                String serverUrl = getBaseServerUrl();
+                
+                // Remove trailing slash from server URL if present
+                if (serverUrl.endsWith("/")) {
+                    serverUrl = serverUrl.substring(0, serverUrl.length() - 1);
+                }
+                
+                // Remove leading slash from media URL if present
+                String mediaPath = mediaUrl;
+                if (mediaPath.startsWith("/")) {
+                    mediaPath = mediaPath.substring(1);
+                }
+                
+                // Combine to form full URL
+                String fullUrl = serverUrl + "/" + mediaPath;
+                Log.d(TAG, "Converted relative URL " + mediaUrl + " to absolute URL " + fullUrl);
+                
+                // For local emulator testing, check if we need to use HTTP instead of HTTPS
+                if (fullUrl.contains("10.0.2.2") && fullUrl.startsWith("https://")) {
+                    String httpUrl = fullUrl.replace("https://", "http://");
+                    Log.d(TAG, "Using HTTP for emulator: " + httpUrl);
+                    return Uri.parse(httpUrl);
+                }
+                
+                return Uri.parse(fullUrl);
+            }
+            
+            // For file paths or other URIs, use as is
             return Uri.parse(mediaUrl);
+        } catch (Exception e) {
+            Log.e(TAG, "Error parsing media URL: " + mediaUrl, e);
+            return Uri.EMPTY;
         }
-        
-        // If starts with / but not with //, assume it's a server path
-        if (mediaUrl.startsWith("/") && !mediaUrl.startsWith("//")) {
-            // Get the server URL from API client
-            String serverUrl = getBaseServerUrl();
-            
-            // Remove trailing slash from server URL if present
-            if (serverUrl.endsWith("/")) {
-                serverUrl = serverUrl.substring(0, serverUrl.length() - 1);
-            }
-            
-            // Remove leading slash from media URL if present
-            String mediaPath = mediaUrl;
-            if (mediaPath.startsWith("/")) {
-                mediaPath = mediaPath.substring(1);
-            }
-            
-            // Combine to form full URL
-            String fullUrl = serverUrl + "/" + mediaPath;
-            Log.d(TAG, "Converted relative URL " + mediaUrl + " to absolute URL " + fullUrl);
-            return Uri.parse(fullUrl);
-        }
-        
-        // For file paths or other URIs, use as is
-        return Uri.parse(mediaUrl);
     }
     
     /**
@@ -351,5 +366,42 @@ public class MediaViewerActivity extends AppCompatActivity {
         if (Util.SDK_INT >= 24) {
             releasePlayer();
         }
+    }
+
+    /**
+     * Pre-validate media URL to check if it exists before attempting to load
+     */
+    private void validateAndLoadMedia() {
+        if (mediaUrl == null || mediaUrl.isEmpty()) {
+            showError("Invalid media URL");
+            return;
+        }
+        
+        Uri mediaUri = getProperMediaUri(mediaUrl);
+        if (mediaUri.equals(Uri.EMPTY)) {
+            showError("Could not parse media URL");
+            return;
+        }
+
+        Log.d(TAG, "Validating media URL: " + mediaUri);
+        
+        // For video content, show loading UI and load directly
+        if (mediaType != null && mediaType.equalsIgnoreCase("VIDEO")) {
+            setupVideoPlayer();
+            initializePlayer();
+            return;
+        }
+        
+        // For images, show loading UI and proceed with loading
+        setupImageViewer();
+    }
+
+    /**
+     * Show an error message and handle UI state
+     */
+    private void showError(String message) {
+        progressBar.setVisibility(View.GONE);
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show();
+        Log.e(TAG, "Media error: " + message);
     }
 } 
