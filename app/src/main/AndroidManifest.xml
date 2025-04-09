@@ -96,6 +96,16 @@
             android:name=".ui.auth.ForgotPasswordActivity"
             android:exported="false"
             android:theme="@style/Theme.OnyxChat.NoActionBar" />
+            
+        <activity
+            android:name=".ui.auth.VerifyOtpActivity"
+            android:exported="false"
+            android:theme="@style/Theme.OnyxChat.NoActionBar" />
+            
+        <activity
+            android:name=".ui.auth.ResetPasswordActivity"
+            android:exported="false"
+            android:theme="@style/Theme.OnyxChat.NoActionBar" />
         
         <!-- Welcome Activity -->
         <activity

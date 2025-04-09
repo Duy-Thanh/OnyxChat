@@ -3,7 +3,6 @@ package com.nekkochan.onyxchat.ui.auth;
 import android.content.Intent;
 import android.os.Bundle;
 import android.text.TextUtils;
-import android.util.Patterns;
 import android.view.View;
 import android.widget.Toast;
 
@@ -13,16 +12,17 @@ import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 
 import com.nekkochan.onyxchat.R;
-import com.nekkochan.onyxchat.databinding.ActivityForgotPasswordBinding;
+import com.nekkochan.onyxchat.databinding.ActivityResetPasswordBinding;
 import com.nekkochan.onyxchat.network.ApiClient;
 
 /**
- * Password reset screen
+ * Reset password screen after OTP verification
  */
-public class ForgotPasswordActivity extends AppCompatActivity {
+public class ResetPasswordActivity extends AppCompatActivity {
     
-    private ActivityForgotPasswordBinding binding;
+    private ActivityResetPasswordBinding binding;
     private ApiClient apiClient;
+    private String resetToken;
     
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -31,11 +31,19 @@ public class ForgotPasswordActivity extends AppCompatActivity {
         // Set up edge-to-edge display
         WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
         
-        binding = ActivityForgotPasswordBinding.inflate(getLayoutInflater());
+        binding = ActivityResetPasswordBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
         
         // Initialize API client
         apiClient = ApiClient.getInstance(this);
+        
+        // Get reset token from intent
+        resetToken = getIntent().getStringExtra("resetToken");
+        if (resetToken == null) {
+            Toast.makeText(this, "Error: Reset token not provided", Toast.LENGTH_SHORT).show();
+            finish();
+            return;
+        }
         
         // Apply window insets to handle system bars
         ViewCompat.setOnApplyWindowInsetsListener(binding.getRoot(), (view, windowInsets) -> {
@@ -55,27 +63,42 @@ public class ForgotPasswordActivity extends AppCompatActivity {
         
         // Set up listeners
         binding.backButton.setOnClickListener(v -> onBackPressed());
-        binding.resetButton.setOnClickListener(v -> attemptPasswordReset());
-        binding.backToLoginText.setOnClickListener(v -> onBackPressed());
+        binding.resetButton.setOnClickListener(v -> resetPassword());
     }
     
     /**
-     * Attempt to reset the password
+     * Reset the password
      */
-    private void attemptPasswordReset() {
+    private void resetPassword() {
         // Clear errors
-        binding.emailInputLayout.setError(null);
+        binding.passwordInputLayout.setError(null);
+        binding.confirmPasswordInputLayout.setError(null);
         
         // Get values
-        String email = binding.emailInput.getText().toString().trim();
+        String password = binding.passwordInput.getText().toString();
+        String confirmPassword = binding.confirmPasswordInput.getText().toString();
         
         // Validate fields
         boolean cancel = false;
         View focusView = null;
         
-        if (TextUtils.isEmpty(email) || !Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
-            binding.emailInputLayout.setError(getString(R.string.error_invalid_email));
-            focusView = binding.emailInput;
+        if (TextUtils.isEmpty(password)) {
+            binding.passwordInputLayout.setError(getString(R.string.error_field_required));
+            focusView = binding.passwordInput;
+            cancel = true;
+        } else if (password.length() < 8) {
+            binding.passwordInputLayout.setError(getString(R.string.error_password_too_short));
+            focusView = binding.passwordInput;
+            cancel = true;
+        }
+        
+        if (TextUtils.isEmpty(confirmPassword)) {
+            binding.confirmPasswordInputLayout.setError(getString(R.string.error_field_required));
+            focusView = binding.confirmPasswordInput;
+            cancel = true;
+        } else if (!password.equals(confirmPassword)) {
+            binding.confirmPasswordInputLayout.setError(getString(R.string.error_passwords_dont_match));
+            focusView = binding.confirmPasswordInput;
             cancel = true;
         }
         
@@ -86,31 +109,23 @@ public class ForgotPasswordActivity extends AppCompatActivity {
             // Show progress
             showProgress(true);
             
-            // Request password reset OTP
-            apiClient.requestPasswordReset(email, new ApiClient.ApiCallback<ApiClient.ApiResponse>() {
+            // Reset password
+            apiClient.resetPassword(resetToken, password, new ApiClient.ApiCallback<ApiClient.ApiResponse>() {
                 @Override
                 public void onSuccess(ApiClient.ApiResponse response) {
                     showProgress(false);
                     
-                    // In development mode, the OTP might be returned in the response
-                    String otp = null;
-                    if (response.data != null && response.data.has("otp")) {
-                        otp = response.data.get("otp").getAsString();
-                    }
+                    Toast.makeText(ResetPasswordActivity.this, 
+                            "Password reset successful", Toast.LENGTH_LONG).show();
                     
-                    // Start OTP verification activity
-                    Intent intent = new Intent(ForgotPasswordActivity.this, VerifyOtpActivity.class);
-                    intent.putExtra("email", email);
-                    if (otp != null) {
-                        intent.putExtra("otp", otp); // Only in development
-                    }
-                    startActivity(intent);
+                    // Return to login
+                    goToLogin();
                 }
                 
                 @Override
                 public void onFailure(String errorMessage) {
                     showProgress(false);
-                    Toast.makeText(ForgotPasswordActivity.this, errorMessage, Toast.LENGTH_LONG).show();
+                    Toast.makeText(ResetPasswordActivity.this, errorMessage, Toast.LENGTH_LONG).show();
                 }
             });
         }
@@ -125,12 +140,12 @@ public class ForgotPasswordActivity extends AppCompatActivity {
     }
     
     /**
-     * Go back to login screen
+     * Go to login screen
      */
-    private void goBackToLogin() {
+    private void goToLogin() {
         Intent intent = new Intent(this, LoginActivity.class);
         intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_NEW_TASK);
         startActivity(intent);
-        finish();
+        finishAffinity(); // Close all activities in the stack
     }
 }

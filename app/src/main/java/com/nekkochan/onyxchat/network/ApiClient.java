@@ -15,6 +15,7 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.google.gson.JsonSyntaxException;
 import com.google.gson.annotations.SerializedName;
 import com.nekkochan.onyxchat.model.User;
 import com.nekkochan.onyxchat.model.UserProfile;
@@ -33,6 +34,10 @@ import java.security.cert.X509Certificate;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 import okhttp3.Interceptor;
 import okhttp3.MediaType;
@@ -52,12 +57,8 @@ import retrofit2.http.GET;
 import retrofit2.http.Multipart;
 import retrofit2.http.POST;
 import retrofit2.http.PUT;
-import retrofit2.http.Path;
 import retrofit2.http.Part;
-
-import java.util.Date;
-import java.util.List;
-import java.util.Map;
+import retrofit2.http.Path;
 
 import javax.net.ssl.HostnameVerifier;
 import javax.net.ssl.HttpsURLConnection;
@@ -389,7 +390,7 @@ public class ApiClient {
                                     if (error != null && error.message != null) {
                                         errorMsg = error.message;
                                     }
-                                } catch (Exception e) {
+                                } catch (JsonSyntaxException e) {
                                     Log.e(TAG, "Error parsing JSON error response", e);
                                 }
                             } else {
@@ -453,7 +454,7 @@ public class ApiClient {
                                     if (error != null && error.message != null) {
                                         errorMsg = error.message;
                                     }
-                                } catch (Exception e) {
+                                } catch (JsonSyntaxException e) {
                                     Log.e(TAG, "Error parsing JSON error response", e);
                                 }
                             } else {
@@ -520,7 +521,7 @@ public class ApiClient {
                                     if (error != null && error.message != null) {
                                         errorMsg = error.message;
                                     }
-                                } catch (Exception e) {
+                                } catch (JsonSyntaxException e) {
                                     Log.e(TAG, "Error parsing JSON error response", e);
                                 }
                             } else {
@@ -769,6 +770,24 @@ public class ApiClient {
          */
         @DELETE("api/media/{filename}")
         Call<BaseResponse> deleteMedia(@Path("filename") String filename);
+        
+        /**
+         * Request password reset with OTP
+         */
+        @POST("api/auth/request-password-reset")
+        Call<ApiResponse> requestPasswordReset(@Body Map<String, String> requestBody);
+        
+        /**
+         * Verify OTP for password reset
+         */
+        @POST("api/auth/verify-reset-otp")
+        Call<VerifyOtpResponse> verifyResetOtp(@Body Map<String, String> requestBody);
+        
+        /**
+         * Reset password using reset token
+         */
+        @POST("api/auth/reset-password")
+        Call<ApiResponse> resetPassword(@Body Map<String, String> requestBody);
     }
     
     /**
@@ -788,7 +807,7 @@ public class ApiClient {
     }
     
     /**
-     * Register request model
+     * Registration request model
      */
     private static class RegisterRequest {
         @SerializedName("username")
@@ -800,7 +819,7 @@ public class ApiClient {
         @SerializedName("password")
         private final String password;
         
-        @SerializedName("display_name")
+        @SerializedName("displayName")
         private final String displayName;
         
         public RegisterRequest(String username, String email, String password, String displayName) {
@@ -812,7 +831,21 @@ public class ApiClient {
     }
     
     /**
-     * Auth response model
+     * API response model
+     */
+    public static class ApiResponse {
+        @SerializedName("success")
+        public boolean success;
+        
+        @SerializedName("message")
+        public String message;
+        
+        @SerializedName("data")
+        public JsonObject data;
+    }
+    
+    /**
+     * Authentication response model
      */
     public static class AuthResponse {
         @SerializedName("status")
@@ -1599,4 +1632,150 @@ public class ApiClient {
             public String path;
         }
     }
-} 
+    
+    /**
+     * Request a password reset with OTP
+     * @param email User's email address
+     * @param callback Callback for the response
+     */
+    public void requestPasswordReset(String email, final ApiCallback<ApiResponse> callback) {
+        Map<String, String> requestBody = new HashMap<>();
+        requestBody.put("email", email);
+        
+        Call<ApiResponse> call = apiService.requestPasswordReset(requestBody);
+        call.enqueue(new Callback<ApiResponse>() {
+            @Override
+            public void onResponse(Call<ApiResponse> call, retrofit2.Response<ApiResponse> response) {
+                if (response.isSuccessful()) {
+                    ApiResponse apiResponse = response.body();
+                    if (apiResponse != null) {
+                        callback.onSuccess(apiResponse);
+                    } else {
+                        callback.onFailure("Empty response body");
+                    }
+                } else {
+                    try {
+                        String errorBody = response.errorBody() != null ? 
+                                response.errorBody().string() : "Unknown error";
+                        callback.onFailure(parseErrorMessage(errorBody));
+                    } catch (IOException e) {
+                        callback.onFailure("Error parsing error response: " + e.getMessage());
+                    }
+                }
+            }
+            
+            @Override
+            public void onFailure(Call<ApiResponse> call, Throwable t) {
+                callback.onFailure("Network error: " + t.getMessage());
+            }
+        });
+    }
+    
+    /**
+     * Verify OTP for password reset
+     * @param email User's email address
+     * @param otp One-time password received via email
+     * @param callback Callback for the response
+     */
+    public void verifyResetOtp(String email, String otp, final ApiCallback<VerifyOtpResponse> callback) {
+        Map<String, String> requestBody = new HashMap<>();
+        requestBody.put("email", email);
+        requestBody.put("otp", otp);
+        
+        Call<VerifyOtpResponse> call = apiService.verifyResetOtp(requestBody);
+        call.enqueue(new Callback<VerifyOtpResponse>() {
+            @Override
+            public void onResponse(Call<VerifyOtpResponse> call, retrofit2.Response<VerifyOtpResponse> response) {
+                if (response.isSuccessful()) {
+                    VerifyOtpResponse apiResponse = response.body();
+                    if (apiResponse != null) {
+                        callback.onSuccess(apiResponse);
+                    } else {
+                        callback.onFailure("Empty response body");
+                    }
+                } else {
+                    try {
+                        String errorBody = response.errorBody() != null ? 
+                                response.errorBody().string() : "Unknown error";
+                        callback.onFailure(parseErrorMessage(errorBody));
+                    } catch (IOException e) {
+                        callback.onFailure("Error parsing error response: " + e.getMessage());
+                    }
+                }
+            }
+            
+            @Override
+            public void onFailure(Call<VerifyOtpResponse> call, Throwable t) {
+                callback.onFailure("Network error: " + t.getMessage());
+            }
+        });
+    }
+    
+    /**
+     * Reset password using reset token
+     * @param resetToken Token received after OTP verification
+     * @param newPassword New password
+     * @param callback Callback for the response
+     */
+    public void resetPassword(String resetToken, String newPassword, final ApiCallback<ApiResponse> callback) {
+        Map<String, String> requestBody = new HashMap<>();
+        requestBody.put("resetToken", resetToken);
+        requestBody.put("newPassword", newPassword);
+        
+        Call<ApiResponse> call = apiService.resetPassword(requestBody);
+        call.enqueue(new Callback<ApiResponse>() {
+            @Override
+            public void onResponse(Call<ApiResponse> call, retrofit2.Response<ApiResponse> response) {
+                if (response.isSuccessful()) {
+                    ApiResponse apiResponse = response.body();
+                    if (apiResponse != null) {
+                        callback.onSuccess(apiResponse);
+                    } else {
+                        callback.onFailure("Empty response body");
+                    }
+                } else {
+                    try {
+                        String errorBody = response.errorBody() != null ? 
+                                response.errorBody().string() : "Unknown error";
+                        callback.onFailure(parseErrorMessage(errorBody));
+                    } catch (IOException e) {
+                        callback.onFailure("Error parsing error response: " + e.getMessage());
+                    }
+                }
+            }
+            
+            @Override
+            public void onFailure(Call<ApiResponse> call, Throwable t) {
+                callback.onFailure("Network error: " + t.getMessage());
+            }
+        });
+    }
+    
+    private String parseErrorMessage(String errorBody) {
+        try {
+            JSONObject errorJson = new JSONObject(errorBody);
+            return errorJson.optString("message", "Unknown error");
+        } catch (JSONException e) {
+            return "Error: " + e.getMessage();
+        }
+    }
+    
+    /**
+     * Verify OTP response model
+     */
+    public static class VerifyOtpResponse {
+        @SerializedName("success")
+        public boolean success;
+        
+        @SerializedName("message")
+        public String message;
+        
+        @SerializedName("data")
+        public VerifyOtpData data;
+        
+        public static class VerifyOtpData {
+            @SerializedName("token")
+            public String token;
+        }
+    }
+}

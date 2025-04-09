@@ -16,6 +16,8 @@ const {
 } = require('../utils/error.utils');
 const { authenticate } = require('../middleware/auth.middleware');
 const db = require('../models');
+const jwt = require('jsonwebtoken');
+const emailService = require('../services/email.service');
 
 const router = express.Router();
 
@@ -353,6 +355,228 @@ router.get('/me', authenticate, async (req, res, next) => {
       data: {
         user: req.user.toProfile()
       }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @route POST /api/auth/request-password-reset
+ * @desc Request a password reset by sending OTP to email
+ * @access Public
+ */
+router.post('/request-password-reset', [
+  body('email')
+    .isEmail()
+    .withMessage('Please provide a valid email address'),
+  validate
+], async (req, res, next) => {
+  try {
+    const { email } = req.body;
+    
+    // Find user by email
+    const user = await db.User.findOne({ 
+      where: { email }
+    });
+    
+    if (!user) {
+      // Don't reveal if email exists for security reasons
+      return res.json({
+        status: 'success',
+        message: 'If your email is registered, you will receive a reset code shortly.'
+      });
+    }
+    
+    // Generate a 6-digit OTP code
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    
+    // Hash the OTP for storage
+    const otpHash = await hashPassword(otp);
+    
+    // Store OTP in database with expiration (15 minutes)
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+    
+    await db.PasswordReset.upsert({
+      userId: user.id,
+      otpHash,
+      expiresAt,
+      attempts: 0
+    });
+    
+    // Send email with OTP
+    let emailSent = false;
+    
+    if (process.env.NODE_ENV === 'production') {
+      // In production, send actual email
+      emailSent = await emailService.sendOtpEmail(email, otp);
+      
+      if (!emailSent) {
+        console.error(`Failed to send OTP email to ${email}`);
+      }
+    } else {
+      // In development, log OTP to console
+      console.log(`Password reset OTP for ${email}: ${otp}`);
+      emailSent = true;
+    }
+    
+    // For development/testing, return the OTP in the response
+    // In production, remove this and only send via email
+    if (process.env.NODE_ENV === 'development') {
+      return res.json({
+        status: 'success',
+        message: 'Password reset code sent to your email.',
+        data: {
+          otp: otp // Only include in development
+        }
+      });
+    }
+    
+    res.json({
+      status: 'success',
+      message: emailSent 
+        ? 'Password reset code sent to your email.' 
+        : 'If your email is registered, you will receive a reset code shortly.'
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @route POST /api/auth/verify-reset-otp
+ * @desc Verify OTP for password reset
+ * @access Public
+ */
+router.post('/verify-reset-otp', [
+  body('email')
+    .isEmail()
+    .withMessage('Please provide a valid email address'),
+  body('otp')
+    .isLength({ min: 6, max: 6 })
+    .isNumeric()
+    .withMessage('OTP must be a 6-digit number'),
+  validate
+], async (req, res, next) => {
+  try {
+    const { email, otp } = req.body;
+    
+    // Find user by email
+    const user = await db.User.findOne({ 
+      where: { email }
+    });
+    
+    if (!user) {
+      return next(new NotFoundError('User not found'));
+    }
+    
+    // Find password reset record
+    const resetRecord = await db.PasswordReset.findOne({
+      where: { userId: user.id }
+    });
+    
+    if (!resetRecord) {
+      return next(new NotFoundError('No password reset request found'));
+    }
+    
+    // Check if OTP is expired
+    if (new Date(resetRecord.expiresAt) < new Date()) {
+      return next(new AuthenticationError('OTP has expired'));
+    }
+    
+    // Check if too many attempts
+    if (resetRecord.attempts >= 5) {
+      return next(new AuthenticationError('Too many failed attempts. Please request a new OTP.'));
+    }
+    
+    // Verify OTP
+    const isMatch = await comparePassword(otp, resetRecord.otpHash);
+    
+    if (!isMatch) {
+      // Increment attempts
+      await resetRecord.update({ attempts: resetRecord.attempts + 1 });
+      return next(new AuthenticationError('Invalid OTP'));
+    }
+    
+    // Generate a temporary token for password reset
+    const resetToken = jwt.sign(
+      { 
+        sub: user.id,
+        type: 'reset',
+        iat: Math.floor(Date.now() / 1000)
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: '15m' }
+    );
+    
+    res.json({
+      status: 'success',
+      message: 'OTP verified successfully',
+      data: {
+        resetToken
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @route POST /api/auth/reset-password
+ * @desc Reset password using reset token
+ * @access Public
+ */
+router.post('/reset-password', [
+  body('resetToken')
+    .notEmpty()
+    .withMessage('Reset token is required'),
+  body('newPassword')
+    .isLength({ min: 8 })
+    .withMessage('Password must be at least 8 characters long'),
+  validate
+], async (req, res, next) => {
+  try {
+    const { resetToken, newPassword } = req.body;
+    
+    // Verify reset token
+    let decoded;
+    try {
+      decoded = jwt.verify(resetToken, process.env.JWT_SECRET);
+      
+      // Check token type
+      if (decoded.type !== 'reset') {
+        return next(new AuthenticationError('Invalid token type'));
+      }
+    } catch (error) {
+      return next(new AuthenticationError('Invalid or expired reset token'));
+    }
+    
+    // Find user
+    const user = await db.User.findByPk(decoded.sub);
+    if (!user) {
+      return next(new NotFoundError('User not found'));
+    }
+    
+    // Hash new password
+    const passwordHash = await hashPassword(newPassword);
+    
+    // Update user password
+    await user.update({ passwordHash });
+    
+    // Delete password reset record
+    await db.PasswordReset.destroy({
+      where: { userId: user.id }
+    });
+    
+    // Revoke all refresh tokens for this user
+    await db.RefreshToken.update(
+      { revoked: true, revokedAt: new Date() },
+      { where: { userId: user.id } }
+    );
+    
+    res.json({
+      status: 'success',
+      message: 'Password reset successful'
     });
   } catch (error) {
     next(error);

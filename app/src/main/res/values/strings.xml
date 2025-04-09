@@ -157,6 +157,21 @@
     <string name="error_terms_required">You must accept the terms to continue</string>
     <string name="error_field_required">This field is required</string>
     <string name="error_password_too_short">Password must be at least 8 characters</string>
+    <string name="error_invalid_otp">OTP must be a 6-digit number</string>
+    
+    <!-- Password Reset -->
+    <string name="verify_code">Verify Code</string>
+    <string name="enter_verification_code">Enter the verification code sent to your email</string>
+    <string name="verification_code">Verification Code</string>
+    <string name="resend_code">Resend Code</string>
+    <string name="resend_code_in">Resend code in %1$d s</string>
+    <string name="create_new_password">Create New Password</string>
+    <string name="create_new_password_subtitle">Your new password must be different from previously used passwords</string>
+    <string name="new_password">New Password</string>
+    <string name="password_reset_success">Your password has been reset successfully</string>
+    <string name="verify_otp">Verify Code</string>
+    <string name="verify_otp_subtitle">Enter the 6-digit code sent to your email</string>
+    
     <string name="sync_contacts">Sync Contacts</string>
     <string name="contacts_permission_required">Contact permission is required for synchronization</string>
     <string name="delete_contact">Delete Contact</string>

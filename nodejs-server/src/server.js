@@ -6,6 +6,7 @@ const http = require('http');
 const WebSocket = require('ws');
 const { setupWebSocketServer } = require('./websocket');
 const db = require('./models');
+const emailService = require('./services/email.service');
 
 // Import routes
 const authRoutes = require('./routes/auth.routes');
@@ -166,6 +167,15 @@ app.use((err, req, res, next) => {
 
 // Start server without requiring database sync
 const startServer = () => {
+  // Initialize email service
+  try {
+    emailService.initializeTransporter();
+    console.log('Email service initialized');
+  } catch (error) {
+    console.error('Failed to initialize email service:', error.message);
+    console.warn('Password reset emails will not be sent!');
+  }
+
   server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
   });

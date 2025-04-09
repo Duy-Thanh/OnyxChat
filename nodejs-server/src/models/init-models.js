@@ -447,6 +447,52 @@ module.exports = (sequelize) => {
   Session.belongsTo(User, { foreignKey: 'userId' });
   Session.belongsTo(User, { foreignKey: 'otherUserId', as: 'otherUser' });
 
+  // PasswordReset model
+  const PasswordReset = sequelize.define('PasswordReset', {
+    id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true
+    },
+    userId: {
+      type: DataTypes.UUID,
+      allowNull: false,
+      unique: true, // Only one active reset per user
+      references: {
+        model: 'users',
+        key: 'id'
+      }
+    },
+    otpHash: {
+      type: DataTypes.STRING,
+      allowNull: false
+    },
+    expiresAt: {
+      type: DataTypes.DATE,
+      allowNull: false
+    },
+    attempts: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 0
+    },
+    createdAt: {
+      type: DataTypes.DATE,
+      defaultValue: DataTypes.NOW
+    },
+    updatedAt: {
+      type: DataTypes.DATE,
+      defaultValue: DataTypes.NOW
+    }
+  }, {
+    tableName: 'password_resets',
+    timestamps: true
+  });
+
+  // Add PasswordReset associations
+  User.hasOne(PasswordReset, { foreignKey: 'userId' });
+  PasswordReset.belongsTo(User, { foreignKey: 'userId' });
+
   return {
     User,
     Message,
@@ -455,6 +501,7 @@ module.exports = (sequelize) => {
     UserKey,
     OneTimePreKey,
     Session,
-    FriendRequest
+    FriendRequest,
+    PasswordReset
   };
 }; 
