@@ -257,15 +257,6 @@ public class ChatNotificationService extends Service {
         // Clear any cached data that might be holding references
         System.gc();
         
-//        // Request WebSocketClient to clean up any unused resources
-//        if (chatService != null) {
-//            // If we have access to the WebSocketClient, tell it to clean up
-//            WebSocketClient client = chatService.getWebSocketClient();
-//            if (client != null) {
-//                client.forceMemoryCleanup();
-//            }
-//        }
-        
         // Log memory usage
         long usedMemory = Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory();
         long maxMemory = Runtime.getRuntime().maxMemory();
