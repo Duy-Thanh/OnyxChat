@@ -31,6 +31,7 @@ import com.nekkochan.onyxchat.R;
 import com.nekkochan.onyxchat.ui.media.MediaViewerActivity;
 import com.nekkochan.onyxchat.ui.viewmodel.ChatViewModel;
 import com.nekkochan.onyxchat.util.UserSessionManager;
+import com.nekkochan.onyxchat.ui.chat.ChatDocumentHandler;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -267,6 +268,21 @@ public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.
             this.url = url;
             this.caption = caption;
         }
+        
+        // Check if this is a document type
+        boolean isDocument() {
+            return type != null && (
+                type.equals("document") || 
+                type.equals("pdf") || 
+                type.equals("doc") || 
+                type.equals("docx") || 
+                type.equals("xls") || 
+                type.equals("xlsx") || 
+                type.equals("ppt") || 
+                type.equals("pptx") || 
+                type.equals("txt")
+            );
+        }
     }
     
     class ChatMessageViewHolder extends RecyclerView.ViewHolder {
@@ -275,14 +291,26 @@ public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.
         private final CardView messageCardView;
         private final ImageView mediaImageView;
         private final ImageView playButtonView;
-        
-        public ChatMessageViewHolder(@NonNull View itemView) {
+        private View documentView;
+        private TextView documentName;
+        private TextView documentInfo;
+        private ImageView documentIcon;
+
+        ChatMessageViewHolder(View itemView) {
             super(itemView);
-            messageText = itemView.findViewById(R.id.message_text);
-            timeText = itemView.findViewById(R.id.message_time);
+            messageText = itemView.findViewById(R.id.messageText);
+            timeText = itemView.findViewById(R.id.timeText);
             messageCardView = itemView.findViewById(R.id.messageCardView);
             mediaImageView = itemView.findViewById(R.id.media_image_view);
             playButtonView = itemView.findViewById(R.id.play_button);
+            
+            // Find document view if it exists
+            documentView = itemView.findViewById(R.id.document_attachment);
+            if (documentView != null) {
+                documentName = documentView.findViewById(R.id.document_name);
+                documentInfo = documentView.findViewById(R.id.document_info);
+                documentIcon = documentView.findViewById(R.id.document_icon);
+            }
         }
         
         /**
@@ -400,88 +428,18 @@ public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.
         }
         
         public void bind(ChatViewModel.ChatMessage message, ChatViewModel.ChatMessage previousMessage, ChatViewModel.ChatMessage nextMessage) {
-            // Try to parse media content
+            // Check if this is a media message
             MediaContent mediaContent = parseMediaContent(message.getContent());
             
             if (mediaContent != null) {
-                // This is a media message
-                if (mediaContent.type.equalsIgnoreCase("VIDEO")) {
-                    Log.d(TAG, "Setting up video message view with URL: " + mediaContent.url);
-                    // Set up video message view
-                    messageText.setVisibility(View.GONE);
-                    mediaImageView.setVisibility(View.VISIBLE);
-                    playButtonView.setVisibility(View.VISIBLE);
-                    
-                    // Get the absolute URL with authentication
-                    GlideUrl glideUrl = getAuthenticatedUrl(mediaContent.url, itemView.getContext());
-                    Log.d(TAG, "Loading video thumbnail with auth: " + glideUrl.toString());
-                    
-                    // Load video thumbnail
-                    Glide.with(itemView.getContext())
-                            .load(glideUrl)
-                            .apply(RequestOptions.centerCropTransform())
-                            .thumbnail(0.1f)
-                            .listener(new RequestListener<Drawable>() {
-                                @Override
-                                public boolean onLoadFailed(@Nullable GlideException e, Object model, Target<Drawable> target, boolean isFirstResource) {
-                                    Log.e(TAG, "Failed to load video thumbnail: " + (e != null ? e.getMessage() : "unknown error"));
-                                    return false;
-                                }
-
-                                @Override
-                                public boolean onResourceReady(Drawable resource, Object model, Target<Drawable> target, DataSource dataSource, boolean isFirstResource) {
-                                    Log.d(TAG, "Successfully loaded video thumbnail");
-                                    return false;
-                                }
-                            })
-                            .into(mediaImageView);
-                            
-                    // Make sure the play button is visible and properly styled
-                    playButtonView.setVisibility(View.VISIBLE);
-                    playButtonView.setAlpha(1.0f);
-                    
-                    // Set click listeners for both the image and play button
-                    View.OnClickListener videoClickListener = v -> {
-                        Log.d(TAG, "Video clicked, opening MediaViewerActivity with URL: " + mediaContent.url);
-                        Intent intent = new Intent(itemView.getContext(), MediaViewerActivity.class);
-                        intent.putExtra("mediaUrl", mediaContent.url);
-                        intent.putExtra("mediaType", "VIDEO");
-                        intent.putExtra("mediaSenderId", message.getSenderId());
-                        itemView.getContext().startActivity(intent);
-                    };
-                    
-                    mediaImageView.setOnClickListener(videoClickListener);
-                    playButtonView.setOnClickListener(videoClickListener);
-                } else if (mediaContent.type.equalsIgnoreCase("IMAGE")) {
-                    // Set up image message view
-                    messageText.setVisibility(View.GONE);
-                    mediaImageView.setVisibility(View.VISIBLE);
-                    playButtonView.setVisibility(View.GONE);
-                    
-                    // Get the absolute URL with authentication
-                    GlideUrl glideUrl = getAuthenticatedUrl(mediaContent.url, itemView.getContext());
-                    Log.d(TAG, "Loading image with auth: " + glideUrl.toString());
-                    
-                    // Load image
-                    Glide.with(itemView.getContext())
-                            .load(glideUrl)
-                            .apply(RequestOptions.centerCropTransform())
-                            .into(mediaImageView);
-                            
-                    // Set click listener to open image
-                    mediaImageView.setOnClickListener(v -> {
-                        Intent intent = new Intent(itemView.getContext(), MediaViewerActivity.class);
-                        intent.putExtra("mediaUrl", mediaContent.url);
-                        intent.putExtra("mediaType", "IMAGE");
-                        intent.putExtra("mediaSenderId", message.getSenderId());
-                        itemView.getContext().startActivity(intent);
-                    });
+                if (mediaContent.isDocument()) {
+                    // Handle document message
+                    handleDocumentMessage(mediaContent);
+                } else if (mediaContent.type.equals("image") || mediaContent.type.equals("video")) {
+                    // Handle image or video message
+                    handleMediaMessage(mediaContent);
                 } else {
-                    // Unknown media type - show caption or url as text
-                    messageText.setVisibility(View.VISIBLE);
-                    mediaImageView.setVisibility(View.GONE);
-                    playButtonView.setVisibility(View.GONE);
-                    
+                    // Regular text message
                     messageText.setText(mediaContent.caption.isEmpty() 
                             ? mediaContent.url : mediaContent.caption);
                 }
@@ -494,6 +452,9 @@ public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.
                 }
                 if (playButtonView != null) {
                     playButtonView.setVisibility(View.GONE);
+                }
+                if (documentView != null) {
+                    documentView.setVisibility(View.GONE);
                 }
             }
             
@@ -552,6 +513,127 @@ public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.
                 } catch (Exception e) {
                     Log.e(TAG, "Failed to adjust message margins", e);
                 }
+            }
+        }
+        
+        private void handleMediaMessage(MediaContent mediaContent) {
+            // Hide text, show media
+            messageText.setVisibility(View.GONE);
+            if (mediaImageView != null) {
+                mediaImageView.setVisibility(View.VISIBLE);
+            }
+            
+            // Show play button for videos
+            if (playButtonView != null) {
+                playButtonView.setVisibility(mediaContent.type.equals("video") ? View.VISIBLE : View.GONE);
+            }
+            
+            // Hide document view if it exists
+            if (documentView != null) {
+                documentView.setVisibility(View.GONE);
+            }
+            
+            // Get the proper URL for the media
+            String mediaUrl = getProperMediaUrl(mediaContent.url);
+            
+            // Load the media thumbnail
+            if (mediaImageView != null) {
+                Context context = itemView.getContext();
+                GlideUrl glideUrl = getAuthenticatedUrl(mediaUrl, context);
+                
+                RequestOptions requestOptions = new RequestOptions()
+                    .placeholder(R.drawable.placeholder_image)
+                    .error(R.drawable.error_image);
+                
+                Glide.with(context)
+                    .load(glideUrl)
+                    .apply(requestOptions)
+                    .listener(new RequestListener<Drawable>() {
+                        @Override
+                        public boolean onLoadFailed(@Nullable GlideException e, Object model, Target<Drawable> target, boolean isFirstResource) {
+                            Log.e(TAG, "Failed to load media: " + mediaUrl, e);
+                            return false;
+                        }
+                        
+                        @Override
+                        public boolean onResourceReady(Drawable resource, Object model, Target<Drawable> target, DataSource dataSource, boolean isFirstResource) {
+                            Log.d(TAG, "Successfully loaded media: " + mediaUrl);
+                            return false;
+                        }
+                    })
+                    .into(mediaImageView);
+                
+                // Set click listener to open media viewer
+                mediaImageView.setOnClickListener(v -> {
+                    Intent intent = new Intent(context, MediaViewerActivity.class);
+                    intent.putExtra("mediaUrl", mediaUrl);
+                    intent.putExtra("mediaType", mediaContent.type);
+                    intent.putExtra("mediaCaption", mediaContent.caption);
+                    context.startActivity(intent);
+                });
+            }
+        }
+        
+        private void handleDocumentMessage(MediaContent mediaContent) {
+            // Hide text and media, show document
+            messageText.setVisibility(View.GONE);
+            if (mediaImageView != null) {
+                mediaImageView.setVisibility(View.GONE);
+            }
+            if (playButtonView != null) {
+                playButtonView.setVisibility(View.GONE);
+            }
+            
+            // Show document view if it exists
+            if (documentView != null) {
+                documentView.setVisibility(View.VISIBLE);
+                
+                // Extract filename from URL or use caption
+                String fileName = mediaContent.caption;
+                if (fileName == null || fileName.isEmpty()) {
+                    String url = mediaContent.url;
+                    int lastSlash = url.lastIndexOf('/');
+                    if (lastSlash >= 0 && lastSlash < url.length() - 1) {
+                        fileName = url.substring(lastSlash + 1);
+                    } else {
+                        fileName = "Document";
+                    }
+                }
+                
+                // Set document name
+                if (documentName != null) {
+                    documentName.setText(fileName);
+                }
+                
+                // Set document info
+                if (documentInfo != null) {
+                    String docType = mediaContent.type.toUpperCase();
+                    documentInfo.setText(docType + " Document");
+                }
+                
+                // Set document icon based on type
+                if (documentIcon != null) {
+                    int iconResId = R.drawable.ic_document; // Default document icon
+                    
+                    // Set specific icon based on document type
+                    if (mediaContent.type.equals("pdf")) {
+                        iconResId = R.drawable.ic_pdf;
+                    } else if (mediaContent.type.equals("doc") || mediaContent.type.equals("docx")) {
+                        iconResId = R.drawable.ic_word;
+                    }
+                    
+                    documentIcon.setImageResource(iconResId);
+                }
+                
+                // Set click listener to open document viewer
+                documentView.setOnClickListener(v -> {
+                    Context context = itemView.getContext();
+                    String mediaUrl = getProperMediaUrl(mediaContent.url);
+                    Uri fileUri = Uri.parse(mediaUrl);
+                    
+                    // Open document viewer
+                    ChatDocumentHandler.openDocument(context, fileUri, fileName);
+                });
             }
         }
     }

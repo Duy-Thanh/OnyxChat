@@ -169,6 +169,13 @@
             android:parentActivityName=".ui.chat.ChatActivity"
             android:label="Media Viewer"
             android:theme="@style/Theme.OnyxChat.FullscreenMedia" />
+            
+        <!-- Document Viewer Activity -->
+        <activity
+            android:name=".ui.DocumentViewerActivity"
+            android:exported="false"
+            android:parentActivityName=".ui.chat.ChatActivity"
+            android:label="Document Viewer" />
         
     </application>
 
