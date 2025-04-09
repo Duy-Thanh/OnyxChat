@@ -224,6 +224,12 @@ public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.
             return null;
         }
         
+        // Check if this is a video file path
+        if (content.contains("/api/media/file/") || content.matches("^/.*\\.mp4$")) {
+            Log.d(TAG, "Detected video file path: " + content);
+            return new MediaContent("VIDEO", content, "");
+        }
+        
         // Only attempt to parse as JSON if the content starts with a curly brace
         // This prevents regular text messages from causing parse errors
         if (!content.trim().startsWith("{")) {
@@ -239,7 +245,7 @@ public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.
             JsonObject jsonObject = jsonParser.parse(reader).getAsJsonObject();
             
             if (jsonObject.has("type") && jsonObject.has("url")) {
-                String type = jsonObject.get("type").getAsString();
+                String type = jsonObject.get("type").getAsString().toUpperCase();
                 String url = jsonObject.get("url").getAsString();
                 String caption = jsonObject.has("caption") ? jsonObject.get("caption").getAsString() : "";
                 
@@ -317,6 +323,7 @@ public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.
         private TextView documentName;
         private TextView documentInfo;
         private ImageView documentIcon;
+        private TextView captionText;
 
         ChatMessageViewHolder(View itemView) {
             super(itemView);
@@ -325,6 +332,7 @@ public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.
             messageCardView = itemView.findViewById(R.id.messageCardView);
             mediaImageView = itemView.findViewById(R.id.media_image_view);
             playButtonView = itemView.findViewById(R.id.play_button);
+            captionText = itemView.findViewById(R.id.caption_text);
             
             // Find document view if it exists
             documentView = itemView.findViewById(R.id.document_attachment);
@@ -547,7 +555,7 @@ public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.
             
             // Show play button for videos
             if (playButtonView != null) {
-                playButtonView.setVisibility(mediaContent.type.equals("video") ? View.VISIBLE : View.GONE);
+                playButtonView.setVisibility(mediaContent.type.equals("VIDEO") ? View.VISIBLE : View.GONE);
             }
             
             // Hide document view if it exists
@@ -555,45 +563,58 @@ public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.
                 documentView.setVisibility(View.GONE);
             }
             
-            // Get the proper URL for the media
-            String mediaUrl = getProperMediaUrl(mediaContent.url);
-            
-            // Load the media thumbnail
-            if (mediaImageView != null) {
-                Context context = itemView.getContext();
-                GlideUrl glideUrl = getAuthenticatedUrl(mediaUrl, context);
-                
-                RequestOptions requestOptions = new RequestOptions()
-                    .placeholder(R.drawable.placeholder_image)
-                    .error(R.drawable.error_image);
-                
-                Glide.with(context)
-                    .load(glideUrl)
-                    .apply(requestOptions)
-                    .listener(new RequestListener<Drawable>() {
-                        @Override
-                        public boolean onLoadFailed(@Nullable GlideException e, Object model, Target<Drawable> target, boolean isFirstResource) {
-                            Log.e(TAG, "Failed to load media: " + mediaUrl, e);
-                            return false;
-                        }
-                        
-                        @Override
-                        public boolean onResourceReady(Drawable resource, Object model, Target<Drawable> target, DataSource dataSource, boolean isFirstResource) {
-                            Log.d(TAG, "Successfully loaded media: " + mediaUrl);
-                            return false;
-                        }
-                    })
-                    .into(mediaImageView);
-                
-                // Set click listener to open media viewer
-                mediaImageView.setOnClickListener(v -> {
-                    Intent intent = new Intent(context, MediaViewerActivity.class);
-                    intent.putExtra("mediaUrl", mediaUrl);
-                    intent.putExtra("mediaType", mediaContent.type);
-                    intent.putExtra("mediaCaption", mediaContent.caption);
-                    context.startActivity(intent);
-                });
+            // Set caption if available
+            if (!android.text.TextUtils.isEmpty(mediaContent.caption)) {
+                captionText.setText(mediaContent.caption);
+                captionText.setVisibility(View.VISIBLE);
+            } else {
+                captionText.setVisibility(View.GONE);
             }
+            
+            // Get the media URL
+            String mediaUrl = mediaContent.url;
+            Log.d(TAG, "Loading media from URL: " + mediaUrl);
+            
+            // Check if the URL is a server path or a local file path
+            if (mediaUrl.startsWith("/api/media/file/")) {
+                // Server path - prepend base URL
+                mediaUrl = ApiClient.getBaseUrl() + mediaUrl;
+                Log.d(TAG, "Converted to full URL: " + mediaUrl);
+            } else if (mediaUrl.startsWith("/")) {
+                // Local file path
+                mediaUrl = "file://" + mediaUrl;
+                Log.d(TAG, "Converted to file URL: " + mediaUrl);
+            }
+            
+            // Load the image or video thumbnail
+            Glide.with(itemView.getContext())
+                .load(mediaUrl)
+                .placeholder(R.drawable.placeholder_image)
+                .error(R.drawable.error_image)
+                .diskCacheStrategy(com.bumptech.glide.load.engine.DiskCacheStrategy.ALL)
+                .listener(new RequestListener<Drawable>() {
+                    @Override
+                    public boolean onLoadFailed(@Nullable GlideException e, Object model, Target<Drawable> target, boolean isFirstResource) {
+                        Log.e(TAG, "Failed to load media: " + mediaUrl, e);
+                        return false;
+                    }
+                    
+                    @Override
+                    public boolean onResourceReady(Drawable resource, Object model, Target<Drawable> target, DataSource dataSource, boolean isFirstResource) {
+                        Log.d(TAG, "Successfully loaded media: " + mediaUrl);
+                        return false;
+                    }
+                })
+                .into(mediaImageView);
+            
+            // Set click listener to open media viewer
+            mediaImageView.setOnClickListener(v -> {
+                Intent intent = new Intent(itemView.getContext(), MediaViewerActivity.class);
+                intent.putExtra("mediaUrl", mediaUrl);
+                intent.putExtra("mediaType", mediaContent.type);
+                intent.putExtra("mediaCaption", mediaContent.caption);
+                itemView.getContext().startActivity(intent);
+            });
         }
         
         private void handleDocumentMessage(MediaContent mediaContent) {

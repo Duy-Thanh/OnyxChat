@@ -57,13 +57,16 @@ const fileFilter = (req, file, cb) => {
     return file.mimetype === type;
   });
 
-  // Additional security checks
-  const hasValidExtension = /\.(jpg|jpeg|png|gif|mp4|mp3|wav|pdf|doc|docx|xls|xlsx|zip)$/i.test(file.originalname);
+  // Additional security checks - expanded to include more video formats
+  const hasValidExtension = /\.(jpg|jpeg|png|gif|mp4|mov|avi|wmv|flv|mkv|webm|mp3|wav|pdf|doc|docx|xls|xlsx|zip)$/i.test(file.originalname);
+  
+  // Log the file information
+  logger.debug(`File upload attempt: ${file.originalname}, MIME: ${file.mimetype}, Valid extension: ${hasValidExtension}, Allowed type: ${isAllowed}`);
   
   if (isAllowed && hasValidExtension) {
     cb(null, true);
   } else {
-    cb(new Error(`File type not allowed: ${file.mimetype}`), false);
+    cb(new Error(`File type not allowed: ${file.mimetype} (${file.originalname})`), false);
   }
 };
 
