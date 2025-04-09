@@ -21,16 +21,9 @@ if (!fs.existsSync(uploadDir)) {
 // Configure storage
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    // Create date-based subdirectories for better organization
-    const today = new Date();
-    const subDir = path.join(
-      uploadDir,
-      today.getFullYear().toString(),
-      (today.getMonth() + 1).toString().padStart(2, '0')
-    );
-    
-    fs.mkdirSync(subDir, { recursive: true });
-    cb(null, subDir);
+    // Store files directly in the main uploads directory
+    // Remove date-based subdirectories to avoid path mismatches
+    cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
     // Generate a unique filename with original extension and metadata

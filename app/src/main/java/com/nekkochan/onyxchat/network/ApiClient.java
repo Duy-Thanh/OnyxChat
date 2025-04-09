@@ -1394,12 +1394,26 @@ public class ApiClient {
                 String fileName = getFileName(fileUri);
                 Log.d(TAG, "Uploading file: " + fileName + " with MIME type: " + finalMimeType);
                 
+                // Check if this is a video file
+                boolean isVideo = finalMimeType.startsWith("video/");
+                if (isVideo) {
+                    Log.d(TAG, "Processing video file before upload");
+                }
+                
                 // Convert Uri to File
                 File file = createTempFileFromUri(fileUri);
                 if (file == null) {
                     callback.onFailure("Failed to create file from URI");
                     return;
                 }
+                
+                // Verify file exists and has content
+                if (!file.exists() || file.length() == 0) {
+                    callback.onFailure("Created file is empty or does not exist: " + file.getAbsolutePath());
+                    return;
+                }
+                
+                Log.d(TAG, "Preparing to upload file: " + file.getAbsolutePath() + " (" + file.length() + " bytes)");
                 
                 // Create RequestBody from file
                 RequestBody requestFile = RequestBody.create(
@@ -1418,8 +1432,18 @@ public class ApiClient {
                     @Override
                     public void onResponse(Call<MediaUploadResponse> call, retrofit2.Response<MediaUploadResponse> response) {
                         if (response.isSuccessful() && response.body() != null) {
+                            Log.d(TAG, "Media upload successful: " + response.body().data.url);
                             callback.onSuccess(response.body());
                         } else {
+                            String errorBody = null;
+                            try {
+                                if (response.errorBody() != null) {
+                                    errorBody = response.errorBody().string();
+                                }
+                            } catch (IOException e) {
+                                Log.e(TAG, "Error reading error body", e);
+                            }
+                            Log.e(TAG, "Media upload failed with code: " + response.code() + ", error: " + errorBody);
                             handleErrorResponse(response, callback);
                         }
                     }
@@ -1550,6 +1574,12 @@ public class ApiClient {
                 fileName = fileName.substring(0, dotIndex);
             }
             
+            // Ensure we have a valid file extension for videos
+            String mimeType = sessionManager.getContext().getContentResolver().getType(uri);
+            if (mimeType != null && mimeType.startsWith("video/") && fileExtension.isEmpty()) {
+                fileExtension = ".mp4"; // Default extension for videos
+            }
+            
             File outputDir = sessionManager.getContext().getCacheDir();
             File outputFile = File.createTempFile(fileName, fileExtension, outputDir);
             
@@ -1575,12 +1605,24 @@ public class ApiClient {
                 }
                 
                 try (OutputStream outputStream = new FileOutputStream(outputFile)) {
-                    byte[] buffer = new byte[4096];
+                    byte[] buffer = new byte[8192]; // Larger buffer for better performance
                     int bytesRead;
+                    long totalBytes = 0;
                     while ((bytesRead = inputStream.read(buffer)) != -1) {
                         outputStream.write(buffer, 0, bytesRead);
+                        totalBytes += bytesRead;
                     }
                     outputStream.flush();
+                    Log.d(TAG, "Successfully copied " + totalBytes + " bytes to " + outputFile.getAbsolutePath());
+                }
+                
+                // Verify the file was created successfully
+                if (outputFile.exists() && outputFile.length() > 0) {
+                    Log.d(TAG, "Created temp file: " + outputFile.getAbsolutePath() + " (" + outputFile.length() + " bytes)");
+                    return outputFile;
+                } else {
+                    Log.e(TAG, "Failed to create valid temp file: " + outputFile.getAbsolutePath());
+                    return null;
                 }
             } finally {
                 if (inputStream != null) {
@@ -1591,8 +1633,6 @@ public class ApiClient {
                     }
                 }
             }
-            
-            return outputFile;
         } catch (IOException e) {
             Log.e(TAG, "Error creating temp file from URI", e);
             return null;

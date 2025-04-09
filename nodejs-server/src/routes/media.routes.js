@@ -62,8 +62,8 @@ router.post('/upload', upload.single('file'), handleUploadError, async (req, res
       url: `/api/media/file/${req.file.filename}`
     };
 
-    // Log the successful upload
-    logger.info(`User ${req.userId} uploaded file: ${fileInfo.originalname} (${Math.floor(fileInfo.size / 1024)} KB)`);
+    // Log the successful upload with more details
+    logger.info(`User ${req.userId} uploaded file: ${fileInfo.originalname} (${Math.floor(fileInfo.size / 1024)} KB) to ${fileInfo.path}`);
 
     // Return file metadata
     return res.status(201).json({

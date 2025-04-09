@@ -438,6 +438,7 @@ public class MediaProcessingActivity extends AppCompatActivity {
         String mimeType = null;
         try {
             mimeType = MimeTypeUtils.getMimeType(this, mediaUri);
+            Log.d(TAG, "Detected MIME type: " + mimeType + " for URI: " + mediaUri);
         } catch (Exception e) {
             Log.e(TAG, "Error determining mime type", e);
         }
@@ -451,10 +452,33 @@ public class MediaProcessingActivity extends AppCompatActivity {
             } else {
                 mimeType = "application/octet-stream";
             }
+            Log.d(TAG, "Using fallback MIME type: " + mimeType);
+        }
+        
+        // For video files, ensure we have a valid file that can be uploaded
+        if (MEDIA_TYPE_VIDEO.equals(mediaType)) {
+            try {
+                // Check if the file exists and is readable
+                String filePath = FileUtils.getPath(this, mediaUri);
+                if (filePath != null) {
+                    File file = new File(filePath);
+                    if (file.exists() && file.canRead()) {
+                        Log.d(TAG, "Video file exists and is readable: " + filePath + " (" + file.length() + " bytes)");
+                    } else {
+                        Log.w(TAG, "Video file does not exist or is not readable: " + filePath);
+                    }
+                } else {
+                    Log.w(TAG, "Could not determine file path for URI: " + mediaUri);
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Error checking video file", e);
+            }
         }
         
         // Upload to server
         final String finalMimeType = mimeType; // For use in lambda
+        Log.d(TAG, "Starting media upload with URI: " + mediaUri + " and MIME type: " + finalMimeType);
+        
         apiClient.uploadMedia(mediaUri, finalMimeType, new ApiClient.ApiCallback<ApiClient.MediaUploadResponse>() {
             @Override
             public void onSuccess(ApiClient.MediaUploadResponse response) {
