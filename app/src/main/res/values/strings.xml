@@ -235,6 +235,15 @@
     <string name="annotation_select_color">Select Color</string>
     
     <!-- AI Features -->
+    <string name="ai_features">AI Features</string>
+    <string name="ai_settings">AI Settings</string>
+    <string name="smart_replies">Smart Replies</string>
+    <string name="auto_translation">Auto Translation</string>
+    <string name="content_moderation">Content Moderation</string>
+    <string name="view_anyway">View Anyway</string>
+    <string name="hide_message">Hide Message</string>
+    
+    <!-- AI Features -->
     <string name="ai_settings_title">AI Features</string>
     <string name="ai_features_header">AI-Powered Features</string>
     

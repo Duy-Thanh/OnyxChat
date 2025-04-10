@@ -81,6 +81,13 @@ public class MessagesFragment extends Fragment {
         View smartRepliesContainer = view.findViewById(R.id.smartRepliesContainer);
         View aiSettingsButton = view.findViewById(R.id.aiSettingsButton);
         
+        // Always make smart replies container visible if enabled
+        if (aiFeatureManager.isSmartRepliesEnabled() && smartRepliesContainer != null) {
+            smartRepliesContainer.setVisibility(View.VISIBLE);
+            // Generate initial smart replies
+            generateSmartReplies();
+        }
+        
         // Setup recycler view
         LinearLayoutManager layoutManager = new LinearLayoutManager(getContext());
         layoutManager.setStackFromEnd(true);
@@ -105,13 +112,6 @@ public class MessagesFragment extends Fragment {
             startActivity(intent);
         });
         
-        // Enable smart replies if feature is enabled
-        if (aiFeatureManager.isSmartRepliesEnabled()) {
-            smartRepliesContainer.setVisibility(View.VISIBLE);
-        } else {
-            smartRepliesContainer.setVisibility(View.GONE);
-        }
-        
         // Observe chat connection state
         viewModel.isChatConnected().observe(getViewLifecycleOwner(), isConnected -> 
             updateConnectionStatus(isConnected));
@@ -134,6 +134,11 @@ public class MessagesFragment extends Fragment {
         // Only try to reconnect if disconnected and visible
         if (isAdded() && isVisible() && viewModel.isChatConnected().getValue() != Boolean.TRUE) {
             viewModel.connectToChat();
+        }
+        
+        // Always generate smart replies when resuming if enabled
+        if (aiFeatureManager.isSmartRepliesEnabled()) {
+            generateSmartReplies();
         }
     }
     
@@ -337,19 +342,24 @@ public class MessagesFragment extends Fragment {
                 
                 smartRepliesChipGroup.removeAllViews();
                 
-                if (suggestions == null || suggestions.isEmpty()) {
-                    if (smartRepliesContainer != null) {
-                        smartRepliesContainer.setVisibility(View.GONE);
-                    }
-                    return;
-                }
-                
+                // Always show smart replies container
                 if (smartRepliesContainer != null) {
                     smartRepliesContainer.setVisibility(View.VISIBLE);
                 }
                 
+                // If no suggestions from AI, use default suggestions
+                List<String> replySuggestions = suggestions;
+                if (replySuggestions == null || replySuggestions.isEmpty()) {
+                    replySuggestions = new ArrayList<>();
+                    replySuggestions.add("Hello!");
+                    replySuggestions.add("How are you?");
+                    replySuggestions.add("Nice to chat with you!");
+                    replySuggestions.add("What's up?");
+                    replySuggestions.add("Tell me more");
+                }
+                
                 // Add chips for each suggestion
-                for (String suggestion : suggestions) {
+                for (String suggestion : replySuggestions) {
                     Chip chip = new Chip(requireContext());
                     chip.setText(suggestion);
                     chip.setClickable(true);

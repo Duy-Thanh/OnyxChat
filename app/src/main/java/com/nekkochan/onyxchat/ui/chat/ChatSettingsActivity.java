@@ -1,5 +1,6 @@
 package com.nekkochan.onyxchat.ui.chat;
 
+import android.content.Intent;
 import android.os.Bundle;
 import android.view.MenuItem;
 import android.view.View;
@@ -11,6 +12,7 @@ import androidx.appcompat.widget.SwitchCompat;
 import androidx.appcompat.widget.Toolbar;
 
 import com.nekkochan.onyxchat.R;
+import com.nekkochan.onyxchat.ui.AISettingsActivity;
 
 import de.hdodenhof.circleimageview.CircleImageView;
 
@@ -106,6 +108,12 @@ public class ChatSettingsActivity extends AppCompatActivity {
         
         findViewById(R.id.storageUsageOption).setOnClickListener(v -> 
                 showFeatureComingSoon("Storage usage info"));
+                
+        // AI Features section
+        findViewById(R.id.aiSettingsOption).setOnClickListener(v -> {
+            Intent intent = new Intent(this, AISettingsActivity.class);
+            startActivity(intent);
+        });
 
         // Danger zone
         findViewById(R.id.clearChatOption).setOnClickListener(v -> 
