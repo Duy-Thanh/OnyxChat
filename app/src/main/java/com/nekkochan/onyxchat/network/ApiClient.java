@@ -93,6 +93,17 @@ public class ApiClient {
     private String apiUrl;
     
     /**
+     * Get the base URL for the API
+     * @return The base URL for the API
+     */
+    public static String getBaseUrl() {
+        if (instance == null) {
+            return DEFAULT_API_URL;
+        }
+        return instance.apiUrl;
+    }
+    
+    /**
      * Get the singleton instance
      */
     public static synchronized ApiClient getInstance(Context context) {

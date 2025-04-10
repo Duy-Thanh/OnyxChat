@@ -5,11 +5,15 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.drawable.Drawable;
 import android.net.Uri;
+import android.text.TextUtils;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.animation.Animation;
+import android.view.animation.AnimationUtils;
 import android.view.animation.AlphaAnimation;
+import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.TextView;
 
@@ -19,20 +23,30 @@ import androidx.cardview.widget.CardView;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.bumptech.glide.Glide;
-import com.bumptech.glide.request.RequestOptions;
-import com.bumptech.glide.request.target.Target;
-import com.bumptech.glide.request.transition.DrawableCrossFadeFactory;
+import com.bumptech.glide.load.DataSource;
+import com.bumptech.glide.load.engine.DiskCacheStrategy;
+import com.bumptech.glide.load.engine.GlideException;
 import com.bumptech.glide.load.model.GlideUrl;
 import com.bumptech.glide.load.model.LazyHeaders;
+import com.bumptech.glide.request.RequestListener;
+import com.bumptech.glide.request.RequestOptions;
+import com.bumptech.glide.request.target.Target;
+import com.google.android.exoplayer2.ExoPlayer;
+import com.google.android.exoplayer2.MediaItem;
+import com.google.android.exoplayer2.Player;
+import com.google.android.exoplayer2.ui.PlayerView;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.nekkochan.onyxchat.R;
+import com.nekkochan.onyxchat.network.ApiClient;
 import com.nekkochan.onyxchat.ui.media.MediaViewerActivity;
 import com.nekkochan.onyxchat.ui.viewmodel.ChatViewModel;
+import com.nekkochan.onyxchat.utils.MimeTypeUtils;
 import com.nekkochan.onyxchat.util.UserSessionManager;
 import com.nekkochan.onyxchat.ui.chat.ChatDocumentHandler;
-import com.nekkochan.onyxchat.utils.MimeTypeUtils;
+
+import org.json.JSONObject;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -42,13 +56,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.TimeZone;
 
-import com.bumptech.glide.load.DataSource;
-import com.bumptech.glide.load.engine.GlideException;
-import com.bumptech.glide.request.RequestListener;
+import com.bumptech.glide.load.engine.DiskCacheStrategy;
 import com.bumptech.glide.request.target.Target;
-
-import org.json.JSONException;
-import org.json.JSONObject;
 
 public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.ChatMessageViewHolder> {
     private static final String TAG = "ChatMessageAdapter";
@@ -71,7 +80,7 @@ public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.
         Log.d(TAG, "Initialized formatters with timezone: " + deviceTimeZone.getID());
     }
 
-    private final com.google.gson.JsonParser jsonParser = new com.google.gson.JsonParser();
+    private final JsonParser jsonParser = new JsonParser();
 
     public ChatMessageAdapter(String currentUserId) {
         this.currentUserId = currentUserId;
@@ -95,7 +104,38 @@ public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.
         ChatViewModel.ChatMessage previousMessage = position > 0 ? messages.get(position - 1) : null;
         ChatViewModel.ChatMessage nextMessage = position < messages.size() - 1 ? messages.get(position + 1) : null;
         
-        holder.bind(message, previousMessage, nextMessage);
+        // Check if this is a video file path before binding
+        String content = message.getContent();
+        if (content != null && content.contains("/api/media/file/") && 
+            (content.endsWith(".mp4") || content.endsWith(".mov") || content.endsWith(".avi"))) {
+            
+            // Create a proper media JSON message for videos
+            try {
+                JSONObject videoJson = new JSONObject();
+                videoJson.put("type", "video");
+                videoJson.put("url", content);
+                content = videoJson.toString();
+                
+                // Create a new message with the JSON content
+                ChatViewModel.ChatMessage videoMessage = new ChatViewModel.ChatMessage(
+                    message.getType(),
+                    message.getSenderId(),
+                    message.getRecipientId(),
+                    content,
+                    message.getTimestamp()
+                );
+                
+                // Bind the new message
+                holder.bind(videoMessage, previousMessage, nextMessage);
+                Log.d(TAG, "Converted raw video path to JSON: " + content);
+            } catch (Exception e) {
+                Log.e(TAG, "Failed to convert video path to JSON", e);
+                holder.bind(message, previousMessage, nextMessage);
+            }
+        } else {
+            // Bind the original message
+            holder.bind(message, previousMessage, nextMessage);
+        }
         
         // Add animation for new items
         setAnimation(holder.itemView, position);
@@ -225,7 +265,7 @@ public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.
         }
         
         // Check if this is a video file path
-        if (content.contains("/api/media/file/") || content.matches("^/.*\\.mp4$")) {
+        if (content.startsWith("/api/media/file/") || content.matches("^/.*\\.mp4$")) {
             Log.d(TAG, "Detected video file path: " + content);
             return new MediaContent("VIDEO", content, "");
         }
@@ -249,7 +289,13 @@ public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.
                 String url = jsonObject.get("url").getAsString();
                 String caption = jsonObject.has("caption") ? jsonObject.get("caption").getAsString() : "";
                 
-                Log.d(TAG, String.format("Successfully parsed media message (using JsonParser) - Type: %s, URL: %s, Caption: %s", 
+                // Check if this is a video message
+                if (type.equals("VIDEO") || url.toLowerCase().endsWith(".mp4") || 
+                    url.toLowerCase().endsWith(".mov") || url.toLowerCase().endsWith(".avi")) {
+                    type = "VIDEO";
+                }
+                
+                Log.d(TAG, String.format("Successfully parsed media message - Type: %s, URL: %s, Caption: %s", 
                     type, url, caption));
                 
                 return new MediaContent(type, url, caption);
@@ -316,145 +362,111 @@ public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.
     class ChatMessageViewHolder extends RecyclerView.ViewHolder {
         private final TextView messageText;
         private final TextView timeText;
-        private final CardView messageCardView;
+        private final TextView captionText;
         private final ImageView mediaImageView;
         private final ImageView playButtonView;
-        private View documentView;
-        private TextView documentName;
-        private TextView documentInfo;
-        private ImageView documentIcon;
-        private TextView captionText;
-
-        ChatMessageViewHolder(View itemView) {
+        private final PlayerView videoPlayerView;
+        private final View documentView;
+        private final TextView documentName;
+        private final TextView documentInfo;
+        private final ImageView documentIcon;
+        
+        // ExoPlayer instance for video playback
+        private ExoPlayer player;
+        
+        // Track which message this player is associated with
+        private String currentVideoUrl;
+        
+        public ChatMessageViewHolder(View itemView) {
             super(itemView);
             messageText = itemView.findViewById(R.id.messageText);
             timeText = itemView.findViewById(R.id.timeText);
-            messageCardView = itemView.findViewById(R.id.messageCardView);
+            captionText = itemView.findViewById(R.id.caption_text);
             mediaImageView = itemView.findViewById(R.id.media_image_view);
             playButtonView = itemView.findViewById(R.id.play_button);
-            captionText = itemView.findViewById(R.id.caption_text);
+            videoPlayerView = itemView.findViewById(R.id.video_player_view);
             
-            // Find document view if it exists
+            // Document view elements
             documentView = itemView.findViewById(R.id.document_attachment);
-            if (documentView != null) {
-                documentName = documentView.findViewById(R.id.document_name);
-                documentInfo = documentView.findViewById(R.id.document_info);
-                documentIcon = documentView.findViewById(R.id.document_icon);
-            }
+            documentName = documentView != null ? documentView.findViewById(R.id.document_name) : null;
+            documentInfo = documentView != null ? documentView.findViewById(R.id.document_info) : null;
+            documentIcon = documentView != null ? documentView.findViewById(R.id.document_icon) : null;
         }
         
         /**
-         * Convert a potentially relative server path to a proper HTTP URL
+         * Process a media URL to ensure it's in the correct format
+         * @param url The original URL
+         * @return The processed URL
          */
-        private String getProperMediaUrl(String mediaUrl) {
-            if (mediaUrl == null || mediaUrl.isEmpty()) {
+        private String processMediaUrl(String url) {
+            if (url == null || url.isEmpty()) {
                 return "";
             }
             
-            try {
-                // Clean up the mediaUrl to handle special characters or spaces
-                mediaUrl = mediaUrl.trim();
-                
-                // If already a full URL, use as is
-                if (mediaUrl.startsWith("http://") || mediaUrl.startsWith("https://")) {
-                    return mediaUrl;
-                }
-                
-                // If starts with / but not with //, assume it's a server path
-                if (mediaUrl.startsWith("/") && !mediaUrl.startsWith("//")) {
-                    // Get the server URL from API client
-                    String serverUrl = getBaseServerUrl(itemView.getContext());
-                    
-                    // Remove trailing slash from server URL if present
-                    if (serverUrl.endsWith("/")) {
-                        serverUrl = serverUrl.substring(0, serverUrl.length() - 1);
+            Log.d(TAG, "Processing media URL: " + url);
+            
+            // If it's already a full URL, return it
+            if (url.startsWith("http://") || url.startsWith("https://")) {
+                return url;
+            }
+            
+            // If it's a server path starting with /api
+            if (url.startsWith("/api/")) {
+                try {
+                    // Get base URL from ApiClient
+                    String baseUrl = ApiClient.getBaseUrl();
+                    if (baseUrl.endsWith("/")) {
+                        baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
                     }
                     
-                    // Remove leading slash from media URL if present
-                    String mediaPath = mediaUrl;
-                    if (mediaPath.startsWith("/")) {
-                        mediaPath = mediaPath.substring(1);
-                    }
-                    
-                    // Combine to form full URL
-                    String fullUrl = serverUrl + "/" + mediaPath;
-                    Log.d(TAG, "Converted relative URL " + mediaUrl + " to absolute URL " + fullUrl);
-                    
-                    // For local emulator testing, check if we need to use HTTP instead of HTTPS
-                    if (fullUrl.contains("10.0.2.2") && fullUrl.startsWith("https://")) {
-                        String httpUrl = fullUrl.replace("https://", "http://");
-                        Log.d(TAG, "Using HTTP for emulator: " + httpUrl);
-                        return httpUrl;
-                    }
-                    
+                    String fullUrl = baseUrl + url;
+                    Log.d(TAG, "Converted server path to full URL: " + fullUrl);
                     return fullUrl;
+                } catch (Exception e) {
+                    Log.e(TAG, "Error getting base URL", e);
+                    return url;
                 }
-                
-                // For file paths or other URIs, use as is
-                return mediaUrl;
-            } catch (Exception e) {
-                Log.e(TAG, "Error parsing media URL: " + mediaUrl, e);
+            }
+            
+            // If it's a local file path
+            if (url.startsWith("/")) {
+                return "file://" + url;
+            }
+            
+            // Default case, return as is
+            return url;
+        }
+        
+        /**
+         * Add authentication to a URL if needed
+         * @param url The URL to authenticate
+         * @param context The context
+         * @return The authenticated URL
+         */
+        private String getAuthenticatedUrl(String url, Context context) {
+            if (url == null || url.isEmpty()) {
                 return "";
             }
-        }
-        
-        /**
-         * Get the base server URL from shared preferences
-         */
-        private String getBaseServerUrl(Context context) {
-            // Default server URL (used in API client)
-            String defaultUrl = "https://10.0.2.2:443";
             
-            try {
-                // Try to get the actual server URL from shared preferences
-                SharedPreferences sharedPreferences = context.getSharedPreferences("app_preferences", Context.MODE_PRIVATE);
-                String serverUrl = sharedPreferences.getString("server_url", defaultUrl);
-                
-                // If empty or null, use default
-                if (serverUrl == null || serverUrl.isEmpty()) {
-                    return defaultUrl;
+            // If it's a server URL, add authentication token
+            if (url.startsWith("http://") || url.startsWith("https://")) {
+                try {
+                    // Get token from UserSessionManager
+                    UserSessionManager sessionManager = new UserSessionManager(context);
+                    String token = sessionManager.getAuthToken();
+                    
+                    // Add token as query parameter if not already present
+                    if (token != null && !token.isEmpty() && !url.contains("token=")) {
+                        String separator = url.contains("?") ? "&" : "?";
+                        return url + separator + "token=" + token;
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "Error adding authentication to URL", e);
                 }
-                
-                // Remove api path if present
-                if (serverUrl.endsWith("/api")) {
-                    serverUrl = serverUrl.substring(0, serverUrl.length() - 4);
-                }
-                
-                return serverUrl;
-            } catch (Exception e) {
-                Log.e(TAG, "Error getting server URL", e);
-                return defaultUrl;
-            }
-        }
-        
-        /**
-         * Convert a potentially relative server path to a proper HTTP URL
-         * and add authentication if needed
-         */
-        private GlideUrl getAuthenticatedUrl(String mediaUrl, Context context) {
-            String absoluteUrl = getProperMediaUrl(mediaUrl);
-            if (absoluteUrl.isEmpty()) {
-                // Return a dummy URL for error handling
-                return new GlideUrl("https://example.com/invalid");
             }
             
-            // Get auth token from session manager
-            UserSessionManager sessionManager = new UserSessionManager(context);
-            String authToken = sessionManager.getAuthToken();
-            
-            if (authToken != null && !authToken.isEmpty()) {
-                // Return URL with auth headers
-                return new GlideUrl(
-                    absoluteUrl,
-                    new LazyHeaders.Builder()
-                        .addHeader("Authorization", "Bearer " + authToken)
-                        .build()
-                );
-            } else {
-                // Fallback to URL without auth headers (will likely fail)
-                Log.w(TAG, "No auth token available for media URL: " + absoluteUrl);
-                return new GlideUrl(absoluteUrl);
-            }
+            // Return original URL if no authentication needed or if there was an error
+            return url;
         }
         
         public void bind(ChatViewModel.ChatMessage message, ChatViewModel.ChatMessage previousMessage, ChatViewModel.ChatMessage nextMessage) {
@@ -492,7 +504,10 @@ public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.
             Date timestamp = message.getTimestamp();
             String formattedTime = formatTimeConsistently(timestamp);
             Log.d(TAG, String.format("Binding message [%s]: timestamp=%s, formatted=%s, ms=%d", 
-                    message.getContent(), timestamp, formattedTime, timestamp.getTime()));
+                    message.getContent(),
+                    timestamp,
+                    formattedTime,
+                    timestamp.getTime()));
             
             // Manage message appearance based on sequence
             boolean isPartOfPreviousSequence = isPartOfSequence(message, previousMessage);
@@ -521,11 +536,14 @@ public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.
             }
             
             // If available, adjust bubble corners based on sequence
+            View messageCardView = itemView.findViewById(R.id.messageCardView);
             if (messageCardView != null) {
                 float cornerRadius = itemView.getContext().getResources().getDimension(R.dimen.message_corner_radius);
                 
                 // Set the base corner radius
-                messageCardView.setRadius(cornerRadius);
+                if (messageCardView instanceof androidx.cardview.widget.CardView) {
+                    ((androidx.cardview.widget.CardView) messageCardView).setRadius(cornerRadius);
+                }
                 
                 // Try to apply custom corner radius for grouped bubbles if supported by device
                 try {
@@ -547,74 +565,236 @@ public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.
         }
         
         private void handleMediaMessage(MediaContent mediaContent) {
-            // Hide text, show media
+            // Hide text
             messageText.setVisibility(View.GONE);
-            if (mediaImageView != null) {
-                mediaImageView.setVisibility(View.VISIBLE);
-            }
             
-            // Show play button for videos
-            if (playButtonView != null) {
-                playButtonView.setVisibility(mediaContent.type.equals("VIDEO") ? View.VISIBLE : View.GONE);
+            // Process the URL (handle server paths, local paths, etc.)
+            String processedUrl = processMediaUrl(mediaContent.url);
+            Log.d(TAG, "Processing media URL: " + processedUrl);
+            
+            // Check if this is a video
+            boolean isVideo = "VIDEO".equalsIgnoreCase(mediaContent.type) || 
+                             processedUrl.toLowerCase().endsWith(".mp4") ||
+                             processedUrl.toLowerCase().endsWith(".mov") ||
+                             processedUrl.toLowerCase().endsWith(".avi");
+            
+            if (isVideo) {
+                // Handle video content with ExoPlayer
+                handleVideoContent(processedUrl, mediaContent.caption);
+            } else {
+                // Handle image content with Glide
+                handleImageContent(processedUrl, mediaContent.caption);
             }
             
             // Hide document view if it exists
             if (documentView != null) {
                 documentView.setVisibility(View.GONE);
             }
+        }
+        
+        /**
+         * Handle video content with ExoPlayer
+         */
+        private void handleVideoContent(String videoUrl, String caption) {
+            // Show video player, hide image view
+            if (mediaImageView != null) {
+                mediaImageView.setVisibility(View.GONE);
+            }
+            
+            if (videoPlayerView != null) {
+                videoPlayerView.setVisibility(View.VISIBLE);
+            }
+            
+            // Hide play button as ExoPlayer has its own controls
+            if (playButtonView != null) {
+                playButtonView.setVisibility(View.GONE);
+            }
             
             // Set caption if available
-            if (!android.text.TextUtils.isEmpty(mediaContent.caption)) {
-                captionText.setText(mediaContent.caption);
-                captionText.setVisibility(View.VISIBLE);
-            } else {
-                captionText.setVisibility(View.GONE);
+            if (captionText != null) {
+                if (caption != null && !caption.isEmpty()) {
+                    captionText.setText(caption);
+                    captionText.setVisibility(View.VISIBLE);
+                } else {
+                    captionText.setVisibility(View.GONE);
+                }
             }
             
-            // Get the media URL
-            String mediaUrl = mediaContent.url;
-            Log.d(TAG, "Loading media from URL: " + mediaUrl);
+            // Initialize ExoPlayer if needed
+            initializePlayer(videoUrl);
             
-            // Check if the URL is a server path or a local file path
-            if (mediaUrl.startsWith("/api/media/file/")) {
-                // Server path - prepend base URL
-                mediaUrl = ApiClient.getBaseUrl() + mediaUrl;
-                Log.d(TAG, "Converted to full URL: " + mediaUrl);
-            } else if (mediaUrl.startsWith("/")) {
-                // Local file path
-                mediaUrl = "file://" + mediaUrl;
-                Log.d(TAG, "Converted to file URL: " + mediaUrl);
-            }
-            
-            // Load the image or video thumbnail
-            Glide.with(itemView.getContext())
-                .load(mediaUrl)
-                .placeholder(R.drawable.placeholder_image)
-                .error(R.drawable.error_image)
-                .diskCacheStrategy(com.bumptech.glide.load.engine.DiskCacheStrategy.ALL)
-                .listener(new RequestListener<Drawable>() {
-                    @Override
-                    public boolean onLoadFailed(@Nullable GlideException e, Object model, Target<Drawable> target, boolean isFirstResource) {
-                        Log.e(TAG, "Failed to load media: " + mediaUrl, e);
-                        return false;
-                    }
-                    
-                    @Override
-                    public boolean onResourceReady(Drawable resource, Object model, Target<Drawable> target, DataSource dataSource, boolean isFirstResource) {
-                        Log.d(TAG, "Successfully loaded media: " + mediaUrl);
-                        return false;
-                    }
-                })
-                .into(mediaImageView);
-            
-            // Set click listener to open media viewer
-            mediaImageView.setOnClickListener(v -> {
+            // Set click listener for fullscreen view
+            videoPlayerView.setOnClickListener(v -> {
+                // Pause the player
+                if (player != null) {
+                    player.pause();
+                }
+                
+                // Open in full screen viewer
                 Intent intent = new Intent(itemView.getContext(), MediaViewerActivity.class);
-                intent.putExtra("mediaUrl", mediaUrl);
-                intent.putExtra("mediaType", mediaContent.type);
-                intent.putExtra("mediaCaption", mediaContent.caption);
+                intent.putExtra("mediaUrl", videoUrl);
+                intent.putExtra("mediaType", "VIDEO");
+                intent.putExtra("mediaCaption", caption);
                 itemView.getContext().startActivity(intent);
             });
+        }
+        
+        /**
+         * Initialize ExoPlayer for video playback
+         */
+        private void initializePlayer(String videoUrl) {
+            // Check if we're already playing this video
+            if (videoUrl.equals(currentVideoUrl) && player != null) {
+                return;
+            }
+            
+            // Release any existing player
+            releasePlayer();
+            
+            try {
+                // Create a new ExoPlayer instance
+                player = new ExoPlayer.Builder(itemView.getContext()).build();
+                
+                // Set player to the view
+                videoPlayerView.setPlayer(player);
+                
+                // Create a MediaItem
+                String authenticatedUrl = getAuthenticatedUrl(videoUrl, itemView.getContext());
+                MediaItem mediaItem = MediaItem.fromUri(authenticatedUrl);
+                
+                // Set the media item to be played
+                player.setMediaItem(mediaItem);
+                
+                // Prepare the player
+                player.prepare();
+                
+                // Set playback parameters
+                player.setPlayWhenReady(false); // Don't auto-play
+                player.setRepeatMode(Player.REPEAT_MODE_ONE); // Loop the video
+                
+                // Save the current video URL
+                currentVideoUrl = videoUrl;
+                
+                Log.d(TAG, "ExoPlayer initialized for URL: " + videoUrl);
+            } catch (Exception e) {
+                Log.e(TAG, "Error initializing ExoPlayer", e);
+                // Fallback to thumbnail if player fails
+                fallbackToThumbnail(videoUrl);
+            }
+        }
+        
+        /**
+         * Release ExoPlayer resources
+         */
+        private void releasePlayer() {
+            if (player != null) {
+                player.release();
+                player = null;
+                currentVideoUrl = null;
+                Log.d(TAG, "ExoPlayer released");
+            }
+        }
+        
+        /**
+         * Fallback to showing a thumbnail if video playback fails
+         */
+        private void fallbackToThumbnail(String videoUrl) {
+            // Show image view and play button instead
+            if (mediaImageView != null) {
+                mediaImageView.setVisibility(View.VISIBLE);
+            }
+            
+            if (videoPlayerView != null) {
+                videoPlayerView.setVisibility(View.GONE);
+            }
+            
+            if (playButtonView != null) {
+                playButtonView.setVisibility(View.VISIBLE);
+            }
+            
+            // Load thumbnail with Glide
+            try {
+                RequestOptions requestOptions = new RequestOptions()
+                        .placeholder(R.drawable.placeholder_image)
+                        .error(R.drawable.error_image)
+                        .diskCacheStrategy(DiskCacheStrategy.ALL)
+                        .frame(1000000); // Use a frame from 1 second in
+                
+                Glide.with(itemView.getContext())
+                        .load(videoUrl)
+                        .apply(requestOptions)
+                        .into(mediaImageView);
+                
+                Log.d(TAG, "Fallback to thumbnail for: " + videoUrl);
+            } catch (Exception e) {
+                Log.e(TAG, "Error loading video thumbnail", e);
+            }
+        }
+        
+        /**
+         * Handle image content with Glide
+         */
+        private void handleImageContent(String imageUrl, String caption) {
+            // Show image view, hide video player
+            if (mediaImageView != null) {
+                mediaImageView.setVisibility(View.VISIBLE);
+            }
+            
+            if (videoPlayerView != null) {
+                videoPlayerView.setVisibility(View.GONE);
+            }
+            
+            // Hide play button for images
+            if (playButtonView != null) {
+                playButtonView.setVisibility(View.GONE);
+            }
+            
+            // Set caption if available
+            if (captionText != null) {
+                if (caption != null && !caption.isEmpty()) {
+                    captionText.setText(caption);
+                    captionText.setVisibility(View.VISIBLE);
+                } else {
+                    captionText.setVisibility(View.GONE);
+                }
+            }
+            
+            // Load the image with Glide
+            try {
+                RequestOptions requestOptions = new RequestOptions()
+                        .placeholder(R.drawable.placeholder_image)
+                        .error(R.drawable.error_image)
+                        .diskCacheStrategy(DiskCacheStrategy.ALL);
+                
+                Glide.with(itemView.getContext())
+                        .load(getAuthenticatedUrl(imageUrl, itemView.getContext()))
+                        .apply(requestOptions)
+                        .listener(new RequestListener<Drawable>() {
+                            @Override
+                            public boolean onLoadFailed(@Nullable GlideException e, Object model, Target<Drawable> target, boolean isFirstResource) {
+                                Log.e(TAG, "Failed to load image: " + imageUrl, e);
+                                return false;
+                            }
+                            
+                            @Override
+                            public boolean onResourceReady(Drawable resource, Object model, Target<Drawable> target, DataSource dataSource, boolean isFirstResource) {
+                                Log.d(TAG, "Successfully loaded image: " + imageUrl);
+                                return false;
+                            }
+                        })
+                        .into(mediaImageView);
+                
+                // Set click listener to open media viewer
+                mediaImageView.setOnClickListener(v -> {
+                    Intent intent = new Intent(itemView.getContext(), MediaViewerActivity.class);
+                    intent.putExtra("mediaUrl", imageUrl);
+                    intent.putExtra("mediaType", "IMAGE");
+                    intent.putExtra("mediaCaption", caption);
+                    itemView.getContext().startActivity(intent);
+                });
+            } catch (Exception e) {
+                Log.e(TAG, "Error loading image", e);
+            }
         }
         
         private void handleDocumentMessage(MediaContent mediaContent) {
@@ -622,9 +802,6 @@ public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.
             messageText.setVisibility(View.GONE);
             if (mediaImageView != null) {
                 mediaImageView.setVisibility(View.GONE);
-            }
-            if (playButtonView != null) {
-                playButtonView.setVisibility(View.GONE);
             }
             
             // Show document view if it exists
@@ -677,17 +854,24 @@ public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.
                     documentIcon.setImageResource(iconResId);
                 }
                 
-                // Set click listener to open document viewer
+                // Set click listener to open document
                 documentView.setOnClickListener(v -> {
-                    Context context = itemView.getContext();
-                    String mediaUrl = getProperMediaUrl(mediaContent.url);
-                    Uri fileUri = Uri.parse(mediaUrl);
+                    // Process the URL to get the final form
+                    String mediaUrl = processMediaUrl(mediaContent.url);
                     
-                    // Open document viewer
-                    ChatDocumentHandler.openDocument(context, fileUri, fileName);
+                    // Convert to Uri and open document viewer
+                    Uri fileUri = Uri.parse(mediaUrl);
+                    ChatDocumentHandler.openDocument(itemView.getContext(), fileUri, fileName);
                 });
             }
         }
+    }
+
+    @Override
+    public void onViewRecycled(@NonNull ChatMessageViewHolder holder) {
+        super.onViewRecycled(holder);
+        // Release ExoPlayer resources when view is recycled
+        holder.releasePlayer();
     }
 
     /**

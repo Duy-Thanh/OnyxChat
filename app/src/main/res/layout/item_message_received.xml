@@ -48,6 +48,16 @@
                     android:visibility="gone"
                     tools:visibility="visible" />
 
+                <com.google.android.exoplayer2.ui.PlayerView
+                    android:id="@+id/video_player_view"
+                    android:layout_width="200dp"
+                    android:layout_height="150dp"
+                    android:visibility="gone"
+                    app:use_controller="true"
+                    app:resize_mode="fit"
+                    app:show_timeout="2000"
+                    app:controller_layout_id="@layout/exo_playback_control_view" />
+
                 <ImageView
                     android:id="@+id/play_button"
                     android:layout_width="48dp"
@@ -60,6 +70,17 @@
                     android:visibility="gone"
                     tools:visibility="visible" />
             </FrameLayout>
+
+            <TextView
+                android:id="@+id/caption_text"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:textColor="@color/black"
+                android:textSize="14sp"
+                android:visibility="gone"
+                tools:text="Video caption"
+                tools:visibility="visible" />
 
             <include
                 android:id="@+id/document_attachment"

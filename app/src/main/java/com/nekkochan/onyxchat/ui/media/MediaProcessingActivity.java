@@ -500,7 +500,7 @@ public class MediaProcessingActivity extends AppCompatActivity {
                 JSONObject contentJson = new JSONObject();
                 try {
                     contentJson.put("url", mediaUrl);
-                    contentJson.put("type", messageType.toString());
+                    contentJson.put("type", messageType.toString().toLowerCase());
                     contentJson.put("filename", fileName);
                     if (!caption.isEmpty()) {
                         contentJson.put("caption", caption);
