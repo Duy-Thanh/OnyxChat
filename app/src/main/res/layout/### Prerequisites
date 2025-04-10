@@ -1,0 +1,126 @@
+### Prerequisites
+Ensure the library is included in your project's dependencies.
+
+### Launching PDF Viewer
+#### Opening PDF from a URL
+To display a PDF from a URL, use the following code:
+
+```kotlin
+/* Parameters:
+- context: The context of your activity.
+- pdfUrl: URL of the PDF to be displayed.
+- pdfTitle: Title of the PDF document.
+- saveTo: Determines how to handle saving the PDF (e.g., ASK_EVERYTIME prompts the user each time).
+- enableDownload: Enables downloading of the PDF. */
+
+PdfViewerActivity.launchPdfFromUrl(
+    context = this,
+    pdfUrl = "your_pdf_url_here",
+    pdfTitle = "PDF Title",
+    saveTo = saveTo.ASK_EVERYTIME,
+    enableDownload = true
+)
+```
+
+#### Opening PDF from Local Storage
+To open a PDF stored in local storage:
+
+```kotlin
+/* Parameters:
+- path: File path or URI of the local PDF.
+- fromAssets: Set to false when loading from local storage. // FALSE by default
+*/
+
+PdfViewerActivity.launchPdfFromPath(
+    context = this,
+    path = "your_file_path_or_uri_here",
+    pdfTitle = "Title",
+    saveTo = saveTo.ASK_EVERYTIME,
+    fromAssets = false
+)
+```
+
+#### Opening PDF from Assets
+To open a PDF from the app's assets folder:
+
+```kotlin
+/* Parameters:
+- path: File path or URI of the local PDF.
+- fromAssets: Set to true when loading from assets.
+*/
+
+PdfViewerActivity.launchPdfFromPath(
+  context = this,
+  path = "file_name_in_assets",
+  pdfTitle = "Title",
+  saveTo = saveTo.ASK_EVERYTIME,
+  fromAssets = true
+)
+```
+
+#### Loading PDF in a View
+Load a PDF directly into a view:
+
+Add PDF render view in your layout file
+
+```xml
+<com.rajat.pdfviewer.PdfRendererView
+    android:id="@+id/pdfView"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    app:pdfView_divider="@drawable/pdf_viewer_divider"
+    app:pdfView_showDivider="false" />
+```
+and in your kotlin file
+```kotlin
+binding.pdfView.initWithUrl(
+  url = "your_pdf_url_here",
+  lifecycleCoroutineScope = lifecycleScope,
+  lifecycle = lifecycle
+)
+
+```
+
+#### Using with Jetpack Compose
+
+For Jetpack Compose, utilize `PdfRendererViewCompose` to render PDF files.
+
+To render a PDF from a URL:
+
+```kotlin
+PdfRendererViewCompose(
+    url = "your_pdf_url_here",
+)
+```
+
+To render a PDF from a local file:
+
+```kotlin
+PdfRendererViewCompose(
+    file = yourFile,
+)
+```
+
+To render a PDF from a URI:
+
+```kotlin
+PdfRendererViewCompose(
+    uri = yourUri,
+)
+```
+
+You can also provide arguments for additional parameters such as `modifier`, `headers`, `lifecycleOwner`, and `statusCallBack`:
+
+```kotlin
+PdfRendererViewCompose(
+    url = "your_pdf_url_here",
+    modifier = Modifier,
+    headers = HeaderData(mapOf("Authorization" to "123456789")),
+    lifecycleOwner = LocalLifecycleOwner.current,
+    statusCallBack = object : PdfRendererView.StatusCallBack {
+        // Override functions here
+    },
+)
+```
+
+That's all you need to integrate PDF rendering in your Compose application.
