@@ -177,6 +177,14 @@
             android:parentActivityName=".ui.chat.ChatActivity"
             android:label="Document Viewer"
             android:theme="@style/Theme.OnyxChat.DocumentViewer" />
+            
+        <!-- Document Annotation Activity -->
+        <activity
+            android:name=".ui.DocumentAnnotationActivity"
+            android:exported="false"
+            android:parentActivityName=".ui.DocumentViewerActivity"
+            android:label="Document Annotation"
+            android:theme="@style/Theme.OnyxChat.DocumentViewer" />
         
     </application>
 

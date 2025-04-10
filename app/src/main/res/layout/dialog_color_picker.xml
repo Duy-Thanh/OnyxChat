@@ -9,7 +9,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginBottom="16dp"
-        android:text="Select Color"
+        android:text="@string/annotation_select_color"
         android:textAlignment="center"
         android:textAppearance="?attr/textAppearanceHeadline6"
         android:textStyle="bold" />

@@ -34,7 +34,7 @@
         android:id="@+id/annotation_toolbar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="@color/background_dark"
+        android:background="@color/annotation_background_dark"
         android:elevation="4dp"
         android:orientation="horizontal"
         android:padding="8dp"
@@ -48,7 +48,7 @@
             android:layout_height="40dp"
             android:layout_weight="1"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Draw"
+            android:contentDescription="@string/annotation_draw"
             android:src="@drawable/ic_draw_24dp" />
 
         <ImageButton
@@ -57,7 +57,7 @@
             android:layout_height="40dp"
             android:layout_weight="1"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Highlight"
+            android:contentDescription="@string/annotation_highlight"
             android:src="@drawable/ic_highlight_24dp" />
 
         <ImageButton
@@ -66,7 +66,7 @@
             android:layout_height="40dp"
             android:layout_weight="1"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Underline"
+            android:contentDescription="@string/annotation_underline"
             android:src="@drawable/ic_underline_24dp" />
 
         <ImageButton
@@ -75,7 +75,7 @@
             android:layout_height="40dp"
             android:layout_weight="1"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Add Text"
+            android:contentDescription="@string/annotation_text"
             android:src="@drawable/ic_text_annotation_24dp" />
 
         <ImageButton
@@ -84,7 +84,7 @@
             android:layout_height="40dp"
             android:layout_weight="1"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Change Color"
+            android:contentDescription="@string/annotation_color"
             android:src="@drawable/ic_color_palette_24dp" />
 
         <ImageButton
@@ -93,7 +93,7 @@
             android:layout_height="40dp"
             android:layout_weight="1"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Undo"
+            android:contentDescription="@string/annotation_undo"
             android:src="@drawable/ic_undo_24dp" />
     </LinearLayout>
 
@@ -113,7 +113,7 @@
             android:id="@+id/prev_page_button"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Previous"
+            android:text="@string/annotation_previous"
             android:textSize="12sp" />
 
         <TextView
@@ -131,7 +131,7 @@
             android:id="@+id/next_page_button"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Next"
+            android:text="@string/annotation_next"
             android:textSize="12sp" />
     </LinearLayout>
 

@@ -153,14 +153,16 @@ public class DocumentAnnotationManager {
     }
     
     /**
-     * Draw annotations on a bitmap
+     * Draw annotations on a canvas
      * 
-     * @param bitmap Bitmap to draw annotations on
+     * @param canvas Canvas to draw annotations on
      * @param annotations List of annotations to draw
-     * @param scale Scale factor for the bitmap
+     * @param scale Scale factor for the canvas
      */
-    public static void drawAnnotations(Bitmap bitmap, List<Annotation> annotations, float scale) {
-        Canvas canvas = new Canvas(bitmap);
+    public static void drawAnnotations(Canvas canvas, List<Annotation> annotations, float scale) {
+        if (canvas == null || annotations == null || annotations.isEmpty()) {
+            return;
+        }
         
         for (Annotation annotation : annotations) {
             switch (annotation.type) {
@@ -199,8 +201,8 @@ public class DocumentAnnotationManager {
     private static void drawUnderline(Canvas canvas, Annotation annotation, float scale) {
         Paint paint = new Paint();
         paint.setColor(annotation.color);
-        paint.setStrokeWidth(2 * scale);
         paint.setStyle(Paint.Style.STROKE);
+        paint.setStrokeWidth(2 * scale);
         
         RectF scaledBounds = scaleRect(annotation.bounds, scale);
         canvas.drawLine(
@@ -212,27 +214,29 @@ public class DocumentAnnotationManager {
     }
     
     /**
-     * Draw a path (drawing) annotation
+     * Draw a path annotation (drawing)
      */
-    @SuppressWarnings("unchecked")
     private static void drawPath(Canvas canvas, Annotation annotation, float scale) {
-        if (!(annotation.data instanceof List)) {
+        if (annotation.data == null || !(annotation.data instanceof List)) {
             return;
         }
         
+        @SuppressWarnings("unchecked")
         List<PointF> points = (List<PointF>) annotation.data;
+        
         if (points.size() < 2) {
             return;
         }
         
         Paint paint = new Paint();
         paint.setColor(annotation.color);
-        paint.setStrokeWidth(3 * scale);
         paint.setStyle(Paint.Style.STROKE);
         paint.setStrokeJoin(Paint.Join.ROUND);
         paint.setStrokeCap(Paint.Cap.ROUND);
+        paint.setStrokeWidth(6 * scale);
         
         Path path = new Path();
+        
         PointF firstPoint = points.get(0);
         path.moveTo(firstPoint.x * scale, firstPoint.y * scale);
         
@@ -248,7 +252,7 @@ public class DocumentAnnotationManager {
      * Draw a text annotation
      */
     private static void drawText(Canvas canvas, Annotation annotation, float scale) {
-        if (!(annotation.data instanceof String)) {
+        if (annotation.data == null || !(annotation.data instanceof String)) {
             return;
         }
         
@@ -260,7 +264,7 @@ public class DocumentAnnotationManager {
         paint.setAntiAlias(true);
         
         RectF scaledBounds = scaleRect(annotation.bounds, scale);
-        canvas.drawText(text, scaledBounds.left, scaledBounds.top + paint.getTextSize(), paint);
+        canvas.drawText(text, scaledBounds.left, scaledBounds.top + 14 * scale, paint);
     }
     
     /**
@@ -275,69 +279,90 @@ public class DocumentAnnotationManager {
     }
     
     /**
-     * Save annotations to a PDF file
+     * Save an annotated PDF document
      * 
-     * @param context Application context
-     * @param sourceUri URI of the source PDF
-     * @param annotations List of annotations to add
-     * @return File with annotations added, or null if an error occurred
+     * @param context Context
+     * @param fileUri URI of the original PDF document
+     * @param annotations List of annotations to add to the document
+     * @return File object for the annotated PDF, or null if an error occurred
      */
-    public static File saveAnnotatedPdf(Context context, Uri sourceUri, List<Annotation> annotations) {
+    public static File saveAnnotatedPdf(Context context, Uri fileUri, List<Annotation> annotations) {
+        if (context == null || fileUri == null || annotations == null || annotations.isEmpty()) {
+            Log.e(TAG, "Invalid parameters for saveAnnotatedPdf");
+            return null;
+        }
+        
         try {
-            // Create a temporary file for the output
-            File outputFile = File.createTempFile("annotated_", ".pdf", context.getCacheDir());
+            // Create a temporary file for the annotated PDF
+            File outputDir = context.getCacheDir();
+            File outputFile = new File(outputDir, "annotated_" + System.currentTimeMillis() + ".pdf");
             
-            // Open the source PDF
-            InputStream inputStream = context.getContentResolver().openInputStream(sourceUri);
+            // Open the input PDF
+            InputStream inputStream = context.getContentResolver().openInputStream(fileUri);
             if (inputStream == null) {
-                throw new IOException("Could not open source PDF");
+                Log.e(TAG, "Could not open input stream for PDF");
+                return null;
             }
             
-            // Read the source PDF
-            PdfReader reader = new PdfReader(inputStream);
+            // Read the PDF
+            byte[] pdfBytes = readBytes(inputStream);
+            inputStream.close();
+            
+            PdfReader reader = new PdfReader(pdfBytes);
             
             // Create a new PDF document
             Document document = new Document(PageSize.A4);
             PdfWriter writer = PdfWriter.getInstance(document, new FileOutputStream(outputFile));
             document.open();
             
-            // Copy pages from source to destination
+            // Get the direct content for drawing
             PdfContentByte cb = writer.getDirectContent();
-            int numPages = reader.getNumberOfPages();
             
+            // Group annotations by page
+            Map<Integer, List<Annotation>> annotationsByPage = new HashMap<>();
+            for (Annotation annotation : annotations) {
+                List<Annotation> pageAnnotations = annotationsByPage.get(annotation.pageNumber);
+                if (pageAnnotations == null) {
+                    pageAnnotations = new ArrayList<>();
+                    annotationsByPage.put(annotation.pageNumber, pageAnnotations);
+                }
+                pageAnnotations.add(annotation);
+            }
+            
+            // Process each page
+            int numPages = reader.getNumberOfPages();
             for (int i = 1; i <= numPages; i++) {
-                document.newPage();
-                
                 // Import the page
                 PdfImportedPage page = writer.getImportedPage(reader, i);
+                document.newPage();
+                
+                // Draw the original page
                 cb.addTemplate(page, 0, 0);
                 
-                // Get annotations for this page (0-based page number)
-                List<Annotation> pageAnnotations = new ArrayList<>();
-                for (Annotation annotation : annotations) {
-                    if (annotation.pageNumber == i - 1) {
-                        pageAnnotations.add(annotation);
-                    }
-                }
+                // Get annotations for this page (0-based index)
+                List<Annotation> pageAnnotations = annotationsByPage.get(i - 1);
                 
-                // Draw annotations if there are any
-                if (!pageAnnotations.isEmpty()) {
-                    // Create a bitmap with the same dimensions as the page
-                    float pageWidth = document.getPageSize().getWidth();
-                    float pageHeight = document.getPageSize().getHeight();
+                if (pageAnnotations != null && !pageAnnotations.isEmpty()) {
+                    // Create a bitmap for annotations
+                    float pageWidth = page.getWidth();
+                    float pageHeight = page.getHeight();
                     
-                    Bitmap bitmap = Bitmap.createBitmap(
+                    Bitmap annotationBitmap = Bitmap.createBitmap(
                             (int) pageWidth,
                             (int) pageHeight,
                             Bitmap.Config.ARGB_8888);
                     
-                    // Draw annotations on the bitmap
-                    drawAnnotations(bitmap, pageAnnotations, 1.0f);
+                    Canvas canvas = new Canvas(annotationBitmap);
                     
-                    // Convert bitmap to iText Image
+                    // Draw annotations on the bitmap
+                    drawAnnotations(canvas, pageAnnotations, 1.0f);
+                    
+                    // Convert the bitmap to an iText Image
                     ByteArrayOutputStream baos = new ByteArrayOutputStream();
-                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, baos);
+                    annotationBitmap.compress(Bitmap.CompressFormat.PNG, 100, baos);
                     Image annotationImage = Image.getInstance(baos.toByteArray());
+                    
+                    // Position the annotation image
                     annotationImage.setAbsolutePosition(0, 0);
                     annotationImage.scaleToFit(pageWidth, pageHeight);
                     
@@ -345,7 +370,7 @@ public class DocumentAnnotationManager {
                     cb.addImage(annotationImage);
                     
                     // Clean up
-                    bitmap.recycle();
+                    annotationBitmap.recycle();
                     baos.close();
                 }
             }
@@ -354,18 +379,29 @@ public class DocumentAnnotationManager {
             document.close();
             writer.close();
             reader.close();
-            inputStream.close();
             
             return outputFile;
-            
-        } catch (IOException | DocumentException e) {
+        } catch (Exception e) {
             Log.e(TAG, "Error saving annotated PDF", e);
             return null;
         }
     }
     
     /**
-     * Class representing an annotation
+     * Read bytes from an input stream
+     */
+    private static byte[] readBytes(InputStream inputStream) throws IOException {
+        ByteArrayOutputStream byteBuffer = new ByteArrayOutputStream();
+        byte[] buffer = new byte[1024];
+        int len;
+        while ((len = inputStream.read(buffer)) != -1) {
+            byteBuffer.write(buffer, 0, len);
+        }
+        return byteBuffer.toByteArray();
+    }
+    
+    /**
+     * Annotation class
      */
     public static class Annotation {
         public String id;
@@ -373,6 +409,6 @@ public class DocumentAnnotationManager {
         public int pageNumber;
         public RectF bounds;
         public int color;
-        public Object data;
+        public Object data; // Text for text annotations, List<PointF> for drawing
     }
 }

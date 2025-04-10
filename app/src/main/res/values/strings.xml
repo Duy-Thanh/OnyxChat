@@ -218,4 +218,19 @@
     <string name="file_unsupported_type">Unsupported file type</string>
     <string name="permission_required">Permission required</string>
     <string name="storage_permission_required">Storage permission is required to access media files</string>
+    
+    <!-- Document annotation strings -->
+    <string name="annotation_draw">Draw</string>
+    <string name="annotation_highlight">Highlight</string>
+    <string name="annotation_underline">Underline</string>
+    <string name="annotation_text">Add Text</string>
+    <string name="annotation_color">Change Color</string>
+    <string name="annotation_undo">Undo</string>
+    <string name="annotation_previous">Previous</string>
+    <string name="annotation_next">Next</string>
+    <string name="annotation_page_format">%1$d / %2$d</string>
+    <string name="annotation_save">Save</string>
+    <string name="annotation_share">Share</string>
+    <string name="annotation_clear">Clear Annotations</string>
+    <string name="annotation_select_color">Select Color</string>
 </resources>

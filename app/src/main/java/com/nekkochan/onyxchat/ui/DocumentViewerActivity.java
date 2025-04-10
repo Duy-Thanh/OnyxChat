@@ -210,6 +210,9 @@ public class DocumentViewerActivity extends AppCompatActivity {
         } else if (itemId == R.id.action_share) {
             shareDocument();
             return true;
+        } else if (itemId == R.id.action_annotate) {
+            annotateDocument();
+            return true;
         } else if (itemId == R.id.action_open_with) {
             openDocumentWithExternalApp();
             return true;
@@ -276,6 +279,54 @@ public class DocumentViewerActivity extends AppCompatActivity {
         }
     }
 
+    /**
+     * Open the document for annotation
+     */
+    private void annotateDocument() {
+        if (fileUri == null) {
+            Toast.makeText(this, "No document to annotate", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        // Currently only PDF documents can be annotated
+        if (mimeType.startsWith("application/pdf") || FileUtils.getExtension(this, fileUri).equalsIgnoreCase("pdf")) {
+            // Launch the annotation activity
+            Intent intent = DocumentAnnotationActivity.createIntent(this, fileUri, fileName);
+            startActivity(intent);
+        } else {
+            // For non-PDF documents, convert to PDF first
+            Toast.makeText(this, "Converting document for annotation...", Toast.LENGTH_SHORT).show();
+            
+            executorService.execute(() -> {
+                try {
+                    // Convert the document to PDF
+                    String extension = FileUtils.getExtension(this, fileUri);
+                    File pdfFile = DocumentConverter.convertToPdf(this, fileUri, extension);
+                    if (pdfFile != null) {
+                        // Create a content URI for the PDF file
+                        Uri pdfUri = FileProvider.getUriForFile(
+                                this,
+                                getApplicationContext().getPackageName() + ".provider",
+                                pdfFile);
+                        
+                        // Launch the annotation activity with the PDF
+                        Intent intent = DocumentAnnotationActivity.createIntent(this, pdfUri, fileName);
+                        runOnUiThread(() -> startActivity(intent));
+                    } else {
+                        runOnUiThread(() -> Toast.makeText(this, 
+                                "Could not convert document for annotation", 
+                                Toast.LENGTH_SHORT).show());
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "Error converting document for annotation", e);
+                    runOnUiThread(() -> Toast.makeText(this, 
+                            "Error preparing document for annotation: " + e.getMessage(), 
+                            Toast.LENGTH_SHORT).show());
+                }
+            });
+        }
+    }
+
     private void setupObservers() {
         viewModel.getIsLoading().observe(this, isLoading -> {
             if (isLoading) {
@@ -337,14 +388,135 @@ public class DocumentViewerActivity extends AppCompatActivity {
                     // Load text document directly
                     loadTextDocument(fileUri);
                 } else {
-                    // For all other document types, convert to PDF or extract text
-                    convertAndLoadDocument(fileUri, extension);
+                    // If text extraction fails or produces unreadable content, try to convert to PDF
+                    String fileExtension = FileUtils.getExtension(this, fileUri);
+                    File pdfFile = DocumentConverter.convertToPdf(this, fileUri, fileExtension);
+                    if (pdfFile != null && pdfFile.exists()) {
+                        // Create a content URI that can be shared with other apps
+                        Uri contentUri = FileProvider.getUriForFile(
+                                this,
+                                getApplicationContext().getPackageName() + ".provider",
+                                pdfFile);
+                        
+                        Log.d(TAG, "Created content URI for PDF: " + contentUri);
+                        
+                        // Try system PDF viewer first for better compatibility
+                        try {
+                            Intent intent = new Intent(Intent.ACTION_VIEW);
+                            intent.setDataAndType(contentUri, "application/pdf");
+                            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                            
+                            if (intent.resolveActivity(getPackageManager()) != null) {
+                                startActivity(intent);
+                                // Don't finish this activity, let the user come back if needed
+                                viewModel.setIsLoading(false);
+                                return;
+                            }
+                        } catch (Exception ex) {
+                            Log.e(TAG, "Error launching system PDF viewer, trying built-in viewer", ex);
+                        }
+                        
+                        // Fallback to built-in PDF viewer
+                        try {
+                            // Launch the PDF viewer activity from the library
+                            Intent intent = new Intent(this, PdfViewerActivity.class);
+                            intent.putExtra("PDF_FILE_URI", contentUri.toString());
+                            intent.putExtra("PDF_TITLE", fileName != null ? fileName : "Document");
+                            intent.putExtra("ENABLE_SHARE", false);
+                            intent.putExtra("ENABLE_SWIPE", true);
+                            intent.putExtra("NIGHT_MODE_ENABLED", false);
+                            
+                            // Add flags to ensure proper display
+                            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                            startActivity(intent);
+                            
+                            // Don't finish this activity, let the user come back if needed
+                            viewModel.setIsLoading(false);
+                        } catch (Exception e) {
+                            Log.e(TAG, "Error using PDF viewer library", e);
+                            // No PDF viewer available, show message
+                            runOnUiThread(() -> {
+                                String message = "No PDF viewer app installed. Please install a PDF viewer from the Play Store.";
+                                textContent.setText(message);
+                                textScrollView.setVisibility(View.VISIBLE);
+                                viewModel.setIsLoading(false);
+                            });
+                        }
+                    } else {
+                        // If conversion fails, show a helpful message based on the document type
+                        String docType = getDocumentTypeDescription(extension);
+                        String message = "Could not preview this " + docType + ". Please try opening it with an external app.";
+                        runOnUiThread(() -> {
+                            textContent.setText(message);
+                            textScrollView.setVisibility(View.VISIBLE);
+                            viewModel.setIsLoading(false);
+                        });
+                    }
                 }
             } catch (Exception e) {
                 Log.e(TAG, "Error loading document", e);
                 showError("Error loading document: " + e.getMessage());
             }
         });
+    }
+    
+    private String extractTextFromPdf(Uri pdfUri) {
+        try {
+            // Since we can't reliably extract text from PDF on Android without PDFBox,
+            // we'll just return a message indicating the PDF needs to be viewed externally
+            return "This PDF document needs to be viewed with an external PDF viewer app.\n\n" +
+                   "If you don't have a PDF viewer installed, please install one from the Play Store.";
+        } catch (Exception e) {
+            Log.e(TAG, "Error handling PDF", e);
+            return null;
+        }
+    }
+
+    private void loadTextDocument(Uri uri) {
+        try {
+            // Try to detect encoding and read text properly
+            String text;
+            try {
+                // First try UTF-8 encoding
+                text = readTextWithEncoding(uri, "UTF-8");
+            } catch (Exception e) {
+                // Fallback to ISO-8859-1 for binary files
+                Log.w(TAG, "Failed to read with UTF-8, trying ISO-8859-1", e);
+                text = readTextWithEncoding(uri, "ISO-8859-1");
+            }
+            
+            // Clean up text if needed
+            if (text != null && text.contains("�")) {
+                // Try to clean up text with encoding issues
+                text = text.replaceAll("[^\\p{Print}\\p{Space}]", "?");
+            }
+            
+            final String finalText = text;
+            runOnUiThread(() -> {
+                textScrollView.setVisibility(View.VISIBLE);
+                textContent.setText(finalText);
+                viewModel.setIsLoading(false);
+            });
+        } catch (Exception e) {
+            Log.e(TAG, "Error loading text document", e);
+            showError("Error loading text document: " + e.getMessage());
+        }
+    }
+    
+    private String readTextWithEncoding(Uri uri, String encoding) throws Exception {
+        InputStream inputStream = getContentResolver().openInputStream(uri);
+        if (inputStream == null) {
+            throw new IOException("Could not open input stream for URI: " + uri);
+        }
+        
+        StringBuilder stringBuilder = new StringBuilder();
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, encoding))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                stringBuilder.append(line).append("\n");
+            }
+        }
+        return stringBuilder.toString();
     }
 
     private void loadPdfDocument(Uri uri) {
@@ -407,164 +579,6 @@ public class DocumentViewerActivity extends AppCompatActivity {
         } catch (Exception e) {
             Log.e(TAG, "Error loading PDF document", e);
             showError("Error loading PDF document: " + e.getMessage());
-        }
-    }
-    
-    private String extractTextFromPdf(Uri pdfUri) {
-        try {
-            // Since we can't reliably extract text from PDF on Android without PDFBox,
-            // we'll just return a message indicating the PDF needs to be viewed externally
-            return "This PDF document needs to be viewed with an external PDF viewer app.\n\n" +
-                   "If you don't have a PDF viewer installed, please install one from the Play Store.";
-        } catch (Exception e) {
-            Log.e(TAG, "Error handling PDF", e);
-            return null;
-        }
-    }
-
-    private void loadTextDocument(Uri uri) {
-        try {
-            // Try to detect encoding and read text properly
-            String text;
-            try {
-                // First try UTF-8 encoding
-                text = readTextWithEncoding(uri, "UTF-8");
-            } catch (Exception e) {
-                // Fallback to ISO-8859-1 for binary files
-                Log.w(TAG, "Failed to read with UTF-8, trying ISO-8859-1", e);
-                text = readTextWithEncoding(uri, "ISO-8859-1");
-            }
-            
-            // Clean up text if needed
-            if (text != null && text.contains("�")) {
-                // Try to clean up text with encoding issues
-                text = text.replaceAll("[^\\p{Print}\\p{Space}]", "?");
-            }
-            
-            final String finalText = text;
-            runOnUiThread(() -> {
-                textScrollView.setVisibility(View.VISIBLE);
-                textContent.setText(finalText);
-                viewModel.setIsLoading(false);
-            });
-        } catch (Exception e) {
-            Log.e(TAG, "Error loading text document", e);
-            showError("Error loading text document: " + e.getMessage());
-        }
-    }
-    
-    private String readTextWithEncoding(Uri uri, String encoding) throws Exception {
-        InputStream inputStream = getContentResolver().openInputStream(uri);
-        if (inputStream == null) {
-            throw new IOException("Could not open input stream for URI: " + uri);
-        }
-        
-        StringBuilder stringBuilder = new StringBuilder();
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, encoding))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                stringBuilder.append(line).append("\n");
-            }
-        }
-        return stringBuilder.toString();
-    }
-
-    private void convertAndLoadDocument(Uri uri, String extension) {
-        try {
-            // First try to extract text directly with proper encoding
-            try {
-                String extractedText;
-                try {
-                    // Try UTF-8 first
-                    extractedText = readTextWithEncoding(uri, "UTF-8");
-                } catch (Exception e) {
-                    // Fallback to ISO-8859-1
-                    Log.w(TAG, "Failed to read with UTF-8, trying ISO-8859-1", e);
-                    extractedText = readTextWithEncoding(uri, "ISO-8859-1");
-                }
-                
-                // Check if the text is readable (not binary)
-                if (extractedText != null && !extractedText.isEmpty() && isReadableText(extractedText)) {
-                    // If we can extract readable text, show it directly
-                    final String finalText = extractedText;
-                    runOnUiThread(() -> {
-                        textScrollView.setVisibility(View.VISIBLE);
-                        textContent.setText(finalText);
-                        viewModel.setIsLoading(false);
-                    });
-                    return;
-                }
-            } catch (Exception e) {
-                Log.w(TAG, "Text extraction failed, trying PDF conversion", e);
-                // Continue to PDF conversion
-            }
-            
-            // If text extraction fails or produces unreadable content, try to convert to PDF
-            File pdfFile = DocumentConverter.convertToPdf(this, uri, extension);
-            if (pdfFile != null && pdfFile.exists()) {
-                // Create a content URI that can be shared with other apps
-                Uri contentUri = FileProvider.getUriForFile(
-                        this,
-                        getApplicationContext().getPackageName() + ".provider",
-                        pdfFile);
-                
-                Log.d(TAG, "Created content URI for PDF: " + contentUri);
-                
-                // Try system PDF viewer first for better compatibility
-                try {
-                    Intent intent = new Intent(Intent.ACTION_VIEW);
-                    intent.setDataAndType(contentUri, "application/pdf");
-                    intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-                    
-                    if (intent.resolveActivity(getPackageManager()) != null) {
-                        startActivity(intent);
-                        // Don't finish this activity, let the user come back if needed
-                        viewModel.setIsLoading(false);
-                        return;
-                    }
-                } catch (Exception ex) {
-                    Log.e(TAG, "Error launching system PDF viewer, trying built-in viewer", ex);
-                }
-                
-                // Fallback to built-in PDF viewer
-                try {
-                    // Launch the PDF viewer activity from the library
-                    Intent intent = new Intent(this, PdfViewerActivity.class);
-                    intent.putExtra("PDF_FILE_URI", contentUri.toString());
-                    intent.putExtra("PDF_TITLE", fileName != null ? fileName : "Document");
-                    intent.putExtra("ENABLE_SHARE", false);
-                    intent.putExtra("ENABLE_SWIPE", true);
-                    intent.putExtra("NIGHT_MODE_ENABLED", false);
-                    
-                    // Add flags to ensure proper display
-                    intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-                    startActivity(intent);
-                    
-                    // Don't finish this activity, let the user come back if needed
-                    viewModel.setIsLoading(false);
-                } catch (Exception e) {
-                    Log.e(TAG, "Error using PDF viewer library", e);
-                    // No PDF viewer available, show message
-                    runOnUiThread(() -> {
-                        String message = "No PDF viewer app installed. Please install a PDF viewer from the Play Store.";
-                        textContent.setText(message);
-                        textScrollView.setVisibility(View.VISIBLE);
-                        viewModel.setIsLoading(false);
-                    });
-                }
-            } else {
-                // If conversion fails, show a helpful message based on the document type
-                String docType = getDocumentTypeDescription(extension);
-                String message = "Could not preview this " + docType + ". Please try opening it with an external app.";
-                runOnUiThread(() -> {
-                    textContent.setText(message);
-                    textScrollView.setVisibility(View.VISIBLE);
-                    viewModel.setIsLoading(false);
-                });
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "Error converting document", e);
-            showError("Error processing document: " + e.getMessage());
         }
     }
     

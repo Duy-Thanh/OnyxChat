@@ -26,6 +26,14 @@
     <color name="divider">#BDBDBD</color>
     <color name="gray_700">#616161</color>
     
+    <!-- Document annotation colors -->
+    <color name="background_light">#F5F5F5</color>
+    <color name="annotation_background_dark">#E0E0E0</color>
+    <color name="annotation_highlight">#FFFF00</color>
+    <color name="annotation_underline">#FF0000</color>
+    <color name="annotation_drawing">#0000FF</color>
+    <color name="annotation_text">#000000</color>
+
     <!-- Feedback colors -->
     <color name="error">#B00020</color>
     <color name="error_red">#CF6679</color>
