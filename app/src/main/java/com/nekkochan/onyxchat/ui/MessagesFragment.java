@@ -98,34 +98,30 @@ public class MessagesFragment extends Fragment {
         
         // Find smart replies components
         smartRepliesChipGroup = view.findViewById(R.id.smartRepliesChipGroup);
-        View smartRepliesButton = view.findViewById(R.id.smartRepliesButton);
         View smartRepliesDialog = view.findViewById(R.id.smartRepliesDialog);
         View quickRepliesButton = view.findViewById(R.id.quickRepliesButton);
+        View quickRepliesContainer = view.findViewById(R.id.quickRepliesContainer);
+        
+        // Make sure the quick replies container is visible
+        if (quickRepliesContainer != null) {
+            quickRepliesContainer.setVisibility(View.VISIBLE);
+        }
         
         // Set up smart replies
         forceShowSmartReplies();
         
-        // Set up smart replies button click listener
-        smartRepliesButton.setOnClickListener(v -> {
-            // Toggle smart replies dialog visibility
-            if (smartRepliesDialog.getVisibility() == View.VISIBLE) {
-                smartRepliesDialog.setVisibility(View.GONE);
-            } else {
-                smartRepliesDialog.setVisibility(View.VISIBLE);
-                forceShowSmartReplies(); // Refresh the smart replies
-            }
-        });
-        
         // Set up quick replies button click listener
-        quickRepliesButton.setOnClickListener(v -> {
-            // Toggle smart replies dialog visibility
-            if (smartRepliesDialog.getVisibility() == View.VISIBLE) {
-                smartRepliesDialog.setVisibility(View.GONE);
-            } else {
-                smartRepliesDialog.setVisibility(View.VISIBLE);
-                forceShowSmartReplies(); // Refresh the smart replies
-            }
-        });
+        if (quickRepliesButton != null) {
+            quickRepliesButton.setOnClickListener(v -> {
+                // Toggle smart replies dialog visibility
+                if (smartRepliesDialog.getVisibility() == View.VISIBLE) {
+                    smartRepliesDialog.setVisibility(View.GONE);
+                } else {
+                    smartRepliesDialog.setVisibility(View.VISIBLE);
+                    forceShowSmartReplies(); // Refresh the smart replies
+                }
+            });
+        }
         
         // Always force smart replies to be visible regardless of AI settings
         forceShowSmartReplies();
