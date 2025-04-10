@@ -49,6 +49,7 @@ public class Message {
     private String encryptionInfo;
     private boolean isEncrypted;
     private long selfDestructTime; // Time in milliseconds after which the message will be deleted (0 = never)
+    private boolean isTranslated;
 
     /**
      * Default constructor required by Room
@@ -82,6 +83,30 @@ public class Message {
         this.isSelf = isSelf;
         this.isEncrypted = isEncrypted;
         this.selfDestructTime = 0; // Default: never self-destruct
+        this.isTranslated = false; // Default: not translated
+    }
+
+    /**
+     * Copy constructor to create a new message from an existing one
+     * 
+     * @param original The original message to copy
+     */
+    @Ignore
+    public Message(Message original) {
+        this.id = original.id;
+        this.content = original.content;
+        this.senderAddress = original.senderAddress;
+        this.receiverAddress = original.receiverAddress;
+        this.conversationId = original.conversationId;
+        this.timestamp = original.timestamp;
+        this.isRead = original.isRead;
+        this.isDelivered = original.isDelivered;
+        this.isSent = original.isSent;
+        this.isSelf = original.isSelf;
+        this.encryptionInfo = original.encryptionInfo;
+        this.isEncrypted = original.isEncrypted;
+        this.selfDestructTime = original.selfDestructTime;
+        this.isTranslated = original.isTranslated;
     }
 
     @NonNull
@@ -208,5 +233,23 @@ public class Message {
      */
     public void setSelfDestructAfter(long timeInMillis) {
         this.selfDestructTime = timeInMillis;
+    }
+
+    /**
+     * Check if the message is translated
+     * 
+     * @return true if the message is translated
+     */
+    public boolean isTranslated() {
+        return isTranslated;
+    }
+
+    /**
+     * Set whether the message is translated
+     * 
+     * @param translated Whether the message is translated
+     */
+    public void setTranslated(boolean translated) {
+        isTranslated = translated;
     }
 } 

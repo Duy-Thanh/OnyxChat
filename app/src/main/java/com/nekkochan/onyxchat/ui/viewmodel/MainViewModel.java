@@ -500,6 +500,15 @@ public class MainViewModel extends AndroidViewModel {
     }
     
     /**
+     * Send a broadcast message to all users
+     * @param message the message to send
+     * @return true if the message was sent successfully
+     */
+    public boolean sendBroadcastMessage(String message) {
+        return chatService.sendMessage(message);
+    }
+    
+    /**
      * Get the list of conversations
      * @return LiveData containing the list of conversations
      */

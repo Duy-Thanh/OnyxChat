@@ -95,6 +95,23 @@
         </LinearLayout>
     </androidx.cardview.widget.CardView>
 
+    <!-- Translation info -->
+    <TextView
+        android:id="@+id/translation_info"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:layout_marginStart="12dp"
+        android:text="@string/show_original"
+        android:textColor="#80FFFFFF"
+        android:textSize="11sp"
+        android:visibility="gone"
+        android:clickable="true"
+        android:focusable="true"
+        app:layout_constraintStart_toStartOf="@id/message_bubble"
+        app:layout_constraintTop_toBottomOf="@id/message_bubble"
+        tools:visibility="visible" />
+
     <!-- Message info (time, status) -->
     <LinearLayout
         android:id="@+id/message_info"
@@ -104,7 +121,7 @@
         android:layout_marginStart="12dp"
         android:orientation="horizontal"
         app:layout_constraintStart_toStartOf="@id/message_bubble"
-        app:layout_constraintTop_toBottomOf="@id/message_bubble">
+        app:layout_constraintTop_toBottomOf="@id/translation_info">
 
         <!-- Message timestamp -->
         <TextView

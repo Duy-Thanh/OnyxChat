@@ -10,7 +10,7 @@
 
     <TextView
         android:id="@+id/chatStatusText"
-        android:layout_width="wrap_content"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
         android:layout_marginStart="8dp"
@@ -19,7 +19,20 @@
         android:textColor="@color/error_red"
         android:textSize="14sp"
         app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toStartOf="@+id/aiSettingsButton"
         app:layout_constraintTop_toTopOf="parent" />
+        
+    <ImageButton
+        android:id="@+id/aiSettingsButton"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:layout_marginEnd="8dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/ai_settings_title"
+        android:src="@drawable/ic_settings"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="@+id/chatStatusText"
+        app:layout_constraintBottom_toBottomOf="@+id/chatStatusText" />
 
     <TextView
         android:id="@+id/emptyMessagesText"
@@ -41,10 +54,34 @@
         android:paddingTop="8dp"
         android:paddingBottom="8dp"
         android:visibility="gone"
-        app:layout_constraintBottom_toTopOf="@id/messageInputContainer"
+        app:layout_constraintBottom_toTopOf="@id/smartRepliesContainer"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/chatStatusText" />
+        
+    <!-- Smart Replies Container -->
+    <HorizontalScrollView
+        android:id="@+id/smartRepliesContainer"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="8dp"
+        android:layout_marginBottom="8dp"
+        android:visibility="gone"
+        android:scrollbars="none"
+        app:layout_constraintBottom_toTopOf="@id/messageInputContainer"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        tools:visibility="visible">
+        
+        <com.google.android.material.chip.ChipGroup
+            android:id="@+id/smartRepliesChipGroup"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingHorizontal="4dp"
+            app:singleLine="true"
+            app:chipSpacingHorizontal="8dp" />
+            
+    </HorizontalScrollView>
 
     <androidx.cardview.widget.CardView
         android:id="@+id/messageInputContainer"
@@ -89,4 +126,4 @@
         </LinearLayout>
     </androidx.cardview.widget.CardView>
 
-</androidx.constraintlayout.widget.ConstraintLayout> 
+</androidx.constraintlayout.widget.ConstraintLayout>

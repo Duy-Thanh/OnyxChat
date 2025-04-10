@@ -1,5 +1,6 @@
 package com.nekkochan.onyxchat.ui;
 
+import android.content.Intent;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -16,9 +17,15 @@ import androidx.lifecycle.ViewModelProvider;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.google.android.material.chip.Chip;
+import com.google.android.material.chip.ChipGroup;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.snackbar.Snackbar;
 import com.nekkochan.onyxchat.R;
+import com.nekkochan.onyxchat.ai.AIFeatureManager;
+import com.nekkochan.onyxchat.ai.ContentModerationManager;
+import com.nekkochan.onyxchat.ai.SmartReplyManager;
+import com.nekkochan.onyxchat.model.Message;
 import com.nekkochan.onyxchat.network.ChatService;
 import com.nekkochan.onyxchat.ui.viewmodel.MainViewModel;
 
@@ -41,10 +48,17 @@ public class MessagesFragment extends Fragment {
     private ChatMessageAdapter adapter;
     private String currentRecipientId = null;
     
+    // AI features
+    private AIFeatureManager aiFeatureManager;
+    private ChipGroup smartRepliesChipGroup;
+    
     @Override
     public void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         viewModel = new ViewModelProvider(requireActivity()).get(MainViewModel.class);
+        
+        // Initialize AI feature manager
+        aiFeatureManager = AIFeatureManager.getInstance(requireContext());
     }
     
     @Nullable
@@ -63,6 +77,9 @@ public class MessagesFragment extends Fragment {
         messageInput = view.findViewById(R.id.messageInput);
         sendButton = view.findViewById(R.id.sendButton);
         statusTextView = view.findViewById(R.id.chatStatusText);
+        smartRepliesChipGroup = view.findViewById(R.id.smartRepliesChipGroup);
+        View smartRepliesContainer = view.findViewById(R.id.smartRepliesContainer);
+        View aiSettingsButton = view.findViewById(R.id.aiSettingsButton);
         
         // Setup recycler view
         LinearLayoutManager layoutManager = new LinearLayoutManager(getContext());
@@ -81,6 +98,19 @@ public class MessagesFragment extends Fragment {
         
         // Set up send button
         sendButton.setOnClickListener(v -> sendMessage());
+        
+        // Set up AI settings button
+        aiSettingsButton.setOnClickListener(v -> {
+            Intent intent = new Intent(requireContext(), AISettingsActivity.class);
+            startActivity(intent);
+        });
+        
+        // Enable smart replies if feature is enabled
+        if (aiFeatureManager.isSmartRepliesEnabled()) {
+            smartRepliesContainer.setVisibility(View.VISIBLE);
+        } else {
+            smartRepliesContainer.setVisibility(View.GONE);
+        }
         
         // Observe chat connection state
         viewModel.isChatConnected().observe(getViewLifecycleOwner(), isConnected -> 
@@ -128,14 +158,46 @@ public class MessagesFragment extends Fragment {
      * Update the messages list
      */
     private void updateMessages(List<MainViewModel.ChatMessage> chatMessages) {
-        if (!isAdded()) return;
-        
-        if (chatMessages != null && !chatMessages.isEmpty()) {
-            updateEmptyViewVisibility(false);
-            adapter.submitList(chatMessages);
-            recyclerView.scrollToPosition(chatMessages.size() - 1);
-        } else {
+        if (chatMessages == null) {
             updateEmptyViewVisibility(true);
+            return;
+        }
+        
+        updateEmptyViewVisibility(chatMessages.isEmpty());
+        
+        if (!chatMessages.isEmpty()) {
+            recyclerView.setVisibility(View.VISIBLE);
+            
+            // Process messages with AI features
+            List<MainViewModel.ChatMessage> processedMessages = new ArrayList<>();
+            
+            for (MainViewModel.ChatMessage chatMessage : chatMessages) {
+                // Convert to Message model for AI processing
+                Message message = new Message();
+                message.setContent(chatMessage.getContent());
+                message.setSenderAddress(chatMessage.getSenderId());
+                message.setTimestamp(chatMessage.getTimestamp().getTime() / 1000); // Fixing the timestamp conversion
+                
+                // Add to smart reply context
+                if (aiFeatureManager.isSmartRepliesEnabled()) {
+                    aiFeatureManager.setCurrentUserId(viewModel.getUserAddress().getValue());
+                    aiFeatureManager.processIncomingMessage(message, (originalMsg, translatedMsg, moderationResult) -> {
+                        // Nothing to do here for incoming messages, just adding to context
+                    });
+                }
+                
+                processedMessages.add(chatMessage);
+            }
+            
+            adapter.submitList(processedMessages);
+            recyclerView.scrollToPosition(processedMessages.size() - 1);
+            
+            // Generate smart replies after processing messages
+            if (aiFeatureManager.isSmartRepliesEnabled()) {
+                generateSmartReplies();
+            }
+        } else {
+            recyclerView.setVisibility(View.GONE);
         }
     }
     
@@ -156,53 +218,153 @@ public class MessagesFragment extends Fragment {
      * Send a message
      */
     private void sendMessage() {
-        if (!isAdded()) return;
+        String messageText = messageInput.getText().toString().trim();
+        if (messageText.isEmpty()) {
+            return;
+        }
         
-        String message = messageInput.getText().toString().trim();
-        if (message.isEmpty()) return;
+        // Clear input field
+        messageInput.setText("");
         
-        // Check if we have a connection
-        if (!viewModel.isChatConnected().getValue()) {
-            Toast.makeText(getContext(), "Not connected to chat server", Toast.LENGTH_SHORT).show();
+        // Clear smart replies
+        if (smartRepliesChipGroup != null) {
+            smartRepliesChipGroup.removeAllViews();
+            View smartRepliesContainer = smartRepliesChipGroup.getParent() instanceof View ? 
+                    (View) smartRepliesChipGroup.getParent() : null;
+            if (smartRepliesContainer != null) {
+                smartRepliesContainer.setVisibility(View.GONE);
+            }
+        }
+        
+        // Check if content moderation is enabled
+        if (aiFeatureManager.isContentModerationEnabled()) {
+            moderateMessage(messageText);
+        } else {
+            sendMessageToServer(messageText);
+        }
+    }
+    
+    /**
+     * Moderate a message before sending
+     */
+    private void moderateMessage(String messageText) {
+        aiFeatureManager.moderateContent(messageText, (original, result) -> {
+            if (getActivity() == null || !isAdded()) return;
             
-            // Try to reconnect
-            if (viewModel.connectToChat()) {
-                Toast.makeText(getContext(), "Reconnecting...", Toast.LENGTH_SHORT).show();
+            if (result == ContentModerationManager.ModerationResult.FLAGGED) {
+                // Show warning dialog for flagged content
+                requireActivity().runOnUiThread(() -> {
+                    new MaterialAlertDialogBuilder(requireContext())
+                            .setTitle(R.string.moderation_warning_title)
+                            .setMessage(R.string.moderation_warning_message)
+                            .setPositiveButton(R.string.send_anyway, (dialog, which) -> {
+                                sendMessageToServer(messageText);
+                            })
+                            .setNegativeButton(R.string.cancel, (dialog, which) -> {
+                                // Return the text to the input field
+                                messageInput.setText(messageText);
+                            })
+                            .show();
+                });
+            } else {
+                // Content is safe, send it
+                sendMessageToServer(messageText);
+            }
+        });
+    }
+    
+    /**
+     * Send message to the server
+     */
+    private void sendMessageToServer(String messageText) {
+        // Create a new message
+        Message message = new Message();
+        message.setContent(messageText);
+        message.setSenderAddress(viewModel.getUserAddress().getValue());
+        message.setTimestamp(System.currentTimeMillis());
+        
+        // Process outgoing message with AI features (for translation if needed)
+        if (aiFeatureManager.isTranslationEnabled()) {
+            aiFeatureManager.processOutgoingMessage(message, (originalMsg, translatedMsg, moderationResult) -> {
+                // Send the original message (translation is only for display purposes)
+                sendProcessedMessage(originalMsg);
+            });
+        } else {
+            sendProcessedMessage(message);
+        }
+    }
+    
+    /**
+     * Send the processed message to the server
+     */
+    private void sendProcessedMessage(Message message) {
+        if (getActivity() == null || !isAdded()) return;
+        
+        // Add to smart reply context if enabled
+        if (aiFeatureManager.isSmartRepliesEnabled()) {
+            aiFeatureManager.addMessageToSmartReplyContext(message);
+        }
+        
+        // Send to server
+        if (currentRecipientId != null) {
+            // Direct message
+            viewModel.sendDirectMessage(currentRecipientId, message.getContent());
+        } else {
+            // Broadcast message
+            viewModel.sendBroadcastMessage(message.getContent());
+        }
+    }
+    
+    /**
+     * Generate smart reply suggestions
+     */
+    private void generateSmartReplies() {
+        if (!aiFeatureManager.isSmartRepliesEnabled()) {
+            if (smartRepliesChipGroup != null && smartRepliesChipGroup.getParent() != null) {
+                ((View) smartRepliesChipGroup.getParent()).setVisibility(View.GONE);
             }
             return;
         }
         
-        // Check if we have a recipient (if not in a group chat)
-        boolean messageSent = false;
-        
-        if (currentRecipientId != null) {
-            messageSent = viewModel.sendDirectMessage(currentRecipientId, message);
-        } else {
-            messageSent = viewModel.sendChatMessage(message);
-        }
-        
-        if (messageSent) {
-            messageInput.setText("");
-        } else {
-            // If connection was lost, try to reconnect and send again
-            if (!viewModel.isChatConnected().getValue()) {
-                boolean reconnected = viewModel.connectToChat();
-                if (reconnected) {
-                    // Wait a bit for the connection to establish before retrying
-                    messageInput.postDelayed(() -> {
-                        if (viewModel.isChatConnected().getValue()) {
-                            sendMessage(); // Retry sending the message
-                        } else {
-                            Toast.makeText(getContext(), "Failed to reconnect", Toast.LENGTH_SHORT).show();
-                        }
-                    }, 1000);
-                } else {
-                    Toast.makeText(getContext(), "Failed to reconnect", Toast.LENGTH_SHORT).show();
+        aiFeatureManager.generateSmartReplies(suggestions -> {
+            if (getActivity() == null || !isAdded()) return;
+            
+            requireActivity().runOnUiThread(() -> {
+                if (smartRepliesChipGroup == null) return;
+                
+                View smartRepliesContainer = smartRepliesChipGroup.getParent() instanceof View ? 
+                        (View) smartRepliesChipGroup.getParent() : null;
+                
+                smartRepliesChipGroup.removeAllViews();
+                
+                if (suggestions == null || suggestions.isEmpty()) {
+                    if (smartRepliesContainer != null) {
+                        smartRepliesContainer.setVisibility(View.GONE);
+                    }
+                    return;
                 }
-            } else {
-                Toast.makeText(getContext(), "Failed to send message", Toast.LENGTH_SHORT).show();
-            }
-        }
+                
+                if (smartRepliesContainer != null) {
+                    smartRepliesContainer.setVisibility(View.VISIBLE);
+                }
+                
+                // Add chips for each suggestion
+                for (String suggestion : suggestions) {
+                    Chip chip = new Chip(requireContext());
+                    chip.setText(suggestion);
+                    chip.setClickable(true);
+                    chip.setCheckable(false);
+                    
+                    // Set up click listener to use the suggestion
+                    chip.setOnClickListener(v -> {
+                        messageInput.setText(suggestion);
+                        sendMessage();
+                    });
+                    
+                    smartRepliesChipGroup.addView(chip);
+                }
+            });
+        });
     }
     
     /**
@@ -253,7 +415,35 @@ public class MessagesFragment extends Fragment {
         
         @Override
         public void onBindViewHolder(@NonNull ChatMessageViewHolder holder, int position) {
-            holder.bind(messages.get(position));
+            MainViewModel.ChatMessage chatMessage = messages.get(position);
+            
+            // If translation is enabled and this is an incoming message, process it
+            if (aiFeatureManager.isTranslationEnabled() && 
+                    !chatMessage.getSenderId().equals(viewModel.getUserAddress().getValue())) {
+                
+                // Create a Message object from ChatMessage
+                Message message = new Message();
+                message.setContent(chatMessage.getContent());
+                message.setSenderAddress(chatMessage.getSenderId());
+                message.setTimestamp(chatMessage.getTimestamp().getTime());
+                
+                aiFeatureManager.processIncomingMessage(message, (originalMessage, translatedMessage, moderationResult) -> {
+                    if (translatedMessage != null) {
+                        // Update UI on main thread with translated content
+                        requireActivity().runOnUiThread(() -> {
+                            holder.bind(chatMessage, translatedMessage.getContent());
+                        });
+                    } else {
+                        // No translation needed
+                        requireActivity().runOnUiThread(() -> {
+                            holder.bind(chatMessage, null);
+                        });
+                    }
+                });
+            } else {
+                // No translation needed
+                holder.bind(chatMessage, null);
+            }
         }
         
         @Override
@@ -270,19 +460,47 @@ public class MessagesFragment extends Fragment {
             private final TextView messageText;
             private final TextView senderText;
             private final TextView timeText;
+            private final TextView translationInfoText;
+            private String originalContent;
+            private String translatedContent;
+            private boolean showingTranslation = true;
             
             public ChatMessageViewHolder(@NonNull View itemView) {
                 super(itemView);
                 messageText = itemView.findViewById(R.id.message_text);
                 senderText = itemView.findViewById(R.id.message_sender);
                 timeText = itemView.findViewById(R.id.message_time);
+                translationInfoText = itemView.findViewById(R.id.translation_info);
+                
+                // Set up click listener for translation toggle
+                if (translationInfoText != null) {
+                    translationInfoText.setOnClickListener(v -> toggleTranslation());
+                }
             }
             
-            public void bind(MainViewModel.ChatMessage message) {
-                messageText.setText(message.getContent());
+            public void bind(MainViewModel.ChatMessage message, String translatedText) {
+                // Store original and translated content
+                originalContent = message.getContent();
+                translatedContent = translatedText;
+                showingTranslation = translatedText != null;
+                
+                // Set message content (translated if available)
+                if (showingTranslation && translatedContent != null) {
+                    messageText.setText(translatedContent);
+                    translationInfoText.setText(R.string.show_original);
+                    translationInfoText.setVisibility(View.VISIBLE);
+                } else {
+                    messageText.setText(originalContent);
+                    if (translatedContent != null) {
+                        translationInfoText.setText(R.string.show_translation);
+                        translationInfoText.setVisibility(View.VISIBLE);
+                    } else {
+                        translationInfoText.setVisibility(View.GONE);
+                    }
+                }
                 
                 // Format timestamp
-                String timeString = android.text.format.DateFormat.format("HH:mm", message.getTimestamp()).toString();
+                String timeString = android.text.format.DateFormat.format("hh:mm a", message.getTimestamp().getTime()).toString();
                 timeText.setText(timeString);
                 
                 // Set message sender
@@ -293,14 +511,34 @@ public class MessagesFragment extends Fragment {
                     messageText.setTextAlignment(View.TEXT_ALIGNMENT_TEXT_END);
                     senderText.setTextAlignment(View.TEXT_ALIGNMENT_TEXT_END);
                     timeText.setTextAlignment(View.TEXT_ALIGNMENT_TEXT_END);
+                    if (translationInfoText != null) {
+                        translationInfoText.setTextAlignment(View.TEXT_ALIGNMENT_TEXT_END);
+                    }
                 } else {
                     senderText.setText(senderId);
                     // Align to the left for others' messages
                     messageText.setTextAlignment(View.TEXT_ALIGNMENT_TEXT_START);
                     senderText.setTextAlignment(View.TEXT_ALIGNMENT_TEXT_START);
                     timeText.setTextAlignment(View.TEXT_ALIGNMENT_TEXT_START);
+                    if (translationInfoText != null) {
+                        translationInfoText.setTextAlignment(View.TEXT_ALIGNMENT_TEXT_START);
+                    }
+                }
+            }
+            
+            private void toggleTranslation() {
+                if (translatedContent == null) return;
+                
+                showingTranslation = !showingTranslation;
+                
+                if (showingTranslation) {
+                    messageText.setText(translatedContent);
+                    translationInfoText.setText(R.string.show_original);
+                } else {
+                    messageText.setText(originalContent);
+                    translationInfoText.setText(R.string.show_translation);
                 }
             }
         }
     }
-} 
+}

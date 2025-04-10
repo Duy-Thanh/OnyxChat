@@ -233,4 +233,45 @@
     <string name="annotation_share">Share</string>
     <string name="annotation_clear">Clear Annotations</string>
     <string name="annotation_select_color">Select Color</string>
+    
+    <!-- AI Features -->
+    <string name="ai_settings_title">AI Features</string>
+    <string name="ai_features_header">AI-Powered Features</string>
+    
+    <!-- Smart Replies -->
+    <string name="smart_replies_title">Smart Replies</string>
+    <string name="smart_replies_description">Get intelligent reply suggestions based on the conversation context</string>
+    <string name="enable_smart_replies">Enable Smart Replies</string>
+    <string name="smart_replies_enabled">Smart replies enabled</string>
+    <string name="smart_replies_disabled">Smart replies disabled</string>
+    
+    <!-- Translation -->
+    <string name="translation_title">Automated Translation</string>
+    <string name="translation_description">Automatically translate messages to your preferred language</string>
+    <string name="enable_translation">Enable Translation</string>
+    <string name="preferred_language">Preferred Language</string>
+    <string name="translation_enabled">Translation enabled</string>
+    <string name="translation_disabled">Translation disabled</string>
+    <string name="translated_from">Translated from %1$s</string>
+    <string name="show_original">Show original</string>
+    <string name="show_translation">Show translation</string>
+    
+    <!-- Content Moderation -->
+    <string name="moderation_title">Content Moderation</string>
+    <string name="moderation_description">Detect and flag potentially inappropriate or sensitive content</string>
+    <string name="enable_moderation">Enable Content Moderation</string>
+    <string name="moderation_level">Moderation Level</string>
+    <string name="moderation_level_low">Low (Basic)</string>
+    <string name="moderation_level_medium">Medium (Standard)</string>
+    <string name="moderation_level_high">High (Strict)</string>
+    <string name="moderation_enabled">Content moderation enabled</string>
+    <string name="moderation_disabled">Content moderation disabled</string>
+    <string name="content_flagged">Content flagged: %1$s</string>
+    <string name="send_anyway">Send Anyway</string>
+    <string name="moderation_warning_title">Content Warning</string>
+    <string name="moderation_warning_message">This message may contain inappropriate content. Would you like to send it anyway?</string>
+    
+    <!-- Settings -->
+    <string name="reset_to_defaults">Reset to Defaults</string>
+    <string name="settings_reset">Settings reset to defaults</string>
 </resources>

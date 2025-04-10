@@ -185,6 +185,14 @@
             android:parentActivityName=".ui.DocumentViewerActivity"
             android:label="Document Annotation"
             android:theme="@style/Theme.OnyxChat.DocumentViewer" />
+            
+        <!-- AI Settings Activity -->
+        <activity
+            android:name=".ui.AISettingsActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity"
+            android:label="@string/ai_settings_title"
+            android:theme="@style/AppTheme" />
         
     </application>
 
