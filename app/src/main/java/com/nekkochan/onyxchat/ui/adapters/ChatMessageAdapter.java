@@ -106,28 +106,34 @@ public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.
         
         // Check if this is a video file path before binding
         String content = message.getContent();
-        if (content != null && content.contains("/api/media/file/") && 
+        
+        // Direct detection of video paths in raw text messages
+        if (content != null && 
+            (content.contains("/api/media/file/") || content.startsWith("/api/media/")) && 
             (content.endsWith(".mp4") || content.endsWith(".mov") || content.endsWith(".avi"))) {
+            
+            Log.d(TAG, "Detected raw video path: " + content);
             
             // Create a proper media JSON message for videos
             try {
-                JSONObject videoJson = new JSONObject();
-                videoJson.put("type", "video");
-                videoJson.put("url", content);
-                content = videoJson.toString();
+                // Use Gson for consistent JSON handling
+                JsonObject videoJson = new JsonObject();
+                videoJson.addProperty("type", "VIDEO");
+                videoJson.addProperty("url", content);
+                String jsonContent = videoJson.toString();
                 
                 // Create a new message with the JSON content
                 ChatViewModel.ChatMessage videoMessage = new ChatViewModel.ChatMessage(
                     message.getType(),
                     message.getSenderId(),
                     message.getRecipientId(),
-                    content,
+                    jsonContent,
                     message.getTimestamp()
                 );
                 
                 // Bind the new message
                 holder.bind(videoMessage, previousMessage, nextMessage);
-                Log.d(TAG, "Converted raw video path to JSON: " + content);
+                Log.d(TAG, "Converted raw video path to JSON: " + jsonContent);
             } catch (Exception e) {
                 Log.e(TAG, "Failed to convert video path to JSON", e);
                 holder.bind(message, previousMessage, nextMessage);
@@ -265,7 +271,8 @@ public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.
         }
         
         // Check if this is a video file path
-        if (content.startsWith("/api/media/file/") || content.matches("^/.*\\.mp4$")) {
+        if (content.contains("/api/media/file/") && 
+            (content.endsWith(".mp4") || content.endsWith(".mov") || content.endsWith(".avi"))) {
             Log.d(TAG, "Detected video file path: " + content);
             return new MediaContent("VIDEO", content, "");
         }
@@ -474,23 +481,45 @@ public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.
             MediaContent mediaContent = parseMediaContent(message.getContent());
             
             if (mediaContent != null) {
+                Log.d(TAG, "Binding media content: " + mediaContent.type + " - " + mediaContent.url);
+                
                 if (mediaContent.isDocument()) {
                     // Handle document message
                     handleDocumentMessage(mediaContent);
-                } else if (mediaContent.type.equals("image") || mediaContent.type.equals("video")) {
-                    // Handle image or video message
-                    handleMediaMessage(mediaContent);
+                } else if (mediaContent.type.equals("VIDEO")) {
+                    // Handle video message with ExoPlayer
+                    handleVideoContent(mediaContent.url, mediaContent.caption);
+                } else if (mediaContent.type.equals("IMAGE")) {
+                    // Handle image message with Glide
+                    handleImageContent(mediaContent.url, mediaContent.caption);
                 } else {
                     // Regular text message
                     messageText.setText(mediaContent.caption.isEmpty() 
                             ? mediaContent.url : mediaContent.caption);
+                    messageText.setVisibility(View.VISIBLE);
+                    
+                    // Hide media views
+                    if (mediaImageView != null) {
+                        mediaImageView.setVisibility(View.GONE);
+                    }
+                    if (videoPlayerView != null) {
+                        videoPlayerView.setVisibility(View.GONE);
+                    }
+                    if (playButtonView != null) {
+                        playButtonView.setVisibility(View.GONE);
+                    }
                 }
             } else {
                 // Regular text message
                 messageText.setText(message.getContent());
                 messageText.setVisibility(View.VISIBLE);
+                
+                // Hide media views
                 if (mediaImageView != null) {
                     mediaImageView.setVisibility(View.GONE);
+                }
+                if (videoPlayerView != null) {
+                    videoPlayerView.setVisibility(View.GONE);
                 }
                 if (playButtonView != null) {
                     playButtonView.setVisibility(View.GONE);
@@ -564,39 +593,13 @@ public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.
             }
         }
         
-        private void handleMediaMessage(MediaContent mediaContent) {
-            // Hide text
-            messageText.setVisibility(View.GONE);
-            
-            // Process the URL (handle server paths, local paths, etc.)
-            String processedUrl = processMediaUrl(mediaContent.url);
-            Log.d(TAG, "Processing media URL: " + processedUrl);
-            
-            // Check if this is a video
-            boolean isVideo = "VIDEO".equalsIgnoreCase(mediaContent.type) || 
-                             processedUrl.toLowerCase().endsWith(".mp4") ||
-                             processedUrl.toLowerCase().endsWith(".mov") ||
-                             processedUrl.toLowerCase().endsWith(".avi");
-            
-            if (isVideo) {
-                // Handle video content with ExoPlayer
-                handleVideoContent(processedUrl, mediaContent.caption);
-            } else {
-                // Handle image content with Glide
-                handleImageContent(processedUrl, mediaContent.caption);
-            }
-            
-            // Hide document view if it exists
-            if (documentView != null) {
-                documentView.setVisibility(View.GONE);
-            }
-        }
-        
         /**
          * Handle video content with ExoPlayer
          */
         private void handleVideoContent(String videoUrl, String caption) {
-            // Show video player, hide image view
+            // Hide text and show video player
+            messageText.setVisibility(View.GONE);
+            
             if (mediaImageView != null) {
                 mediaImageView.setVisibility(View.GONE);
             }
@@ -610,6 +613,11 @@ public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.
                 playButtonView.setVisibility(View.GONE);
             }
             
+            // Hide document view if it exists
+            if (documentView != null) {
+                documentView.setVisibility(View.GONE);
+            }
+            
             // Set caption if available
             if (captionText != null) {
                 if (caption != null && !caption.isEmpty()) {
@@ -620,8 +628,12 @@ public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.
                 }
             }
             
+            // Process the URL (handle server paths, local paths, etc.)
+            String processedUrl = processMediaUrl(videoUrl);
+            Log.d(TAG, "Processing video URL: " + processedUrl + " from original: " + videoUrl);
+            
             // Initialize ExoPlayer if needed
-            initializePlayer(videoUrl);
+            initializePlayer(processedUrl);
             
             // Set click listener for fullscreen view
             videoPlayerView.setOnClickListener(v -> {
@@ -632,7 +644,7 @@ public class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.
                 
                 // Open in full screen viewer
                 Intent intent = new Intent(itemView.getContext(), MediaViewerActivity.class);
-                intent.putExtra("mediaUrl", videoUrl);
+                intent.putExtra("mediaUrl", processedUrl);
                 intent.putExtra("mediaType", "VIDEO");
                 intent.putExtra("mediaCaption", caption);
                 itemView.getContext().startActivity(intent);
