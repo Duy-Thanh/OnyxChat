@@ -891,19 +891,28 @@ public class ChatActivity extends AppCompatActivity {
         // Show media status
         showMediaStatus("Processing document...", "document", true);
         
-        // For documents, we don't need to compress, just copy to app's cache
-        String filePath = FileUtils.getPath(this, documentUri);
-        if (filePath != null) {
+        try {
+            // For documents, we don't need to compress, just copy to app's cache
+            // First try to use the document URI directly
+            String fileName = FileUtils.getFileName(this, documentUri);
+            String mimeType = FileUtils.getMimeType(this, documentUri);
+            
+            Log.d(TAG, "Processing document: " + fileName + " (" + mimeType + ")");
+            
             // Hide the status UI before launching the new activity
             hideMediaStatus();
             
-            // Launch media processing activity directly
+            // Launch media processing activity directly with the original URI
             Intent intent = new Intent(this, MediaProcessingActivity.class);
-            intent.putExtra(MediaProcessingActivity.EXTRA_MEDIA_URI, Uri.parse(filePath));
+            intent.putExtra(MediaProcessingActivity.EXTRA_MEDIA_URI, documentUri);
             intent.putExtra(MediaProcessingActivity.EXTRA_MEDIA_TYPE, "document");
             intent.putExtra(MediaProcessingActivity.EXTRA_CHAT_ID, contactId);
+            intent.putExtra(MediaProcessingActivity.EXTRA_MEDIA_NAME, fileName);
+            intent.putExtra(MediaProcessingActivity.EXTRA_MIME_TYPE, mimeType);
             startActivity(intent);
-        } else {
+        } catch (Exception e) {
+            Log.e(TAG, "Error processing document", e);
+            
             // Show error in media status
             mediaStatusProgress.setIndeterminate(false);
             mediaStatusText.setText("Error: Failed to process document");

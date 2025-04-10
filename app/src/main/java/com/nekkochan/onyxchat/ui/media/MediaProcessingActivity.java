@@ -60,6 +60,8 @@ public class MediaProcessingActivity extends AppCompatActivity {
     public static final String EXTRA_MEDIA_URI = "media_uri";
     public static final String EXTRA_MEDIA_TYPE = "media_type";
     public static final String EXTRA_CHAT_ID = "chat_id";
+    public static final String EXTRA_MEDIA_NAME = "media_name";
+    public static final String EXTRA_MIME_TYPE = "mime_type";
     
     public static final String MEDIA_TYPE_IMAGE = "image";
     public static final String MEDIA_TYPE_VIDEO = "video";
@@ -375,27 +377,52 @@ public class MediaProcessingActivity extends AppCompatActivity {
         }
         
         try {
-            // Show document information
-            String fileName = mediaUri.getLastPathSegment();
-            long fileSize = MediaUtils.getFileSize(this, mediaUri);
+            // Get document information from intent extras if available
+            Intent intent = getIntent();
+            final String fileName = intent.getStringExtra(EXTRA_MEDIA_NAME);
+            String mimeType = intent.getStringExtra(EXTRA_MIME_TYPE);
+            
+            // Fallback to URI if extras not available
+            final String displayFileName;
+            if (fileName == null || fileName.isEmpty()) {
+                displayFileName = mediaUri.getLastPathSegment();
+            } else {
+                displayFileName = fileName;
+            }
+            
+            // Get file size
+            long fileSize;
+            try {
+                fileSize = MediaUtils.getFileSize(this, mediaUri);
+            } catch (Exception e) {
+                Log.w(TAG, "Error getting file size", e);
+                fileSize = 0;
+            }
             String formattedSize = formatFileSize(fileSize);
             
-            documentInfo.setText(String.format("%s (%s)", fileName, formattedSize));
+            // Log document information
+            Log.d(TAG, "Document info - Name: " + displayFileName + ", Size: " + formattedSize + ", MIME: " + mimeType);
+            
+            documentInfo.setText(String.format("%s (%s)", displayFileName, formattedSize));
             
             // Show and set up the preview button
             if (previewDocumentButton != null) {
                 previewDocumentButton.setVisibility(View.VISIBLE);
                 previewDocumentButton.setOnClickListener(v -> {
-                    // Get MIME type
-                    String mimeType = MimeTypeUtils.getMimeType(this, mediaUri);
-                    if (mimeType == null) {
-                        mimeType = "application/octet-stream";
+                    // Use provided MIME type or detect it
+                    String documentMimeType = mimeType;
+                    if (documentMimeType == null || documentMimeType.isEmpty()) {
+                        documentMimeType = MimeTypeUtils.getMimeType(this, mediaUri);
+                    }
+                    
+                    if (documentMimeType == null) {
+                        documentMimeType = "application/octet-stream";
                     }
                     
                     // Open document in DocumentViewerActivity
-                    Intent intent = DocumentViewerActivity.createIntent(
-                            this, mediaUri, fileName, mimeType);
-                    startActivity(intent);
+                    Intent viewerIntent = DocumentViewerActivity.createIntent(
+                            this, mediaUri, displayFileName, documentMimeType);
+                    startActivity(viewerIntent);
                 });
             }
         } catch (Exception e) {
@@ -455,23 +482,28 @@ public class MediaProcessingActivity extends AppCompatActivity {
             Log.d(TAG, "Using fallback MIME type: " + mimeType);
         }
         
-        // For video files, ensure we have a valid file that can be uploaded
-        if (MEDIA_TYPE_VIDEO.equals(mediaType)) {
+        // For document and video files, ensure we have a valid file that can be uploaded
+        if (MEDIA_TYPE_VIDEO.equals(mediaType) || MEDIA_TYPE_DOCUMENT.equals(mediaType)) {
             try {
                 // Check if the file exists and is readable
                 String filePath = FileUtils.getPath(this, mediaUri);
                 if (filePath != null) {
                     File file = new File(filePath);
                     if (file.exists() && file.canRead()) {
-                        Log.d(TAG, "Video file exists and is readable: " + filePath + " (" + file.length() + " bytes)");
+                        Log.d(TAG, "File exists and is readable: " + filePath + " (" + file.length() + " bytes)");
                     } else {
-                        Log.w(TAG, "Video file does not exist or is not readable: " + filePath);
+                        Log.w(TAG, "File does not exist or is not readable: " + filePath);
+                        // Try to use the URI directly for upload if file path is not accessible
+                        Log.d(TAG, "Will try to use URI directly: " + mediaUri);
                     }
                 } else {
                     Log.w(TAG, "Could not determine file path for URI: " + mediaUri);
+                    // This is normal for content:// URIs, we'll use the URI directly
+                    Log.d(TAG, "Will use URI directly: " + mediaUri);
                 }
             } catch (Exception e) {
-                Log.e(TAG, "Error checking video file", e);
+                Log.e(TAG, "Error checking file", e);
+                // Continue with upload using the URI directly
             }
         }
         

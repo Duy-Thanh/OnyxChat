@@ -1392,8 +1392,22 @@ public class ApiClient {
             return;
         }
         
+        // Log the URI details for debugging
+        Log.d(TAG, "Uploading media from URI: " + fileUri + ", scheme: " + fileUri.getScheme());
+        
         if (mimeType == null || mimeType.isEmpty()) {
-            mimeType = "application/octet-stream"; // Default MIME type if none provided
+            try {
+                // Try to detect MIME type from URI
+                mimeType = sessionManager.getContext().getContentResolver().getType(fileUri);
+                Log.d(TAG, "Detected MIME type from URI: " + mimeType);
+            } catch (Exception e) {
+                Log.e(TAG, "Error detecting MIME type from URI", e);
+            }
+            
+            if (mimeType == null || mimeType.isEmpty()) {
+                mimeType = "application/octet-stream"; // Default MIME type if none provided
+                Log.d(TAG, "Using default MIME type: " + mimeType);
+            }
         }
         
         final String finalMimeType = mimeType;
@@ -1405,21 +1419,27 @@ public class ApiClient {
                 String fileName = getFileName(fileUri);
                 Log.d(TAG, "Uploading file: " + fileName + " with MIME type: " + finalMimeType);
                 
-                // Check if this is a video file
+                // Check if this is a document or video file
+                boolean isDocument = finalMimeType.startsWith("application/");
                 boolean isVideo = finalMimeType.startsWith("video/");
-                if (isVideo) {
+                
+                if (isDocument) {
+                    Log.d(TAG, "Processing document file before upload");
+                } else if (isVideo) {
                     Log.d(TAG, "Processing video file before upload");
                 }
                 
                 // Convert Uri to File
                 File file = createTempFileFromUri(fileUri);
                 if (file == null) {
+                    Log.e(TAG, "Failed to create file from URI: " + fileUri);
                     callback.onFailure("Failed to create file from URI");
                     return;
                 }
                 
                 // Verify file exists and has content
                 if (!file.exists() || file.length() == 0) {
+                    Log.e(TAG, "Created file is empty or does not exist: " + file.getAbsolutePath());
                     callback.onFailure("Created file is empty or does not exist: " + file.getAbsolutePath());
                     return;
                 }
@@ -1568,7 +1588,11 @@ public class ApiClient {
                     if (file.exists() && file.isFile() && file.canRead()) {
                         Log.d(TAG, "Using direct file path: " + filePath);
                         return file;
+                    } else {
+                        Log.w(TAG, "File exists but cannot be read: " + filePath);
                     }
+                } else {
+                    Log.w(TAG, "File path is null for URI: " + uri);
                 }
             }
             
@@ -1599,7 +1623,14 @@ public class ApiClient {
             try {
                 // Try to get input stream based on URI scheme
                 if ("content".equals(scheme)) {
-                    inputStream = sessionManager.getContext().getContentResolver().openInputStream(uri);
+                    try {
+                        inputStream = sessionManager.getContext().getContentResolver().openInputStream(uri);
+                        if (inputStream == null) {
+                            Log.e(TAG, "ContentResolver returned null input stream for URI: " + uri);
+                        }
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error opening input stream for content URI: " + uri, e);
+                    }
                 } else if ("file".equals(scheme) || scheme == null) {
                     String path = uri.getPath();
                     if (path != null) {
@@ -1608,7 +1639,11 @@ public class ApiClient {
                         } catch (java.io.FileNotFoundException e) {
                             Log.e(TAG, "File not found: " + path, e);
                         }
+                    } else {
+                        Log.e(TAG, "Null path for file URI: " + uri);
                     }
+                } else {
+                    Log.e(TAG, "Unsupported URI scheme: " + scheme);
                 }
                 
                 if (inputStream == null) {

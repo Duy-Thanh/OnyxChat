@@ -106,14 +106,19 @@ public class FileUtils {
             if (isGooglePhotosUri(uri)) {
                 return uri.getLastPathSegment();
             }
-            // Try to get the data column
-            String path = getDataColumn(context, uri, null, null);
-            if (path != null) {
-                return path;
-            } else {
-                // If data column fails, copy the file to cache
-                return copyFileToCache(context, uri);
+            
+            try {
+                // Try to get the data column
+                String path = getDataColumn(context, uri, null, null);
+                if (path != null) {
+                    return path;
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Error getting path from content URI", e);
             }
+            
+            // If data column fails, copy the file to cache
+            return copyFileToCache(context, uri);
         }
         // File
         else if ("file".equalsIgnoreCase(uri.getScheme())) {
@@ -283,10 +288,18 @@ public class FileUtils {
         final String column = "_data";
         final String[] projection = {column};
 
-        try (Cursor cursor = context.getContentResolver().query(uri, projection, selection, selectionArgs, null)) {
-            if (cursor != null && cursor.moveToFirst()) {
-                final int columnIndex = cursor.getColumnIndexOrThrow(column);
-                return cursor.getString(columnIndex);
+        try {
+            // Check for null URI to prevent NullPointerException
+            if (uri == null) {
+                Log.e(TAG, "Cannot query null URI");
+                return null;
+            }
+            
+            try (Cursor cursor = context.getContentResolver().query(uri, projection, selection, selectionArgs, null)) {
+                if (cursor != null && cursor.moveToFirst()) {
+                    final int columnIndex = cursor.getColumnIndexOrThrow(column);
+                    return cursor.getString(columnIndex);
+                }
             }
         } catch (Exception e) {
             Log.e(TAG, "Error getting data column", e);
