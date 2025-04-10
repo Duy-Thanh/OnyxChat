@@ -14,10 +14,11 @@ import org.apache.poi.hslf.usermodel.HSLFSlideShow;
 import com.itextpdf.text.Document;
 import com.itextpdf.text.Paragraph;
 import com.itextpdf.text.pdf.PdfWriter;
-import org.apache.pdfbox.pdmodel.PDDocument;
-import org.apache.pdfbox.pdmodel.PDPage;
-import org.apache.pdfbox.pdmodel.PDPageContentStream;
-import org.apache.pdfbox.pdmodel.font.PDType1Font;
+import com.tom_roush.pdfbox.pdmodel.PDDocument;
+import com.tom_roush.pdfbox.pdmodel.PDPage;
+import com.tom_roush.pdfbox.pdmodel.PDPageContentStream;
+import com.tom_roush.pdfbox.pdmodel.font.PDType1Font;
+import com.tom_roush.pdfbox.android.PDFBoxResourceLoader;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -43,6 +44,9 @@ public class DocumentConverter {
      */
     public static File convertToPdf(Context context, Uri uri, String extension) {
         try {
+            // Initialize PDFBox resources for Android
+            PDFBoxResourceLoader.init(context);
+            
             // Create a temporary file for the PDF output
             File outputDir = context.getCacheDir();
             File outputFile = new File(outputDir, UUID.randomUUID().toString() + ".pdf");
@@ -174,6 +178,14 @@ public class DocumentConverter {
         document.addCreationDate();
         document.addTitle("Converted Document");
         
+        // Set font with encoding to handle special characters
+        com.itextpdf.text.Font font = new com.itextpdf.text.Font(
+            com.itextpdf.text.FontFactory.getFont(
+                com.itextpdf.text.FontFactory.HELVETICA, 
+                "UTF-8", 
+                true, 
+                12));
+        
         // Split text into paragraphs and add them with proper formatting
         String[] paragraphs = text.split("\n\n");
         for (String paragraph : paragraphs) {
@@ -187,11 +199,11 @@ public class DocumentConverter {
                 String tableContent = paragraph.substring(
                         paragraph.indexOf("[TABLE]") + 7, 
                         paragraph.indexOf("[/TABLE]"));
-                document.add(new Paragraph("Table Content:"));
-                document.add(new Paragraph(tableContent));
+                document.add(new Paragraph("Table Content:", font));
+                document.add(new Paragraph(tableContent, font));
             } else {
                 // Regular paragraph
-                Paragraph p = new Paragraph(paragraph.trim());
+                Paragraph p = new Paragraph(paragraph.trim(), font);
                 p.setAlignment(com.itextpdf.text.Element.ALIGN_LEFT);
                 p.setSpacingAfter(10);
                 document.add(p);
@@ -220,20 +232,43 @@ public class DocumentConverter {
      * @return True if creation was successful, false otherwise
      */
     private static boolean createSimplePdf(File outputFile, String message) throws Exception {
-        PDDocument document = new PDDocument();
-        PDPage page = new PDPage();
-        document.addPage(page);
+        // Use iText instead of PDFBox for more reliable text rendering
+        Document document = new Document();
+        PdfWriter writer = PdfWriter.getInstance(document, new FileOutputStream(outputFile));
+        document.open();
         
-        PDPageContentStream contentStream = new PDPageContentStream(document, page);
-        contentStream.beginText();
-        contentStream.setFont(PDType1Font.HELVETICA_BOLD, 12);
-        contentStream.newLineAtOffset(100, 700);
-        contentStream.showText(message);
-        contentStream.endText();
-        contentStream.close();
+        // Add metadata
+        document.addCreationDate();
+        document.addTitle("Document Preview");
         
-        document.save(outputFile);
+        // Set font with encoding to handle special characters
+        com.itextpdf.text.Font titleFont = new com.itextpdf.text.Font(
+            com.itextpdf.text.FontFactory.getFont(
+                com.itextpdf.text.FontFactory.HELVETICA_BOLD, 
+                "UTF-8", 
+                true, 
+                16));
+                
+        com.itextpdf.text.Font contentFont = new com.itextpdf.text.Font(
+            com.itextpdf.text.FontFactory.getFont(
+                com.itextpdf.text.FontFactory.HELVETICA, 
+                "UTF-8", 
+                true, 
+                12));
+        
+        // Add title
+        Paragraph title = new Paragraph("Document Preview", titleFont);
+        title.setAlignment(com.itextpdf.text.Element.ALIGN_CENTER);
+        title.setSpacingAfter(20);
+        document.add(title);
+        
+        // Add message
+        Paragraph content = new Paragraph(message, contentFont);
+        content.setAlignment(com.itextpdf.text.Element.ALIGN_LEFT);
+        document.add(content);
+        
         document.close();
+        writer.close();
         return true;
     }
 }

@@ -176,7 +176,7 @@
             android:exported="false"
             android:parentActivityName=".ui.chat.ChatActivity"
             android:label="Document Viewer"
-            android:theme="@style/Theme.OnyxChat.Translucent" />
+            android:theme="@style/Theme.OnyxChat.DocumentViewer" />
         
     </application>
 

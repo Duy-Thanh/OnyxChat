@@ -120,6 +120,15 @@ dependencies {
     implementation "org.bouncycastle:bcprov-jdk18on:1.77"
     implementation "org.bouncycastle:bcpkix-jdk18on:1.77"
     
+    // Exclude conflicting BouncyCastle versions from other dependencies
+    configurations.all {
+        resolutionStrategy {
+            // Force this version for all dependencies
+            force "org.bouncycastle:bcprov-jdk18on:1.77"
+            force "org.bouncycastle:bcpkix-jdk18on:1.77"
+        }
+    }
+    
     // For Shamir's Secret Sharing
     implementation "com.codahale:shamir:0.7.0"
     
@@ -174,7 +183,9 @@ dependencies {
     
     // PDF conversion
     implementation 'com.itextpdf:itextpdf:5.5.13.3'
-    implementation 'org.apache.pdfbox:pdfbox:2.0.27'
+    implementation('com.tom-roush:pdfbox-android:2.0.27.0') {
+        exclude group: 'org.bouncycastle'
+    }
     
     // For handling various document formats
     implementation 'commons-io:commons-io:2.11.0'
