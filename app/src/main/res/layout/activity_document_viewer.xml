@@ -72,6 +72,40 @@
             android:textSize="16sp"
             android:visibility="gone"
             tools:text="Error loading document" />
+            
+        <LinearLayout
+            android:id="@+id/thumbnail_container"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:visibility="gone">
+            
+            <ImageView
+                android:id="@+id/document_thumbnail"
+                android:layout_width="300dp"
+                android:layout_height="400dp"
+                android:layout_gravity="center"
+                android:background="@android:color/white"
+                android:contentDescription="Document thumbnail"
+                android:scaleType="fitCenter" />
+                
+            <TextView
+                android:id="@+id/thumbnail_caption"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                tools:text="Document Name" />
+                
+            <Button
+                android:id="@+id/open_document_button"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="Open Document" />
+        </LinearLayout>
 
         <ProgressBar
             android:id="@+id/progress_bar"

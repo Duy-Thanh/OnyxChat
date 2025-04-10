@@ -7,10 +7,13 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
+import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
+import android.widget.Button;
+import android.widget.ImageView;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -39,6 +42,7 @@ import com.rajat.pdfviewer.PdfViewerActivity;
 import com.nekkochan.onyxchat.R;
 import com.nekkochan.onyxchat.ui.viewmodel.DocumentViewModel;
 import com.nekkochan.onyxchat.util.DocumentConverter;
+import com.nekkochan.onyxchat.util.DocumentThumbnailGenerator;
 import com.nekkochan.onyxchat.util.FileUtils;
 
 import java.io.File;
@@ -65,6 +69,8 @@ public class DocumentViewerActivity extends AppCompatActivity {
     private Uri fileUri;
     private String fileName;
     private String mimeType;
+    private String fileExtension;
+    private ImageView thumbnailView;
 
     /**
      * Create an intent to start the DocumentViewerActivity
@@ -131,6 +137,12 @@ public class DocumentViewerActivity extends AppCompatActivity {
         pageNumber = findViewById(R.id.page_number);
         errorText = findViewById(R.id.error_text);
         progressBar = findViewById(R.id.progress_bar);
+        thumbnailView = findViewById(R.id.document_thumbnail);
+        
+        // Set up thumbnail container
+        View thumbnailContainer = findViewById(R.id.thumbnail_container);
+        TextView thumbnailCaption = findViewById(R.id.thumbnail_caption);
+        Button openDocumentButton = findViewById(R.id.open_document_button);
 
         // Get intent data
         Intent intent = getIntent();
@@ -139,9 +151,26 @@ public class DocumentViewerActivity extends AppCompatActivity {
             fileName = intent.getStringExtra(EXTRA_FILE_NAME);
             mimeType = intent.getStringExtra(EXTRA_MIME_TYPE);
 
+            // Extract file extension from fileName
+            if (fileName != null && fileName.contains(".")) {
+                fileExtension = fileName.substring(fileName.lastIndexOf(".") + 1).toLowerCase();
+            }
+
             if (fileName != null) {
                 setTitle(fileName);
+                // Set caption text for thumbnail
+                thumbnailCaption.setText(fileName);
             }
+            
+            // Set up open document button
+            openDocumentButton.setOnClickListener(v -> {
+                // Hide thumbnail container and show progress
+                thumbnailContainer.setVisibility(View.GONE);
+                progressBar.setVisibility(View.VISIBLE);
+                
+                // Load the document
+                loadDocument();
+            });
         }
 
         // Initialize executor service for background tasks
@@ -150,8 +179,12 @@ public class DocumentViewerActivity extends AppCompatActivity {
         // Set up observers for ViewModel
         setupObservers();
 
-        // Load the document
-        loadDocument();
+        // Generate thumbnail instead of loading document directly
+        if (fileUri != null) {
+            generateDocumentThumbnail();
+        } else {
+            showError("Invalid document URI");
+        }
     }
 
     @Override
@@ -163,12 +196,84 @@ public class DocumentViewerActivity extends AppCompatActivity {
     }
 
     @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        getMenuInflater().inflate(R.menu.document_viewer_menu, menu);
+        return true;
+    }
+    
+    @Override
     public boolean onOptionsItemSelected(@NonNull MenuItem item) {
-        if (item.getItemId() == android.R.id.home) {
+        int itemId = item.getItemId();
+        if (itemId == android.R.id.home) {
             onBackPressed();
+            return true;
+        } else if (itemId == R.id.action_share) {
+            shareDocument();
+            return true;
+        } else if (itemId == R.id.action_open_with) {
+            openDocumentWithExternalApp();
             return true;
         }
         return super.onOptionsItemSelected(item);
+    }
+    
+    /**
+     * Share the current document with other apps
+     */
+    private void shareDocument() {
+        if (fileUri == null) {
+            Toast.makeText(this, "No document to share", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        
+        try {
+            Intent shareIntent = new Intent(Intent.ACTION_SEND);
+            shareIntent.setType(mimeType);
+            
+            // Create a content URI that can be shared with other apps
+            Uri contentUri = FileProvider.getUriForFile(
+                    this,
+                    getApplicationContext().getPackageName() + ".provider",
+                    new File(fileUri.getPath()));
+            
+            shareIntent.putExtra(Intent.EXTRA_STREAM, contentUri);
+            shareIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            
+            // Add document name as subject if available
+            if (fileName != null && !fileName.isEmpty()) {
+                shareIntent.putExtra(Intent.EXTRA_SUBJECT, fileName);
+            }
+            
+            startActivity(Intent.createChooser(shareIntent, "Share Document"));
+        } catch (Exception e) {
+            Log.e(TAG, "Error sharing document", e);
+            Toast.makeText(this, "Error sharing document: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+        }
+    }
+    
+    /**
+     * Open the document with an external app
+     */
+    private void openDocumentWithExternalApp() {
+        if (fileUri == null) {
+            Toast.makeText(this, "No document to open", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        
+        try {
+            Intent openIntent = new Intent(Intent.ACTION_VIEW);
+            openIntent.setDataAndType(fileUri, mimeType);
+            openIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            
+            if (openIntent.resolveActivity(getPackageManager()) != null) {
+                startActivity(Intent.createChooser(openIntent, "Open With"));
+            } else {
+                Toast.makeText(this, "No app found to open this document type", Toast.LENGTH_SHORT).show();
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error opening document with external app", e);
+            Toast.makeText(this, "Error opening document: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+        }
     }
 
     private void setupObservers() {
@@ -538,5 +643,41 @@ public class DocumentViewerActivity extends AppCompatActivity {
             errorText.setText(message);
             errorText.setVisibility(View.VISIBLE);
         });
+    }
+    
+    /**
+     * Generate a thumbnail for the document and show it in the thumbnail view
+     */
+    private void generateDocumentThumbnail() {
+        if (fileUri == null) {
+            showError("Invalid document URI");
+            return;
+        }
+        
+        // Show progress while generating thumbnail
+        progressBar.setVisibility(View.VISIBLE);
+        
+        // Generate thumbnail using DocumentThumbnailGenerator
+        DocumentThumbnailGenerator.generateThumbnail(
+                this,
+                fileUri,
+                mimeType,
+                fileExtension,
+                thumbnail -> {
+                    // Update UI on main thread
+                    runOnUiThread(() -> {
+                        // Hide progress
+                        progressBar.setVisibility(View.GONE);
+                        
+                        if (thumbnail != null) {
+                            // Show thumbnail
+                            thumbnailView.setImageBitmap(thumbnail);
+                            findViewById(R.id.thumbnail_container).setVisibility(View.VISIBLE);
+                        } else {
+                            // If thumbnail generation fails, load document directly
+                            loadDocument();
+                        }
+                    });
+                });
     }
 }
