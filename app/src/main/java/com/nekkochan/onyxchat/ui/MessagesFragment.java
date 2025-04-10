@@ -27,7 +27,7 @@ import com.nekkochan.onyxchat.ai.ContentModerationManager;
 import com.nekkochan.onyxchat.ai.SmartReplyManager;
 import com.nekkochan.onyxchat.model.Message;
 import com.nekkochan.onyxchat.network.ChatService;
-import com.nekkochan.onyxchat.ui.viewmodel.MainViewModel;
+import com.nekkochan.onyxchat.ui.viewmodel.ChatViewModel;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -39,7 +39,7 @@ import java.util.Map;
 public class MessagesFragment extends Fragment {
     
     private static final String TAG = "MessagesFragment";
-    private MainViewModel viewModel;
+    private ChatViewModel viewModel;
     private RecyclerView recyclerView;
     private TextView emptyView;
     private EditText messageInput;
@@ -55,7 +55,7 @@ public class MessagesFragment extends Fragment {
     @Override
     public void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        viewModel = new ViewModelProvider(requireActivity()).get(MainViewModel.class);
+        viewModel = new ViewModelProvider(requireActivity()).get(ChatViewModel.class);
         
         // Initialize AI feature manager
         aiFeatureManager = AIFeatureManager.getInstance(requireContext());
@@ -64,7 +64,21 @@ public class MessagesFragment extends Fragment {
     @Nullable
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
-        return inflater.inflate(R.layout.fragment_messages, container, false);
+        // Initialize view model
+        viewModel = new ViewModelProvider(requireActivity()).get(ChatViewModel.class);
+        
+        // Initialize AI feature manager
+        aiFeatureManager = AIFeatureManager.getInstance(requireContext());
+        
+        View view = inflater.inflate(R.layout.fragment_messages, container, false);
+        
+        // Force smart replies container to be visible
+        View smartRepliesContainer = view.findViewById(R.id.smartRepliesContainer);
+        if (smartRepliesContainer != null) {
+            smartRepliesContainer.setVisibility(View.VISIBLE);
+        }
+        
+        return view;
     }
     
     @Override
@@ -85,7 +99,7 @@ public class MessagesFragment extends Fragment {
         if (aiFeatureManager.isSmartRepliesEnabled() && smartRepliesContainer != null) {
             smartRepliesContainer.setVisibility(View.VISIBLE);
             // Generate initial smart replies
-            generateSmartReplies();
+            showDefaultSmartReplies();
         }
         
         // Setup recycler view
@@ -98,7 +112,7 @@ public class MessagesFragment extends Fragment {
         recyclerView.setAdapter(adapter);
         
         // Initialize ViewModel
-        viewModel = new ViewModelProvider(requireActivity()).get(MainViewModel.class);
+        viewModel = new ViewModelProvider(requireActivity()).get(ChatViewModel.class);
         
         // Update connection status immediately
         updateConnectionStatus(viewModel.isChatConnected().getValue() == Boolean.TRUE);
@@ -138,7 +152,7 @@ public class MessagesFragment extends Fragment {
         
         // Always generate smart replies when resuming if enabled
         if (aiFeatureManager.isSmartRepliesEnabled()) {
-            generateSmartReplies();
+            showDefaultSmartReplies();
         }
     }
     
@@ -162,7 +176,7 @@ public class MessagesFragment extends Fragment {
     /**
      * Update the messages list
      */
-    private void updateMessages(List<MainViewModel.ChatMessage> chatMessages) {
+    private void updateMessages(List<ChatViewModel.ChatMessage> chatMessages) {
         if (chatMessages == null) {
             updateEmptyViewVisibility(true);
             return;
@@ -174,9 +188,9 @@ public class MessagesFragment extends Fragment {
             recyclerView.setVisibility(View.VISIBLE);
             
             // Process messages with AI features
-            List<MainViewModel.ChatMessage> processedMessages = new ArrayList<>();
+            List<ChatViewModel.ChatMessage> processedMessages = new ArrayList<>();
             
-            for (MainViewModel.ChatMessage chatMessage : chatMessages) {
+            for (ChatViewModel.ChatMessage chatMessage : chatMessages) {
                 // Convert to Message model for AI processing
                 Message message = new Message();
                 message.setContent(chatMessage.getContent());
@@ -199,7 +213,7 @@ public class MessagesFragment extends Fragment {
             
             // Generate smart replies after processing messages
             if (aiFeatureManager.isSmartRepliesEnabled()) {
-                generateSmartReplies();
+                showDefaultSmartReplies();
             }
         } else {
             recyclerView.setVisibility(View.GONE);
@@ -377,6 +391,50 @@ public class MessagesFragment extends Fragment {
         });
     }
     
+    private void showDefaultSmartReplies() {
+        if (smartRepliesChipGroup == null) return;
+        
+        View smartRepliesContainer = getView().findViewById(R.id.smartRepliesContainer);
+        
+        smartRepliesChipGroup.removeAllViews();
+        
+        // Always show smart replies container
+        if (smartRepliesContainer != null) {
+            smartRepliesContainer.setVisibility(View.VISIBLE);
+        }
+        
+        List<String> replySuggestions = new ArrayList<>();
+        replySuggestions.add("Hello!");
+        replySuggestions.add("How are you?");
+        replySuggestions.add("Nice to chat with you!");
+        replySuggestions.add("What's up?");
+        replySuggestions.add("Tell me more");
+        
+        // Add chips for each suggestion
+        for (String suggestion : replySuggestions) {
+            Chip chip = new Chip(requireContext());
+            chip.setText(suggestion);
+            chip.setClickable(true);
+            chip.setCheckable(false);
+            chip.setChipBackgroundColorResource(R.color.colorAccent);
+            chip.setTextColor(getResources().getColor(android.R.color.white, null));
+            
+            // Set up click listener to use the suggestion
+            chip.setOnClickListener(v -> {
+                messageInput.setText(suggestion);
+                sendMessage();
+            });
+            
+            smartRepliesChipGroup.addView(chip);
+        }
+        
+        // Force layout update
+        smartRepliesChipGroup.requestLayout();
+        if (smartRepliesContainer != null) {
+            smartRepliesContainer.requestLayout();
+        }
+    }
+    
     /**
      * Update online users display
      */
@@ -413,7 +471,7 @@ public class MessagesFragment extends Fragment {
      * Adapter for chat messages
      */
     private class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.ChatMessageViewHolder> {
-        private List<MainViewModel.ChatMessage> messages = new ArrayList<>();
+        private List<ChatViewModel.ChatMessage> messages = new ArrayList<>();
         
         @NonNull
         @Override
@@ -425,7 +483,7 @@ public class MessagesFragment extends Fragment {
         
         @Override
         public void onBindViewHolder(@NonNull ChatMessageViewHolder holder, int position) {
-            MainViewModel.ChatMessage chatMessage = messages.get(position);
+            ChatViewModel.ChatMessage chatMessage = messages.get(position);
             
             // If translation is enabled and this is an incoming message, process it
             if (aiFeatureManager.isTranslationEnabled() && 
@@ -461,7 +519,7 @@ public class MessagesFragment extends Fragment {
             return messages.size();
         }
         
-        public void submitList(List<MainViewModel.ChatMessage> newMessages) {
+        public void submitList(List<ChatViewModel.ChatMessage> newMessages) {
             this.messages = new ArrayList<>(newMessages);
             notifyDataSetChanged();
         }
@@ -488,7 +546,7 @@ public class MessagesFragment extends Fragment {
                 }
             }
             
-            public void bind(MainViewModel.ChatMessage message, String translatedText) {
+            public void bind(ChatViewModel.ChatMessage message, String translatedText) {
                 // Store original and translated content
                 originalContent = message.getContent();
                 translatedContent = translatedText;
