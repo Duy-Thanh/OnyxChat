@@ -2,6 +2,8 @@ package com.nekkochan.onyxchat.ui;
 
 import android.content.Intent;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -27,7 +29,7 @@ import com.nekkochan.onyxchat.ai.ContentModerationManager;
 import com.nekkochan.onyxchat.ai.SmartReplyManager;
 import com.nekkochan.onyxchat.model.Message;
 import com.nekkochan.onyxchat.network.ChatService;
-import com.nekkochan.onyxchat.ui.viewmodel.ChatViewModel;
+import com.nekkochan.onyxchat.ui.viewmodel.MainViewModel;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -39,7 +41,7 @@ import java.util.Map;
 public class MessagesFragment extends Fragment {
     
     private static final String TAG = "MessagesFragment";
-    private ChatViewModel viewModel;
+    private MainViewModel viewModel;
     private RecyclerView recyclerView;
     private TextView emptyView;
     private EditText messageInput;
@@ -55,7 +57,7 @@ public class MessagesFragment extends Fragment {
     @Override
     public void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        viewModel = new ViewModelProvider(requireActivity()).get(ChatViewModel.class);
+        viewModel = new ViewModelProvider(requireActivity()).get(MainViewModel.class);
         
         // Initialize AI feature manager
         aiFeatureManager = AIFeatureManager.getInstance(requireContext());
@@ -65,7 +67,7 @@ public class MessagesFragment extends Fragment {
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
         // Initialize view model
-        viewModel = new ViewModelProvider(requireActivity()).get(ChatViewModel.class);
+        viewModel = new ViewModelProvider(requireActivity()).get(MainViewModel.class);
         
         // Initialize AI feature manager
         aiFeatureManager = AIFeatureManager.getInstance(requireContext());
@@ -91,15 +93,19 @@ public class MessagesFragment extends Fragment {
         messageInput = view.findViewById(R.id.messageInput);
         sendButton = view.findViewById(R.id.sendButton);
         statusTextView = view.findViewById(R.id.chatStatusText);
+        
+        // Find smart replies components directly
         smartRepliesChipGroup = view.findViewById(R.id.smartRepliesChipGroup);
-        View smartRepliesContainer = view.findViewById(R.id.smartRepliesContainer);
         View aiSettingsButton = view.findViewById(R.id.aiSettingsButton);
         
-        // Always make smart replies container visible if enabled
-        if (aiFeatureManager.isSmartRepliesEnabled() && smartRepliesContainer != null) {
-            smartRepliesContainer.setVisibility(View.VISIBLE);
-            // Generate initial smart replies
-            showDefaultSmartReplies();
+        // Always force smart replies to be visible regardless of AI settings
+        forceShowSmartReplies();
+        
+        // Ensure the smart replies card is visible
+        View smartRepliesCard = view.findViewById(R.id.smartRepliesCard);
+        if (smartRepliesCard != null) {
+            smartRepliesCard.setVisibility(View.VISIBLE);
+            smartRepliesCard.bringToFront();
         }
         
         // Setup recycler view
@@ -112,7 +118,7 @@ public class MessagesFragment extends Fragment {
         recyclerView.setAdapter(adapter);
         
         // Initialize ViewModel
-        viewModel = new ViewModelProvider(requireActivity()).get(ChatViewModel.class);
+        viewModel = new ViewModelProvider(requireActivity()).get(MainViewModel.class);
         
         // Update connection status immediately
         updateConnectionStatus(viewModel.isChatConnected().getValue() == Boolean.TRUE);
@@ -150,10 +156,8 @@ public class MessagesFragment extends Fragment {
             viewModel.connectToChat();
         }
         
-        // Always generate smart replies when resuming if enabled
-        if (aiFeatureManager.isSmartRepliesEnabled()) {
-            showDefaultSmartReplies();
-        }
+        // Force show smart replies with a delay to ensure they're visible
+        new Handler(Looper.getMainLooper()).postDelayed(this::forceShowSmartReplies, 500);
     }
     
     /**
@@ -176,47 +180,56 @@ public class MessagesFragment extends Fragment {
     /**
      * Update the messages list
      */
-    private void updateMessages(List<ChatViewModel.ChatMessage> chatMessages) {
+    private void updateMessages(List<MainViewModel.ChatMessage> chatMessages) {
         if (chatMessages == null) {
             updateEmptyViewVisibility(true);
             return;
         }
         
-        updateEmptyViewVisibility(chatMessages.isEmpty());
-        
         if (!chatMessages.isEmpty()) {
+            updateEmptyViewVisibility(false);
             recyclerView.setVisibility(View.VISIBLE);
             
             // Process messages with AI features
-            List<ChatViewModel.ChatMessage> processedMessages = new ArrayList<>();
+            List<MainViewModel.ChatMessage> processedMessages = new ArrayList<>();
             
-            for (ChatViewModel.ChatMessage chatMessage : chatMessages) {
+            for (MainViewModel.ChatMessage chatMessage : chatMessages) {
                 // Convert to Message model for AI processing
                 Message message = new Message();
                 message.setContent(chatMessage.getContent());
                 message.setSenderAddress(chatMessage.getSenderId());
                 message.setTimestamp(chatMessage.getTimestamp().getTime() / 1000); // Fixing the timestamp conversion
                 
-                // Add to smart reply context
+                // Add message to smart reply context
                 if (aiFeatureManager.isSmartRepliesEnabled()) {
                     aiFeatureManager.setCurrentUserId(viewModel.getUserAddress().getValue());
-                    aiFeatureManager.processIncomingMessage(message, (originalMsg, translatedMsg, moderationResult) -> {
-                        // Nothing to do here for incoming messages, just adding to context
-                    });
+                    aiFeatureManager.addMessageToSmartReplyContext(message);
                 }
                 
+                // Add to processed list
                 processedMessages.add(chatMessage);
             }
             
+            // Update adapter with processed messages
             adapter.submitList(processedMessages);
+            
+            // Scroll to bottom
             recyclerView.scrollToPosition(processedMessages.size() - 1);
             
-            // Generate smart replies after processing messages
-            if (aiFeatureManager.isSmartRepliesEnabled()) {
-                showDefaultSmartReplies();
-            }
+            // Always force smart replies to be visible regardless of AI settings
+            forceShowSmartReplies();
+            
+            // Force a layout pass to ensure the smart replies are visible
+            getView().post(() -> {
+                View smartRepliesCard = getView().findViewById(R.id.smartRepliesCard);
+                if (smartRepliesCard != null) {
+                    smartRepliesCard.setVisibility(View.VISIBLE);
+                    smartRepliesCard.bringToFront();
+                }
+            });
         } else {
             recyclerView.setVisibility(View.GONE);
+            emptyView.setVisibility(View.VISIBLE);
         }
     }
     
@@ -338,101 +351,45 @@ public class MessagesFragment extends Fragment {
      * Generate smart reply suggestions
      */
     private void generateSmartReplies() {
-        if (!aiFeatureManager.isSmartRepliesEnabled()) {
-            if (smartRepliesChipGroup != null && smartRepliesChipGroup.getParent() != null) {
-                ((View) smartRepliesChipGroup.getParent()).setVisibility(View.GONE);
-            }
-            return;
-        }
-        
-        aiFeatureManager.generateSmartReplies(suggestions -> {
-            if (getActivity() == null || !isAdded()) return;
-            
-            requireActivity().runOnUiThread(() -> {
-                if (smartRepliesChipGroup == null) return;
-                
-                View smartRepliesContainer = smartRepliesChipGroup.getParent() instanceof View ? 
-                        (View) smartRepliesChipGroup.getParent() : null;
-                
-                smartRepliesChipGroup.removeAllViews();
-                
-                // Always show smart replies container
-                if (smartRepliesContainer != null) {
-                    smartRepliesContainer.setVisibility(View.VISIBLE);
-                }
-                
-                // If no suggestions from AI, use default suggestions
-                List<String> replySuggestions = suggestions;
-                if (replySuggestions == null || replySuggestions.isEmpty()) {
-                    replySuggestions = new ArrayList<>();
-                    replySuggestions.add("Hello!");
-                    replySuggestions.add("How are you?");
-                    replySuggestions.add("Nice to chat with you!");
-                    replySuggestions.add("What's up?");
-                    replySuggestions.add("Tell me more");
-                }
-                
-                // Add chips for each suggestion
-                for (String suggestion : replySuggestions) {
-                    Chip chip = new Chip(requireContext());
-                    chip.setText(suggestion);
-                    chip.setClickable(true);
-                    chip.setCheckable(false);
-                    
-                    // Set up click listener to use the suggestion
-                    chip.setOnClickListener(v -> {
-                        messageInput.setText(suggestion);
-                        sendMessage();
-                    });
-                    
-                    smartRepliesChipGroup.addView(chip);
-                }
-            });
-        });
-    }
-    
-    private void showDefaultSmartReplies() {
         if (smartRepliesChipGroup == null) return;
         
-        View smartRepliesContainer = getView().findViewById(R.id.smartRepliesContainer);
-        
-        smartRepliesChipGroup.removeAllViews();
-        
         // Always show smart replies container
+        View smartRepliesContainer = getView().findViewById(R.id.smartRepliesContainer);
         if (smartRepliesContainer != null) {
             smartRepliesContainer.setVisibility(View.VISIBLE);
         }
         
-        List<String> replySuggestions = new ArrayList<>();
-        replySuggestions.add("Hello!");
-        replySuggestions.add("How are you?");
-        replySuggestions.add("Nice to chat with you!");
-        replySuggestions.add("What's up?");
-        replySuggestions.add("Tell me more");
+        smartRepliesChipGroup.removeAllViews();
         
-        // Add chips for each suggestion
-        for (String suggestion : replySuggestions) {
-            Chip chip = new Chip(requireContext());
-            chip.setText(suggestion);
-            chip.setClickable(true);
-            chip.setCheckable(false);
-            chip.setChipBackgroundColorResource(R.color.colorAccent);
-            chip.setTextColor(getResources().getColor(android.R.color.white, null));
+        aiFeatureManager.generateSmartReplies(suggestions -> {
+            if (getActivity() == null || !isAdded()) return;
             
-            // Set up click listener to use the suggestion
-            chip.setOnClickListener(v -> {
-                messageInput.setText(suggestion);
-                sendMessage();
-            });
+            List<String> replySuggestions = suggestions;
+            if (replySuggestions == null || replySuggestions.isEmpty()) {
+                replySuggestions = new ArrayList<>();
+                replySuggestions.add("Hello!");
+                replySuggestions.add("How are you?");
+                replySuggestions.add("Nice to chat with you!");
+                replySuggestions.add("What's up?");
+                replySuggestions.add("Tell me more");
+            }
             
-            smartRepliesChipGroup.addView(chip);
-        }
-        
-        // Force layout update
-        smartRepliesChipGroup.requestLayout();
-        if (smartRepliesContainer != null) {
-            smartRepliesContainer.requestLayout();
-        }
+            // Add chips for each suggestion
+            for (String suggestion : replySuggestions) {
+                Chip chip = new Chip(requireContext());
+                chip.setText(suggestion);
+                chip.setClickable(true);
+                chip.setCheckable(false);
+                
+                // Set up click listener to use the suggestion
+                chip.setOnClickListener(v -> {
+                    messageInput.setText(suggestion);
+                    sendMessage();
+                });
+                
+                smartRepliesChipGroup.addView(chip);
+            }
+        });
     }
     
     /**
@@ -471,7 +428,7 @@ public class MessagesFragment extends Fragment {
      * Adapter for chat messages
      */
     private class ChatMessageAdapter extends RecyclerView.Adapter<ChatMessageAdapter.ChatMessageViewHolder> {
-        private List<ChatViewModel.ChatMessage> messages = new ArrayList<>();
+        private List<MainViewModel.ChatMessage> messages = new ArrayList<>();
         
         @NonNull
         @Override
@@ -483,7 +440,7 @@ public class MessagesFragment extends Fragment {
         
         @Override
         public void onBindViewHolder(@NonNull ChatMessageViewHolder holder, int position) {
-            ChatViewModel.ChatMessage chatMessage = messages.get(position);
+            MainViewModel.ChatMessage chatMessage = messages.get(position);
             
             // If translation is enabled and this is an incoming message, process it
             if (aiFeatureManager.isTranslationEnabled() && 
@@ -519,7 +476,7 @@ public class MessagesFragment extends Fragment {
             return messages.size();
         }
         
-        public void submitList(List<ChatViewModel.ChatMessage> newMessages) {
+        public void submitList(List<MainViewModel.ChatMessage> newMessages) {
             this.messages = new ArrayList<>(newMessages);
             notifyDataSetChanged();
         }
@@ -546,7 +503,7 @@ public class MessagesFragment extends Fragment {
                 }
             }
             
-            public void bind(ChatViewModel.ChatMessage message, String translatedText) {
+            public void bind(MainViewModel.ChatMessage message, String translatedText) {
                 // Store original and translated content
                 originalContent = message.getContent();
                 translatedContent = translatedText;
@@ -607,6 +564,57 @@ public class MessagesFragment extends Fragment {
                     translationInfoText.setText(R.string.show_translation);
                 }
             }
+        }
+    }
+    
+    private void forceShowSmartReplies() {
+        if (getView() == null) return;
+        
+        // Find the smart replies scroll view
+        View smartRepliesScrollView = getView().findViewById(R.id.smartRepliesScrollView);
+        if (smartRepliesScrollView != null) {
+            smartRepliesScrollView.setVisibility(View.VISIBLE);
+        }
+        
+        if (smartRepliesChipGroup != null) {
+            smartRepliesChipGroup.removeAllViews();
+            
+            // Add default smart replies
+            List<String> replySuggestions = new ArrayList<>();
+            replySuggestions.add("Hello!");
+            replySuggestions.add("How are you?");
+            replySuggestions.add("Nice to chat with you!");
+            replySuggestions.add("What's up?");
+            replySuggestions.add("Tell me more");
+            
+            // Add chips for each suggestion
+            for (String suggestion : replySuggestions) {
+                Chip chip = new Chip(requireContext());
+                chip.setText(suggestion);
+                chip.setClickable(true);
+                chip.setCheckable(false);
+                
+                // Make chips more visually distinctive
+                chip.setChipBackgroundColorResource(android.R.color.white);
+                chip.setTextColor(getResources().getColor(R.color.colorPrimary, null));
+                chip.setChipStrokeWidth(2);
+                chip.setChipStrokeColorResource(R.color.colorAccent);
+                chip.setElevation(4);
+                
+                // Set up click listener to use the suggestion
+                chip.setOnClickListener(v -> {
+                    messageInput.setText(suggestion);
+                    sendMessage();
+                });
+                
+                smartRepliesChipGroup.addView(chip);
+            }
+            
+            // Force a layout pass to ensure visibility
+            smartRepliesChipGroup.post(() -> {
+                smartRepliesChipGroup.requestLayout();
+                smartRepliesChipGroup.invalidate();
+            });
         }
     }
 }
