@@ -54,58 +54,46 @@
         android:paddingTop="8dp"
         android:paddingBottom="8dp"
         android:visibility="gone"
-        app:layout_constraintBottom_toTopOf="@id/smartRepliesCard"
+        app:layout_constraintBottom_toTopOf="@id/quickRepliesContainer"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/chatStatusText" />
         
-    <!-- Smart Replies Bar - Fixed at bottom -->
-    <androidx.cardview.widget.CardView
-        android:id="@+id/smartRepliesCard"
+    <!-- Quick Replies Container - ALWAYS VISIBLE -->
+    <LinearLayout
+        android:id="@+id/quickRepliesContainer"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginHorizontal="8dp"
-        android:layout_marginBottom="4dp"
-        app:cardCornerRadius="16dp"
-        app:cardElevation="12dp"
-        app:cardBackgroundColor="#FF5722"
-        android:foreground="?attr/selectableItemBackground"
+        android:orientation="vertical"
+        android:background="#FF5722"
+        android:padding="8dp"
         app:layout_constraintBottom_toTopOf="@id/messageInputContainer"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent">
-
-        <LinearLayout
+        
+        <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:padding="8dp">
-
-            <TextView
-                android:layout_width="match_parent"
+            android:text="QUICK REPLIES"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:gravity="center"/>
+            
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:scrollbars="none">
+            
+            <com.google.android.material.chip.ChipGroup
+                android:id="@+id/smartRepliesChipGroup"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="QUICK REPLIES"
-                android:textColor="#FFFFFF"
-                android:textSize="14sp"
-                android:textStyle="bold"
-                android:gravity="center"
-                android:paddingBottom="4dp"/>
-                
-            <HorizontalScrollView
-                android:id="@+id/smartRepliesScrollView"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:scrollbars="none">
-                
-                <com.google.android.material.chip.ChipGroup
-                    android:id="@+id/smartRepliesChipGroup"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    app:singleLine="true"
-                    app:chipSpacingHorizontal="8dp" />
-            </HorizontalScrollView>
-        </LinearLayout>
-    </androidx.cardview.widget.CardView>
-
+                app:singleLine="true"
+                app:chipSpacingHorizontal="8dp" />
+        </HorizontalScrollView>
+    </LinearLayout>
+        
     <androidx.cardview.widget.CardView
         android:id="@+id/messageInputContainer"
         android:layout_width="0dp"
@@ -114,7 +102,6 @@
         android:layout_marginBottom="8dp"
         app:cardCornerRadius="24dp"
         app:cardElevation="4dp"
-        app:cardBackgroundColor="#1A237E"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent">
@@ -123,15 +110,17 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:background="@android:color/white"
-            android:padding="4dp"
-            android:layout_marginTop="4dp"
-            android:layout_marginBottom="4dp"
-            android:layout_marginHorizontal="4dp"
-            android:elevation="2dp"
-            android:clipToPadding="false"
-            android:clipChildren="false"
-            android:gravity="center_vertical">
+            android:padding="8dp">
+
+            <!-- Quick Replies Button -->
+            <ImageButton
+                android:id="@+id/quickRepliesButton"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Quick Replies"
+                android:src="@drawable/ic_ai"
+                android:tint="#FF5722" />
 
             <EditText
                 android:id="@+id/messageInput"
@@ -157,5 +146,58 @@
                 android:src="@drawable/ic_send" />
         </LinearLayout>
     </androidx.cardview.widget.CardView>
+    
+    <!-- Smart Replies Dialog -->
+    <androidx.cardview.widget.CardView
+        android:id="@+id/smartRepliesDialog"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="16dp"
+        android:layout_marginBottom="16dp"
+        android:visibility="gone"
+        app:cardCornerRadius="16dp"
+        app:cardElevation="8dp"
+        app:layout_constraintBottom_toTopOf="@id/messageInputContainer"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Quick Replies"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:gravity="center"
+                android:paddingBottom="8dp"/>
+
+            <com.google.android.material.chip.ChipGroup
+                android:id="@+id/smartRepliesChipGroupDialog"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:chipSpacingHorizontal="8dp"
+                app:chipSpacingVertical="8dp" />
+        </LinearLayout>
+    </androidx.cardview.widget.CardView>
+
+    <!-- Smart Replies Floating Button -->
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/smartRepliesButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="16dp"
+        android:contentDescription="Smart Replies"
+        android:src="@drawable/ic_ai"
+        app:backgroundTint="#FF5722"
+        app:fabSize="normal"
+        app:layout_constraintBottom_toTopOf="@id/messageInputContainer"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:tint="@android:color/white" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

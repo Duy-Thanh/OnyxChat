@@ -1,9 +1,11 @@
 package com.nekkochan.onyxchat.ui;
 
 import android.content.Intent;
+import android.graphics.Color;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.TypedValue;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -94,19 +96,39 @@ public class MessagesFragment extends Fragment {
         sendButton = view.findViewById(R.id.sendButton);
         statusTextView = view.findViewById(R.id.chatStatusText);
         
-        // Find smart replies components directly
+        // Find smart replies components
         smartRepliesChipGroup = view.findViewById(R.id.smartRepliesChipGroup);
-        View aiSettingsButton = view.findViewById(R.id.aiSettingsButton);
+        View smartRepliesButton = view.findViewById(R.id.smartRepliesButton);
+        View smartRepliesDialog = view.findViewById(R.id.smartRepliesDialog);
+        View quickRepliesButton = view.findViewById(R.id.quickRepliesButton);
+        
+        // Set up smart replies
+        forceShowSmartReplies();
+        
+        // Set up smart replies button click listener
+        smartRepliesButton.setOnClickListener(v -> {
+            // Toggle smart replies dialog visibility
+            if (smartRepliesDialog.getVisibility() == View.VISIBLE) {
+                smartRepliesDialog.setVisibility(View.GONE);
+            } else {
+                smartRepliesDialog.setVisibility(View.VISIBLE);
+                forceShowSmartReplies(); // Refresh the smart replies
+            }
+        });
+        
+        // Set up quick replies button click listener
+        quickRepliesButton.setOnClickListener(v -> {
+            // Toggle smart replies dialog visibility
+            if (smartRepliesDialog.getVisibility() == View.VISIBLE) {
+                smartRepliesDialog.setVisibility(View.GONE);
+            } else {
+                smartRepliesDialog.setVisibility(View.VISIBLE);
+                forceShowSmartReplies(); // Refresh the smart replies
+            }
+        });
         
         // Always force smart replies to be visible regardless of AI settings
         forceShowSmartReplies();
-        
-        // Ensure the smart replies card is visible
-        View smartRepliesCard = view.findViewById(R.id.smartRepliesCard);
-        if (smartRepliesCard != null) {
-            smartRepliesCard.setVisibility(View.VISIBLE);
-            smartRepliesCard.bringToFront();
-        }
         
         // Setup recycler view
         LinearLayoutManager layoutManager = new LinearLayoutManager(getContext());
@@ -127,6 +149,7 @@ public class MessagesFragment extends Fragment {
         sendButton.setOnClickListener(v -> sendMessage());
         
         // Set up AI settings button
+        View aiSettingsButton = view.findViewById(R.id.aiSettingsButton);
         aiSettingsButton.setOnClickListener(v -> {
             Intent intent = new Intent(requireContext(), AISettingsActivity.class);
             startActivity(intent);
@@ -218,15 +241,6 @@ public class MessagesFragment extends Fragment {
             
             // Always force smart replies to be visible regardless of AI settings
             forceShowSmartReplies();
-            
-            // Force a layout pass to ensure the smart replies are visible
-            getView().post(() -> {
-                View smartRepliesCard = getView().findViewById(R.id.smartRepliesCard);
-                if (smartRepliesCard != null) {
-                    smartRepliesCard.setVisibility(View.VISIBLE);
-                    smartRepliesCard.bringToFront();
-                }
-            });
         } else {
             recyclerView.setVisibility(View.GONE);
             emptyView.setVisibility(View.VISIBLE);
@@ -570,22 +584,16 @@ public class MessagesFragment extends Fragment {
     private void forceShowSmartReplies() {
         if (getView() == null) return;
         
-        // Find the smart replies scroll view
-        View smartRepliesScrollView = getView().findViewById(R.id.smartRepliesScrollView);
-        if (smartRepliesScrollView != null) {
-            smartRepliesScrollView.setVisibility(View.VISIBLE);
-        }
-        
         if (smartRepliesChipGroup != null) {
             smartRepliesChipGroup.removeAllViews();
             
             // Add default smart replies
             List<String> replySuggestions = new ArrayList<>();
-            replySuggestions.add("Hello!");
-            replySuggestions.add("How are you?");
-            replySuggestions.add("Nice to chat with you!");
-            replySuggestions.add("What's up?");
-            replySuggestions.add("Tell me more");
+            replySuggestions.add("👋 Hello!");
+            replySuggestions.add("😊 How are you?");
+            replySuggestions.add("👍 Thanks!");
+            replySuggestions.add("📎 Send file");
+            replySuggestions.add("📅 Meeting time?");
             
             // Add chips for each suggestion
             for (String suggestion : replySuggestions) {
@@ -595,11 +603,9 @@ public class MessagesFragment extends Fragment {
                 chip.setCheckable(false);
                 
                 // Make chips more visually distinctive
-                chip.setChipBackgroundColorResource(android.R.color.white);
-                chip.setTextColor(getResources().getColor(R.color.colorPrimary, null));
-                chip.setChipStrokeWidth(2);
-                chip.setChipStrokeColorResource(R.color.colorAccent);
-                chip.setElevation(4);
+                chip.setChipBackgroundColorResource(R.color.colorAccent);
+                chip.setTextColor(Color.WHITE);
+                chip.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
                 
                 // Set up click listener to use the suggestion
                 chip.setOnClickListener(v -> {
@@ -609,12 +615,6 @@ public class MessagesFragment extends Fragment {
                 
                 smartRepliesChipGroup.addView(chip);
             }
-            
-            // Force a layout pass to ensure visibility
-            smartRepliesChipGroup.post(() -> {
-                smartRepliesChipGroup.requestLayout();
-                smartRepliesChipGroup.invalidate();
-            });
         }
     }
 }
