@@ -96,10 +96,35 @@ public class DocumentConverter {
                 return convertWordDocToPdf(docText, outputFile);
                 
             case "docx":
-                // Convert DOCX using XWPFDocument
+                // Convert DOCX using XWPFDocument with improved extraction
                 XWPFDocument docx = new XWPFDocument(inputStream);
                 StringBuilder docxText = new StringBuilder();
-                docx.getParagraphs().forEach(paragraph -> docxText.append(paragraph.getText()).append("\n"));
+                
+                // Extract paragraphs with better formatting
+                docx.getParagraphs().forEach(paragraph -> {
+                    // Get paragraph text with style information
+                    String text = paragraph.getText();
+                    if (text != null && !text.trim().isEmpty()) {
+                        docxText.append(text).append("\n\n");
+                    }
+                });
+                
+                // Extract tables if present
+                docx.getTables().forEach(table -> {
+                    docxText.append("\n[TABLE]\n");
+                    for (int i = 0; i < table.getNumberOfRows(); i++) {
+                        for (int j = 0; j < table.getRow(i).getTableCells().size(); j++) {
+                            String cellText = table.getRow(i).getCell(j).getText();
+                            docxText.append(cellText).append(" | ");
+                        }
+                        docxText.append("\n");
+                    }
+                    docxText.append("[/TABLE]\n\n");
+                });
+                
+                Log.d(TAG, "Extracted text from DOCX: " + (docxText.length() > 100 ? 
+                        docxText.substring(0, 100) + "..." : docxText.toString()));
+                
                 return convertWordDocToPdf(docxText.toString(), outputFile);
                 
             case "odt":
@@ -134,7 +159,7 @@ public class DocumentConverter {
     }
     
     /**
-     * Convert text from a Word document to PDF using iText
+     * Convert text from a Word document to PDF using iText with improved formatting
      *
      * @param text       The text content to convert
      * @param outputFile The output PDF file
@@ -142,11 +167,49 @@ public class DocumentConverter {
      */
     private static boolean convertWordDocToPdf(String text, File outputFile) throws Exception {
         Document document = new Document();
-        PdfWriter.getInstance(document, new FileOutputStream(outputFile));
+        PdfWriter writer = PdfWriter.getInstance(document, new FileOutputStream(outputFile));
         document.open();
-        document.add(new Paragraph(text));
+        
+        // Add metadata
+        document.addCreationDate();
+        document.addTitle("Converted Document");
+        
+        // Split text into paragraphs and add them with proper formatting
+        String[] paragraphs = text.split("\n\n");
+        for (String paragraph : paragraphs) {
+            if (paragraph.trim().isEmpty()) {
+                continue;
+            }
+            
+            // Check if this is a table section
+            if (paragraph.contains("[TABLE]") && paragraph.contains("[/TABLE]")) {
+                // Simple table formatting
+                String tableContent = paragraph.substring(
+                        paragraph.indexOf("[TABLE]") + 7, 
+                        paragraph.indexOf("[/TABLE]"));
+                document.add(new Paragraph("Table Content:"));
+                document.add(new Paragraph(tableContent));
+            } else {
+                // Regular paragraph
+                Paragraph p = new Paragraph(paragraph.trim());
+                p.setAlignment(com.itextpdf.text.Element.ALIGN_LEFT);
+                p.setSpacingAfter(10);
+                document.add(p);
+            }
+        }
+        
         document.close();
-        return true;
+        writer.close();
+        
+        // Verify the PDF was created successfully
+        if (outputFile.exists() && outputFile.length() > 0) {
+            Log.d(TAG, "Successfully created PDF: " + outputFile.getAbsolutePath() + 
+                    " (" + outputFile.length() + " bytes)");
+            return true;
+        } else {
+            Log.e(TAG, "Failed to create PDF or file is empty");
+            return false;
+        }
     }
     
     /**
